@@ -2,167 +2,166 @@ const { sql, poolPromise } = require('./db');
 
 /**
  * GET /api/tendencia
- * Returns performance trend data for all stores and groups
  * 
- * Query params:
- * - startDate: YYYY-MM-DD
- * - endDate: YYYY-MM-DD
- * - kpi: Ventas | Transacciones | TQP
- * - channel: Total | Salón | Llevar | UberEats
+ * Calculations match SummaryCard logic:
+ * - PRESUPUESTO = SUM(Monto) for all days in year (annual total budget)
+ * - P. ACUMULADO = SUM(Monto) for days WHERE MontoReal > 0 (budget for days with actual data)
+ * - REAL = SUM(MontoReal) for days WHERE MontoReal > 0
+ * - AÑO ANTERIOR = SUM(MontoAnterior or MontoAnteriorAjustado) for days WHERE MontoReal > 0
+ * 
+ * % Ppto = Real / P. Acumulado
+ * % Ant  = Real / Año Anterior
  */
 async function getTendenciaData(req, res) {
     console.log('📊 getTendenciaData called');
     console.log('   Query params:', req.query);
     try {
-        const { startDate, endDate, kpi = 'Ventas', channel = 'Total' } = req.query;
+        const { startDate, endDate, kpi = 'Ventas', channel = 'Total', local, yearType = 'anterior' } = req.query;
 
         if (!startDate || !endDate) {
-            console.log('❌ Missing required params');
             return res.status(400).json({ error: 'startDate and endDate are required' });
         }
 
-        console.log('🔌 Connecting to database...');
         const pool = await poolPromise;
-        console.log('✅ Database connected');
+        const dbCanal = channel === 'Total' ? 'Todos' : channel;
+        // Use DAILY fields (not accumulated) since we SUM them ourselves
+        const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 
-        // Get current year data (2026)
-        const currentYearQuery = `
-            SELECT 
-                CODALMACEN,
-                CODAGRUPACION,
-                CANAL,
-                SUM(Monto) as Monto2026,
-                SUM(MontoReal) as Real2026,
-                COUNT(*) as DaysWithData
-            FROM RSM_ALCANCE_DIARIO
-            WHERE FECHA BETWEEN @startDate AND @endDate
-                AND AÑO = YEAR(@endDate)
-                AND KPI = @kpi
-                ${channel !== 'Total' ? 'AND CANAL = @channel' : ''}
-            GROUP BY CODALMACEN, CODAGRUPACION, CANAL
-        `;
+        // If a group is selected, find member stores
+        let memberLocals = null;
+        if (local) {
+            const idGrupoQuery = `
+                SELECT GA.IDGRUPO
+                FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENCAB GA
+                WHERE GA.CODVISIBLE = 20 AND GA.DESCRIPCION = @groupName
+            `;
+            const idGrupoRequest = pool.request();
+            idGrupoRequest.input('groupName', sql.NVarChar, local);
+            const idGrupoResult = await idGrupoRequest.query(idGrupoQuery);
 
-        // Get previous year data (2025) - same date range
-        const previousYearQuery = `
-            SELECT 
-                CODALMACEN,
-                CODAGRUPACION,
-                CANAL,
-                SUM(Monto) as Monto2025,
-                SUM(MontoReal) as Real2025
-            FROM RSM_ALCANCE_DIARIO
-            WHERE FECHA BETWEEN DATEADD(year, -1, @startDate) AND DATEADD(year, -1, @endDate)
-                AND AÑO = YEAR(@endDate) - 1
-                AND KPI = @kpi
-                ${channel !== 'Total' ? 'AND CANAL = @channel' : ''}
-            GROUP BY CODALMACEN, CODAGRUPACION, CANAL
-        `;
+            if (idGrupoResult.recordset.length > 0) {
+                const idGrupos = idGrupoResult.recordset.map(r => r.IDGRUPO);
+                const memberCodesQuery = `
+                    SELECT DISTINCT GL.CODALMACEN
+                    FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENLIN GL
+                    WHERE GL.IDGRUPO IN (${idGrupos.map((_, i) => `@idgrupo${i}`).join(', ')})
+                `;
+                const memberCodesRequest = pool.request();
+                idGrupos.forEach((id, i) => memberCodesRequest.input(`idgrupo${i}`, sql.Int, id));
+                const memberCodesResult = await memberCodesRequest.query(memberCodesQuery);
+                const memberCodes = memberCodesResult.recordset.map(r => r.CODALMACEN);
 
-        // Create separate requests for each query
-        const currentRequest = pool.request();
-        currentRequest.input('startDate', sql.Date, startDate);
-        currentRequest.input('endDate', sql.Date, endDate);
-        currentRequest.input('kpi', sql.VarChar, kpi);
-        if (channel !== 'Total') {
-            currentRequest.input('channel', sql.VarChar, channel);
-        }
-
-        const previousRequest = pool.request();
-        previousRequest.input('startDate', sql.Date, startDate);
-        previousRequest.input('endDate', sql.Date, endDate);
-        previousRequest.input('kpi', sql.VarChar, kpi);
-        if (channel !== 'Total') {
-            previousRequest.input('channel', sql.VarChar, channel);
-        }
-
-        const [currentResult, previousResult] = await Promise.all([
-            currentRequest.query(currentYearQuery),
-            previousRequest.query(previousYearQuery)
-        ]);
-
-        // Merge results by CODALMACEN and CANAL
-        const dataMap = new Map();
-
-        currentResult.recordset.forEach(row => {
-            const key = `${row.CODALMACEN}_${row.CANAL}`;
-            dataMap.set(key, {
-                codAlmacen: row.CODALMACEN,
-                codAgrupacion: row.CODAGRUPACION,
-                canal: row.CANAL,
-                real2026: row.Real2026 || 0,
-                presupuesto2026: row.Monto2026 || 0,
-                real2025: 0,
-                daysWithData: row.DaysWithData || 0
-            });
-        });
-
-        previousResult.recordset.forEach(row => {
-            const key = `${row.CODALMACEN}_${row.CANAL}`;
-            const existing = dataMap.get(key);
-            if (existing) {
-                existing.real2025 = row.Real2025 || 0;
-            } else {
-                dataMap.set(key, {
-                    codAlmacen: row.CODALMACEN,
-                    codAgrupacion: row.CODAGRUPACION,
-                    canal: row.CANAL,
-                    real2026: 0,
-                    presupuesto2026: 0,
-                    real2025: row.Real2025 || 0,
-                    daysWithData: 0
-                });
+                if (memberCodes.length > 0) {
+                    const localsQuery = `
+                        SELECT DISTINCT Local
+                        FROM RSM_ALCANCE_DIARIO
+                        WHERE Año = YEAR(@endDate)
+                        AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
+                        AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                    `;
+                    const localsRequest = pool.request();
+                    localsRequest.input('endDate', sql.Date, endDate);
+                    memberCodes.forEach((code, i) => localsRequest.input(`mcode${i}`, sql.NVarChar, code));
+                    const localsResult = await localsRequest.query(localsQuery);
+                    memberLocals = localsResult.recordset.map(r => r.Local);
+                    console.log(`🏪 Group "${local}" members (${memberLocals.length}):`, memberLocals);
+                }
             }
+        }
+
+        // Build local filter
+        let localFilter = '';
+        const localParams = {};
+        if (memberLocals && memberLocals.length > 0) {
+            const ph = memberLocals.map((_, i) => `@ml${i}`).join(', ');
+            localFilter = `AND Local IN (${ph})`;
+            memberLocals.forEach((name, i) => { localParams[`ml${i}`] = name; });
+        } else if (local) {
+            localFilter = 'AND Local = @local';
+            localParams['local'] = local;
+        }
+
+        const query = `
+            -- Annual budget total (SUM of Monto for all days in year)
+            WITH AnnualBudget AS (
+                SELECT Local, SUM(Monto) as PresupuestoAnual
+                FROM RSM_ALCANCE_DIARIO
+                WHERE Año = YEAR(@endDate) AND Tipo = @kpi AND Canal = @canal
+                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                    ${localFilter}
+                GROUP BY Local
+            ),
+            -- Period data: only days with actual real data (MontoReal > 0)
+            -- P. Acumulado = SUM(Monto) for days with real data
+            -- Real = SUM(MontoReal)
+            -- Año Anterior = SUM(MontoAnterior or Ajustado) for days with real data
+            PeriodData AS (
+                SELECT 
+                    Local,
+                    SUM(Monto) as PresupuestoAcum,
+                    SUM(MontoReal) as RealAcum,
+                    SUM(${anteriorField}) as AnteriorAcum
+                FROM RSM_ALCANCE_DIARIO
+                WHERE Fecha BETWEEN @startDate AND @endDate
+                    AND Año = YEAR(@endDate) AND Tipo = @kpi AND Canal = @canal
+                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                    AND MontoReal > 0
+                    ${localFilter}
+                GROUP BY Local
+            )
+            SELECT 
+                ab.Local,
+                ab.PresupuestoAnual,
+                ISNULL(pd.PresupuestoAcum, 0) as PresupuestoAcum,
+                ISNULL(pd.RealAcum, 0) as RealAcum,
+                ISNULL(pd.AnteriorAcum, 0) as AnteriorAcum
+            FROM AnnualBudget ab
+            LEFT JOIN PeriodData pd ON ab.Local = pd.Local
+            ORDER BY ab.Local
+        `;
+
+        const request = pool.request();
+        request.input('startDate', sql.Date, startDate);
+        request.input('endDate', sql.Date, endDate);
+        request.input('kpi', sql.VarChar, kpi);
+        request.input('canal', sql.VarChar, dbCanal);
+        Object.entries(localParams).forEach(([key, value]) => {
+            request.input(key, sql.NVarChar, value);
         });
 
-        // Calculate percentages and aggregate
+        const result = await request.query(query);
+        console.log(`📊 Tendencia returned ${result.recordset.length} records`);
+        if (result.recordset.length > 0) {
+            console.log('   Sample:', JSON.stringify(result.recordset[0]));
+        }
+
         const evaluacion = [];
-        const resumen = {
-            totalReal2025: 0,
-            totalReal2026: 0,
-            totalPresupuesto2026: 0
-        };
+        const resumen = { totalPresupuesto: 0, totalPresupuestoAcum: 0, totalReal: 0, totalAnterior: 0 };
 
-        dataMap.forEach(data => {
-            const pctVs2025 = data.real2025 > 0
-                ? ((data.real2026 - data.real2025) / data.real2025)
-                : 0;
-            const pctVsPresupuesto = data.presupuesto2026 > 0
-                ? ((data.real2026 - data.presupuesto2026) / data.presupuesto2026)
-                : 0;
+        result.recordset.forEach(row => {
+            const presupuesto = row.PresupuestoAnual || 0;
+            const presupuestoAcum = row.PresupuestoAcum || 0;
+            const real = row.RealAcum || 0;
+            const anterior = row.AnteriorAcum || 0;
 
-            evaluacion.push({
-                codAlmacen: data.codAlmacen,
-                codAgrupacion: data.codAgrupacion,
-                canal: data.canal,
-                real2025: data.real2025,
-                real2026: data.real2026,
-                presupuesto2026: data.presupuesto2026,
-                pctVs2025,
-                pctVsPresupuesto,
-                daysWithData: data.daysWithData
-            });
+            const pctPresupuesto = presupuestoAcum > 0 ? (real / presupuestoAcum) : 0;
+            const pctAnterior = anterior > 0 ? (real / anterior) : 0;
 
-            resumen.totalReal2025 += data.real2025;
-            resumen.totalReal2026 += data.real2026;
-            resumen.totalPresupuesto2026 += data.presupuesto2026;
+            evaluacion.push({ local: row.Local, presupuesto, presupuestoAcum, real, anterior, pctPresupuesto, pctAnterior });
+
+            resumen.totalPresupuesto += presupuesto;
+            resumen.totalPresupuestoAcum += presupuestoAcum;
+            resumen.totalReal += real;
+            resumen.totalAnterior += anterior;
         });
 
-        resumen.pctVs2025 = resumen.totalReal2025 > 0
-            ? ((resumen.totalReal2026 - resumen.totalReal2025) / resumen.totalReal2025)
-            : 0;
-        resumen.pctVsPresupuesto = resumen.totalPresupuesto2026 > 0
-            ? ((resumen.totalReal2026 - resumen.totalPresupuesto2026) / resumen.totalPresupuesto2026)
-            : 0;
+        resumen.pctPresupuesto = resumen.totalPresupuestoAcum > 0 ? (resumen.totalReal / resumen.totalPresupuestoAcum) : 0;
+        resumen.pctAnterior = resumen.totalAnterior > 0 ? (resumen.totalReal / resumen.totalAnterior) : 0;
 
         res.json({
-            evaluacion: evaluacion.sort((a, b) => a.codAlmacen.localeCompare(b.codAlmacen)),
+            evaluacion: evaluacion.sort((a, b) => a.local.localeCompare(b.local)),
             resumen,
-            parameters: {
-                startDate,
-                endDate,
-                kpi,
-                channel
-            }
+            parameters: { startDate, endDate, kpi, channel, local: local || 'all', yearType, isGroup: memberLocals !== null }
         });
 
     } catch (error) {

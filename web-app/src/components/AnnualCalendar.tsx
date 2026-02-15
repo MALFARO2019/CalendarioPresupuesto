@@ -196,7 +196,7 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
             <div className="mt-6 bg-white rounded-2xl border-2 border-indigo-200 shadow-lg p-5">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-gray-700">Total Anual {year}</span>
+                        <span className="text-sm font-bold text-gray-700">Alcance {year}</span>
                         <span className={`px-3 py-1 rounded-full text-sm font-bold ${getAlcanceColor(annualTotals.alcance, annualTotals.hasData)}`}>
                             {annualTotals.hasData ? `${annualTotals.alcance.toFixed(1)}%` : '—'}
                         </span>

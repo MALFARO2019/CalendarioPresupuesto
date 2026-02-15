@@ -116,9 +116,9 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                             type="checkbox"
                             checked={visibleLines.anterior}
                             onChange={() => toggleLine('anterior')}
-                            className="w-3 h-3 accent-orange-400"
+                            className="w-3 h-3 accent-amber-500"
                         />
-                        <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+                        <div className="w-2 h-2 rounded-full bg-amber-500"></div>
                         <span className={visibleLines.anterior ? 'text-gray-700' : 'text-gray-400'}>Año Anterior</span>
                     </label>
 
@@ -128,9 +128,9 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                             type="checkbox"
                             checked={visibleLines.anteriorAjustado}
                             onChange={() => toggleLine('anteriorAjustado')}
-                            className="w-3 h-3 accent-indigo-500"
+                            className="w-3 h-3 accent-pink-500"
                         />
-                        <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                        <div className="w-2 h-2 rounded-full bg-pink-500"></div>
                         <span className={visibleLines.anteriorAjustado ? 'text-gray-700' : 'text-gray-400'}>Año Anterior Ajust.</span>
                     </label>
                 </div>
@@ -149,12 +149,12 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                 <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
                             </linearGradient>
                             <linearGradient id="colorAnterior" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#FB923C" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#FB923C" stopOpacity={0} />
+                                <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
                             </linearGradient>
                             <linearGradient id="colorAnteriorAjustado" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#6366F1" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#6366F1" stopOpacity={0} />
+                                <stop offset="5%" stopColor="#EC4899" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#EC4899" stopOpacity={0} />
                             </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
@@ -182,7 +182,7 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                             <Area
                                 type="monotone"
                                 dataKey="Año Anterior Ajustado"
-                                stroke="#6366F1"
+                                stroke="#EC4899"
                                 strokeWidth={2}
                                 fillOpacity={1}
                                 fill="url(#colorAnteriorAjustado)"
@@ -192,7 +192,7 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                             <Area
                                 type="monotone"
                                 dataKey="Año Anterior"
-                                stroke="#FB923C"
+                                stroke="#F59E0B"
                                 strokeWidth={2}
                                 fillOpacity={1}
                                 fill="url(#colorAnterior)"

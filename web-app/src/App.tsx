@@ -1,15 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
 import { FilterBar } from './components/FilterBar';
-import { SummaryCard } from './components/SummaryCard';
 import { CalendarGrid } from './components/CalendarGrid';
 import { LoginPage } from './components/LoginPage';
 import { AdminPage } from './components/AdminPage';
 import { generateMockData } from './mockData';
 import type { BudgetRecord } from './mockData';
-import { fetchBudgetData, fetchStores, fetchGroupStores, getToken, getUser, logout, verifyToken } from './api';
+import { fetchBudgetData, fetchStores, fetchGroupStores, getToken, getUser, logout, verifyToken, API_BASE } from './api';
 import { addMonths, format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X } from 'lucide-react';
+
+import { formatCurrency } from './utils/formatters';
 import { AnnualCalendar } from './components/AnnualCalendar';
 import { TendenciaAlcance } from './components/TendenciaAlcance';
 import { WeekDayBehavior } from './components/WeekDayBehavior';
@@ -17,6 +18,7 @@ import { WeeklyBehavior } from './components/WeeklyBehavior';
 import { DailyBehaviorChart } from './components/DailyBehaviorChart';
 import { InfoCard } from './components/InfoCard';
 import { IncrementCard } from './components/IncrementCard';
+import { SummaryCard } from './components/SummaryCard';
 import { GroupMembersCard } from './components/GroupMembersCard';
 
 type AppView = 'login' | 'dashboard' | 'admin';
@@ -190,6 +192,129 @@ function App() {
     setIndividualStores([]);
   };
 
+  const [showReportMenu, setShowReportMenu] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+
+  const handlePrintPDF = () => {
+    setShowReportMenu(false);
+    window.print();
+  };
+
+  const handleSendEmail = () => {
+    setShowReportMenu(false);
+    // Default to logged-in user's email
+    if (!emailTo && user?.email) {
+      setEmailTo(user.email);
+    }
+    setShowEmailModal(true);
+  };
+
+  const buildReportHTML = () => {
+    const sourceData = dashboardTab === 'mensual' ? currentMonthData : data;
+    if (!sourceData || sourceData.length === 0) {
+      return '<p>No hay datos disponibles para este reporte.</p>';
+    }
+
+    // Use data values directly from the view - no recalculation
+    const totalReal = sourceData.reduce((s: number, d: any) => s + (d.MontoReal || 0), 0);
+    const totalPpto = sourceData.reduce((s: number, d: any) => s + (d.Monto || 0), 0);
+    const pctAlcance = totalPpto > 0 ? ((totalReal / totalPpto) * 100).toFixed(1) : '0.0';
+    const pctClass = parseFloat(pctAlcance) >= 100 ? 'pct-green' : parseFloat(pctAlcance) >= 90 ? 'pct-orange' : 'pct-red';
+
+    let html = `
+      <h3 style="color:#374151;margin:0 0 10px 0;font-size:16px;">Resumen de Alcance</h3>
+      <table class="report-table">
+        <tr>
+          <th>Métrica</th>
+          <th style="text-align:right">Valor</th>
+        </tr>
+        <tr>
+          <td>Real Acumulado</td>
+          <td style="text-align:right;font-weight:600">${formatCurrency(totalReal, filterKpi)}</td>
+        </tr>
+        <tr>
+          <td>Presupuesto Acumulado</td>
+          <td style="text-align:right;font-weight:600">${formatCurrency(totalPpto, filterKpi)}</td>
+        </tr>
+        <tr>
+          <td>Alcance</td>
+          <td style="text-align:right" class="${pctClass}">${pctAlcance}%</td>
+        </tr>
+      </table>
+    `;
+
+    // Sort by day number ascending
+    const sortedData = [...sourceData].sort((a: any, b: any) => (a.Dia || 0) - (b.Dia || 0));
+
+    html += `
+      <h3 style="color:#374151;margin:20px 0 10px 0;font-size:16px;">Detalle Diario</h3>
+      <table class="report-table">
+        <tr>
+          <th>Día</th>
+          <th style="text-align:right">Real</th>
+          <th style="text-align:right">Presupuesto</th>
+          <th style="text-align:right">Alcance</th>
+        </tr>
+    `;
+
+    sortedData.forEach((d: any) => {
+      const pct = d.Monto > 0 ? ((d.MontoReal / d.Monto) * 100).toFixed(1) : '-';
+      const cls = pct !== '-' ? (parseFloat(pct) >= 100 ? 'pct-green' : parseFloat(pct) >= 90 ? 'pct-orange' : 'pct-red') : '';
+      html += `
+        <tr>
+          <td>${d.Dia || '-'}</td>
+          <td style="text-align:right">${formatCurrency(d.MontoReal || 0, filterKpi)}</td>
+          <td style="text-align:right">${formatCurrency(d.Monto || 0, filterKpi)}</td>
+          <td style="text-align:right" class="${cls}">${pct}%</td>
+        </tr>
+      `;
+    });
+    html += '</table>';
+    return html;
+  };
+
+  const handleSendReportEmail = async () => {
+    if (!emailTo.trim()) return;
+    setEmailSending(true);
+    try {
+      const title = dashboardTab === 'mensual' ? `Calendario Mensual ${year}` :
+        dashboardTab === 'anual' ? `Calendario Anual ${year}` : `Tendencia Alcance ${year}`;
+
+      const response = await fetch(`${API_BASE}/send-report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({
+          recipientEmail: emailTo.trim(),
+          reportTitle: title,
+          reportData: {
+            local: filterLocal || 'Todos',
+            kpi: filterKpi,
+            canal: filterCanal || 'Todos'
+          },
+          htmlContent: buildReportHTML()
+        })
+      });
+
+      const result = await response.json();
+      if (response.ok) {
+        alert('✅ Reporte enviado exitosamente a ' + emailTo);
+        setShowEmailModal(false);
+        setEmailTo('');
+      } else {
+        alert('❌ Error: ' + (result.error || 'Error al enviar'));
+      }
+    } catch (error) {
+      alert('❌ Error de conexión al enviar el correo');
+      console.error(error);
+    }
+    setEmailSending(false);
+  };
+
   const user = getUser();
 
   // Loading auth check
@@ -246,6 +371,45 @@ function App() {
             )}
 
 
+
+            {/* Report Menu */}
+            <div className="relative">
+              <button
+                onClick={() => setShowReportMenu(!showReportMenu)}
+                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                title="Generar Reporte"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+              {showReportMenu && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setShowReportMenu(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
+                    <button
+                      onClick={handlePrintPDF}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all"
+                    >
+                      <Download className="w-4 h-4" />
+                      <div className="text-left">
+                        <div className="font-semibold">Descargar PDF</div>
+                        <div className="text-xs text-gray-400">Imprimir vista actual</div>
+                      </div>
+                    </button>
+                    <div className="h-px bg-gray-100" />
+                    <button
+                      onClick={handleSendEmail}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all"
+                    >
+                      <Mail className="w-4 h-4" />
+                      <div className="text-left">
+                        <div className="font-semibold">Enviar por Correo</div>
+                        <div className="text-xs text-gray-400">Abrir cliente de correo</div>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Admin/Events button - for admin or eventos users */}
             {(user?.esAdmin || user?.accesoEventos) && (
@@ -341,34 +505,44 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-6 py-8">
-        <FilterBar
-          year={year}
-          setYear={setYear}
-          filterLocal={filterLocal}
-          setFilterLocal={setFilterLocal}
-          filterCanal={filterCanal}
-          setFilterCanal={setFilterCanal}
-          filterKpi={filterKpi}
-          setFilterKpi={setFilterKpi}
-          filterType={filterType}
-          setFilterType={setFilterType}
-          yearType={yearType}
-          setYearType={setYearType}
-          groups={groups}
-          individualStores={individualStores}
-        />
+      {/* Print-only header (hidden on screen, visible on print) */}
+      <div className="print-header">
+        <img src="/LogoRosti.png" alt="Rosti" />
+        <div>
+          <div className="print-title">
+            {dashboardTab === 'mensual' ? `Calendario Mensual - ${format(currentDate, 'MMMM yyyy', { locale: es })}` :
+              dashboardTab === 'anual' ? `Calendario Anual ${year}` : `Tendencia Alcance ${year}`}
+          </div>
+          <div className="print-subtitle">Local: {filterLocal || 'Todos'} | KPI: {filterKpi} | Canal: {filterCanal}</div>
+        </div>
+        <div className="print-meta">
+          <div>Generado: {new Date().toLocaleDateString('es-CR')}</div>
+          <div>{user?.nombre || user?.email || ''}</div>
+        </div>
+      </div>
 
-        <SummaryCard
-          dataVentas={dataVentas}
-          dataTransacciones={dataTransacciones}
-          dataTQP={dataTQP}
-          currentMonth={currentDate.getMonth()}
-          comparisonType={filterType}
-          yearType={yearType}
-          filterLocal={filterLocal}
-          isAnnual={dashboardTab === 'anual'}
-        />
+      <main id="dashboard-content" className="max-w-[1600px] mx-auto px-6 py-8">
+        {dashboardTab !== 'tendencia' && (
+          <FilterBar
+            year={year}
+            setYear={setYear}
+            filterLocal={filterLocal}
+            setFilterLocal={setFilterLocal}
+            filterCanal={filterCanal}
+            setFilterCanal={setFilterCanal}
+            filterKpi={filterKpi}
+            setFilterKpi={setFilterKpi}
+            filterType={filterType}
+            setFilterType={setFilterType}
+            yearType={yearType}
+            setYearType={setYearType}
+            groups={groups}
+            individualStores={individualStores}
+          />
+        )}
+
+
+
 
         {loading && (
           <div className="flex items-center justify-center py-20">
@@ -391,19 +565,37 @@ function App() {
 
         {!loading && dashboardTab === 'mensual' && (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              <div className="lg:col-span-8">
-                <CalendarGrid
-                  data={currentMonthData}
-                  month={currentDate.getMonth()}
-                  year={currentDate.getFullYear()}
-                  comparisonType={filterType}
-                  kpi={filterKpi}
-                />
+            {/* Summary Card */}
+            <div className="print-page">
+              <SummaryCard
+                dataVentas={dataVentas}
+                dataTransacciones={dataTransacciones}
+                dataTQP={dataTQP}
+                currentMonth={currentDate.getMonth()}
+                comparisonType={filterType}
+                yearType={yearType}
+                filterLocal={filterLocal}
+              />
+            </div>
+
+            {/* Calendar Grid + Behavior Analysis in same row */}
+            <div className="flex flex-col lg:flex-row gap-8">
+              {/* Calendar Grid */}
+              <div className="print-page lg:flex-[3]">
+                <div id="monthly-calendar-container">
+                  <CalendarGrid
+                    data={currentMonthData}
+                    month={currentDate.getMonth()}
+                    year={currentDate.getFullYear()}
+                    comparisonType={filterType}
+                    kpi={filterKpi}
+                  />
+                </div>
               </div>
 
-              <div className="lg:col-span-4 flex flex-col gap-6">
-                <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-lg">
+              {/* Behavior Analysis */}
+              <div className="print-page lg:flex-[2]">
+                <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-lg h-full">
                   <div className="mb-4">
                     <h2 className="text-lg font-bold text-gray-800 mb-1">Análisis de Comportamiento</h2>
                     <p className="text-xs text-gray-400">Desempeño semanal y por día</p>
@@ -417,18 +609,23 @@ function App() {
               </div>
             </div>
 
-            <div className="mt-8">
-              <DailyBehaviorChart data={currentMonthData} kpi={filterKpi} />
+            {/* Page 4: Daily Chart */}
+            <div className="print-page">
+              <div className="mt-8">
+                <DailyBehaviorChart data={currentMonthData} kpi={filterKpi} />
+              </div>
             </div>
 
-            {/* Only show increment card for current month or future months */}
-            {currentDate.getMonth() >= new Date().getMonth() && currentDate.getFullYear() >= new Date().getFullYear() && (
-              <div className="mt-8">
-                <IncrementCard data={currentMonthData} currentDate={currentDate} />
-              </div>
-            )}
+            {/* Page 5: Increments & Info */}
+            <div className="print-page">
+              {currentDate.getMonth() >= new Date().getMonth() && currentDate.getFullYear() >= new Date().getFullYear() && (
+                <div className="mt-8">
+                  <IncrementCard data={currentMonthData} currentDate={currentDate} />
+                </div>
+              )}
 
-            <InfoCard />
+              <InfoCard />
+            </div>
 
             {showGroupCard && (
               <GroupMembersCard
@@ -436,18 +633,33 @@ function App() {
                 stores={groupMembers}
               />
             )}
+
           </>
         )}
 
         {!loading && dashboardTab === 'anual' && (
           <>
-            <AnnualCalendar
-              data={data}
-              year={year}
+            {/* Summary Card */}
+            <SummaryCard
+              dataVentas={dataVentas}
+              dataTransacciones={dataTransacciones}
+              dataTQP={dataTQP}
+              currentMonth={currentDate.getMonth()}
               comparisonType={filterType}
-              kpi={filterKpi}
               yearType={yearType}
+              filterLocal={filterLocal}
+              isAnnual={true}
             />
+
+            <div id="annual-calendar-container">
+              <AnnualCalendar
+                data={data}
+                year={year}
+                comparisonType={filterType}
+                kpi={filterKpi}
+                yearType={yearType}
+              />
+            </div>
 
             <InfoCard />
 
@@ -457,17 +669,71 @@ function App() {
                 stores={groupMembers}
               />
             )}
+
           </>
         )}
 
-        {!loading && dashboardTab === 'tendencia' && (
-          <TendenciaAlcance
-            year={year}
-            startDate={`${year}-01-01`}
-            endDate={format(new Date(), 'yyyy-MM-dd')}
-          />
+        {!loading && dashboardTab === 'tendencia' && user?.accesoTendencia && (
+          <div id="tendencia-container">
+            <TendenciaAlcance
+              year={year}
+              startDate={`${year}-01-01`}
+              endDate={format(new Date(), 'yyyy-MM-dd')}
+              groups={groups}
+              individualStores={individualStores}
+            />
+          </div>
         )}
       </main>
+
+      {/* Email Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center no-print">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowEmailModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 mx-4">
+            <button
+              onClick={() => setShowEmailModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">Enviar Reporte por Correo</h3>
+            <p className="text-sm text-gray-500 mb-4">El reporte se enviará como HTML en el cuerpo del correo</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email del destinatario</label>
+                <input
+                  type="email"
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  placeholder="ejemplo@empresa.com"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendReportEmail()}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEmailModal(false)}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSendReportEmail}
+                  disabled={emailSending || !emailTo.trim()}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {emailSending ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
+                  ) : (
+                    <><Send className="w-4 h-4" /> Enviar Reporte</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

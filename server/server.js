@@ -12,7 +12,7 @@ const {
     updateUser,
     deleteUser
 } = require('./auth');
-const { sendPasswordEmail, verifyEmailService } = require('./emailService');
+const { sendPasswordEmail, sendReportEmail, verifyEmailService } = require('./emailService');
 const { getTendenciaData } = require('./tendencia');
 const {
     getAllEventos,
@@ -644,6 +644,44 @@ app.delete('/api/eventos-fechas', authMiddleware, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('Error deleting evento fecha:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// REPORT EMAIL ENDPOINT
+// ==========================================
+
+// POST /api/send-report - Send report as HTML email
+app.post('/api/send-report', authMiddleware, async (req, res) => {
+    try {
+        const { recipientEmail, reportTitle, reportData, htmlContent } = req.body;
+
+        if (!recipientEmail) {
+            return res.status(400).json({ error: 'Email del destinatario es requerido' });
+        }
+        if (!htmlContent) {
+            return res.status(400).json({ error: 'Contenido HTML es requerido' });
+        }
+
+        const senderName = req.user?.nombre || req.user?.email || 'Usuario';
+        const title = reportTitle || 'Reporte Calendario de Presupuesto';
+
+        const success = await sendReportEmail(
+            recipientEmail,
+            senderName,
+            title,
+            reportData || {},
+            htmlContent
+        );
+
+        if (success) {
+            res.json({ success: true, message: 'Reporte enviado exitosamente' });
+        } else {
+            res.status(500).json({ error: 'Error al enviar el correo. Verifica la configuración de Database Mail.' });
+        }
+    } catch (err) {
+        console.error('Error in /api/send-report:', err);
         res.status(500).json({ error: err.message });
     }
 });
