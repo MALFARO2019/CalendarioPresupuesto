@@ -1,0 +1,389 @@
+const jwt = require('jsonwebtoken');
+const { sql, poolPromise } = require('./db');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'calendario-presupuestal-secret-key-2026';
+const ADMIN_PASSWORD = 'R0st1p017';
+
+/**
+ * Ensure security tables exist in the database
+ */
+async function ensureSecurityTables() {
+    try {
+        const pool = await poolPromise;
+
+        // Create APP_USUARIOS table
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_USUARIOS' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_USUARIOS (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    Email NVARCHAR(255) NOT NULL UNIQUE,
+                    Nombre NVARCHAR(255) NULL,
+                    Clave NVARCHAR(10) NOT NULL DEFAULT '000000',
+                    Activo BIT NOT NULL DEFAULT 1,
+                    AccesoTendencia BIT NOT NULL DEFAULT 0,
+                    AccesoEventos BIT NOT NULL DEFAULT 0,
+                    EsAdmin BIT NOT NULL DEFAULT 0,
+                    EsProtegido BIT NOT NULL DEFAULT 0,
+                    FechaCreacion DATETIME NOT NULL DEFAULT GETDATE(),
+                    FechaModificacion DATETIME NULL
+                );
+            END
+        `);
+
+        // Add Clave column if table already exists but column doesn't
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'Clave')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD Clave NVARCHAR(10) NOT NULL DEFAULT '000000';
+            END
+        `);
+
+        // Add permission columns if they don't exist
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AccesoTendencia')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD AccesoTendencia BIT NOT NULL DEFAULT 0;
+            END
+        `);
+
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AccesoEventos')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD AccesoEventos BIT NOT NULL DEFAULT 0;
+            END
+        `);
+
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'EsAdmin')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD EsAdmin BIT NOT NULL DEFAULT 0;
+            END
+        `);
+
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'EsProtegido')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD EsProtegido BIT NOT NULL DEFAULT 0;
+            END
+        `);
+
+        // Create APP_USUARIO_ALMACEN table
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_USUARIO_ALMACEN' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_USUARIO_ALMACEN (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    UsuarioId INT NOT NULL,
+                    Local NVARCHAR(255) NOT NULL,
+                    CONSTRAINT FK_UsuarioAlmacen_Usuario FOREIGN KEY (UsuarioId) 
+                        REFERENCES APP_USUARIOS(Id) ON DELETE CASCADE
+                );
+            END
+        `);
+
+        // Create or update superadmin user
+        const superAdminResult = await pool.request().query(`
+            SELECT Id FROM APP_USUARIOS WHERE Email = 'soporte@rostipolloscr.com'
+        `);
+
+        if (superAdminResult.recordset.length === 0) {
+            await pool.request().query(`
+                INSERT INTO APP_USUARIOS (Email, Nombre, Clave, Activo, AccesoTendencia, AccesoEventos, EsAdmin, EsProtegido)
+                VALUES ('soporte@rostipolloscr.com', 'Soporte Técnico', 'R0st1p017', 1, 1, 1, 1, 1)
+            `);
+            console.log('✅ Superadmin user created');
+        } else {
+            await pool.request().query(`
+                UPDATE APP_USUARIOS
+                SET Nombre = 'Soporte Técnico',
+                    Clave = 'R0st1p017',
+                    Activo = 1,
+                    AccesoTendencia = 1,
+                    AccesoEventos = 1,
+                    EsAdmin = 1,
+                    EsProtegido = 1
+                WHERE Email = 'soporte@rostipolloscr.com'
+            `);
+        }
+
+        console.log('✅ Security tables verified/created');
+    } catch (err) {
+        console.error('⚠️ Could not create security tables:', err.message);
+    }
+}
+
+/**
+ * Login: validate email + PIN, return long-lived JWT
+ */
+async function loginUser(email, clave) {
+    const pool = await poolPromise;
+    const result = await pool.request()
+        .input('email', sql.NVarChar, email)
+        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoEventos, EsAdmin, EsProtegido FROM APP_USUARIOS WHERE Email = @email');
+
+    if (result.recordset.length === 0) {
+        return { success: false, message: 'Usuario no encontrado. Contacte al administrador.' };
+    }
+
+    const user = result.recordset[0];
+
+    console.log('🔐 Login attempt:', {
+        email,
+        claveReceived: `[${clave}]`,
+        claveInDB: `[${user.Clave}]`,
+        claveMatch: user.Clave.trim() === clave.trim()
+    });
+
+    if (!user.Activo) {
+        return { success: false, message: 'Usuario desactivado. Contacte al administrador.' };
+    }
+
+    // Verify PIN - trim both values to avoid whitespace issues
+    if (user.Clave.trim() !== clave.trim()) {
+        console.log('❌ Password mismatch');
+        return { success: false, message: 'Clave incorrecta.' };
+    }
+
+    // Get user's allowed stores
+    const storesResult = await pool.request()
+        .input('userId', sql.Int, user.Id)
+        .query('SELECT Local FROM APP_USUARIO_ALMACEN WHERE UsuarioId = @userId');
+
+    const allowedStores = storesResult.recordset.map(r => r.Local);
+
+    // Generate long-lived JWT (365 days - session persists until admin changes PIN)
+    const token = jwt.sign(
+        {
+            userId: user.Id,
+            email: user.Email,
+            nombre: user.Nombre,
+            allowedStores: allowedStores,
+            claveHash: clave, // Store PIN in token to detect changes
+            accesoTendencia: user.AccesoTendencia,
+            accesoEventos: user.AccesoEventos,
+            esAdmin: user.EsAdmin,
+            esProtegido: user.EsProtegido
+        },
+        JWT_SECRET,
+        { expiresIn: '365d' }
+    );
+
+    return {
+        success: true,
+        token,
+        user: {
+            id: user.Id,
+            email: user.Email,
+            nombre: user.Nombre,
+            accesoTendencia: user.AccesoTendencia,
+            accesoEventos: user.AccesoEventos,
+            esAdmin: user.EsAdmin,
+            esProtegido: user.EsProtegido,
+            allowedStores
+        }
+    };
+}
+
+/**
+ * Middleware to verify JWT token and check PIN hasn't changed
+ */
+function authMiddleware(req, res, next) {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Token no proporcionado' });
+    }
+
+    const token = authHeader.substring(7);
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (err) {
+        return res.status(401).json({ error: 'Token inválido o expirado' });
+    }
+}
+
+/**
+ * Verify token is still valid (user exists, is active, PIN hasn't changed)
+ */
+async function verifyTokenValid(decoded) {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('id', sql.Int, decoded.userId)
+            .query('SELECT Id, Clave, Activo FROM APP_USUARIOS WHERE Id = @id');
+
+        if (result.recordset.length === 0) return false;
+        const user = result.recordset[0];
+        if (!user.Activo) return false;
+        // Check if PIN was changed by admin
+        if (decoded.claveHash && user.Clave !== decoded.claveHash) return false;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Verify admin password
+ */
+function verifyAdminPassword(password) {
+    return password === ADMIN_PASSWORD;
+}
+
+/**
+ * Get all users with their stores
+ */
+async function getAllUsers() {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+        SELECT u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoEventos, u.EsAdmin, u.EsProtegido, u.FechaCreacion,
+               STRING_AGG(ua.Local, ', ') AS Almacenes
+        FROM APP_USUARIOS u
+        LEFT JOIN APP_USUARIO_ALMACEN ua ON u.Id = ua.UsuarioId
+        GROUP BY u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoEventos, u.EsAdmin, u.EsProtegido, u.FechaCreacion
+        ORDER BY u.Email
+    `);
+
+    // Map SQL Server PascalCase to JavaScript camelCase
+    return result.recordset.map(user => ({
+        id: user.Id,
+        email: user.Email,
+        nombre: user.Nombre,
+        clave: user.Clave,
+        activo: user.Activo,
+        accesoTendencia: user.AccesoTendencia,
+        accesoEventos: user.AccesoEventos,
+        esAdmin: user.EsAdmin,
+        esProtegido: user.EsProtegido,
+        fechaCreacion: user.FechaCreacion,
+        allowedStores: user.Almacenes ? user.Almacenes.split(', ') : []
+    }));
+}
+
+/**
+ * Create a new user with store access and PIN
+ */
+async function createUser(email, nombre, clave, stores, accesoTendencia = false, accesoEventos = false, esAdmin = false) {
+    const pool = await poolPromise;
+
+    const pin = clave || Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Insert user
+    const userResult = await pool.request()
+        .input('email', sql.NVarChar, email)
+        .input('nombre', sql.NVarChar, nombre || '')
+        .input('clave', sql.NVarChar, pin)
+        .input('accesoTendencia', sql.Bit, accesoTendencia)
+        .input('accesoEventos', sql.Bit, accesoEventos)
+        .input('esAdmin', sql.Bit, esAdmin)
+        .query(`
+            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoEventos, EsAdmin) 
+            OUTPUT INSERTED.Id, INSERTED.Clave
+            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoEventos, @esAdmin)
+        `);
+
+    const userId = userResult.recordset[0].Id;
+    const generatedPin = userResult.recordset[0].Clave;
+
+    // Insert store access
+    if (stores && stores.length > 0) {
+        for (const store of stores) {
+            await pool.request()
+                .input('userId', sql.Int, userId)
+                .input('local', sql.NVarChar, store)
+                .query('INSERT INTO APP_USUARIO_ALMACEN (UsuarioId, Local) VALUES (@userId, @local)');
+        }
+    }
+
+    return { userId, clave: generatedPin };
+}
+
+/**
+ * Update user (including PIN change)
+ */
+async function updateUser(userId, email, nombre, activo, clave, stores, accesoTendencia, accesoEventos, esAdmin) {
+    const pool = await poolPromise;
+
+    // Protect superadmin user
+    const checkResult = await pool.request()
+        .input('id', sql.Int, userId)
+        .query('SELECT EsProtegido FROM APP_USUARIOS WHERE Id = @id');
+
+    if (checkResult.recordset.length > 0 && checkResult.recordset[0].EsProtegido) {
+        throw new Error('No se puede modificar el usuario protegido del sistema');
+    }
+
+    let updateQuery = `
+        UPDATE APP_USUARIOS 
+        SET Email = @email, Nombre = @nombre, Activo = @activo, 
+            AccesoTendencia = @accesoTendencia, AccesoEventos = @accesoEventos, EsAdmin = @esAdmin,
+            FechaModificacion = GETDATE()
+    `;
+    const request = pool.request()
+        .input('id', sql.Int, userId)
+        .input('email', sql.NVarChar, email)
+        .input('nombre', sql.NVarChar, nombre || '')
+        .input('activo', sql.Bit, activo)
+        .input('accesoTendencia', sql.Bit, accesoTendencia)
+        .input('accesoEventos', sql.Bit, accesoEventos)
+        .input('esAdmin', sql.Bit, esAdmin);
+
+    if (clave) {
+        updateQuery += ', Clave = @clave';
+        request.input('clave', sql.NVarChar, clave);
+    }
+
+    updateQuery += ' WHERE Id = @id';
+    await request.query(updateQuery);
+
+    // Replace stores
+    await pool.request()
+        .input('userId', sql.Int, userId)
+        .query('DELETE FROM APP_USUARIO_ALMACEN WHERE UsuarioId = @userId');
+
+    if (stores && stores.length > 0) {
+        for (const store of stores) {
+            await pool.request()
+                .input('userId', sql.Int, userId)
+                .input('local', sql.NVarChar, store)
+                .query('INSERT INTO APP_USUARIO_ALMACEN (UsuarioId, Local) VALUES (@userId, @local)');
+        }
+    }
+}
+
+/**
+ * Delete user
+ */
+async function deleteUser(userId) {
+    const pool = await poolPromise;
+
+    // Protect superadmin user
+    const checkResult = await pool.request()
+        .input('id', sql.Int, userId)
+        .query('SELECT EsProtegido FROM APP_USUARIOS WHERE Id = @id');
+
+    if (checkResult.recordset.length > 0 && checkResult.recordset[0].EsProtegido) {
+        throw new Error('No se puede eliminar el usuario protegido del sistema');
+    }
+
+    await pool.request()
+        .input('id', sql.Int, userId)
+        .query('DELETE FROM APP_USUARIOS WHERE Id = @id');
+}
+
+module.exports = {
+    ensureSecurityTables,
+    loginUser,
+    authMiddleware,
+    verifyTokenValid,
+    verifyAdminPassword,
+    getAllUsers,
+    createUser,
+    updateUser,
+    deleteUser,
+    ADMIN_PASSWORD
+};
