@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { formatCurrency, formatCurrencyCompact } from '../utils/formatters';
+import { formatCurrencyCompact, useFormatCurrency } from '../utils/formatters';
 
 interface DailyBehaviorChartProps {
     data: any[];
@@ -10,6 +10,7 @@ interface DailyBehaviorChartProps {
 const DAY_LETTERS = ['D', 'L', 'K', 'M', 'J', 'V', 'S'];
 
 export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi }) => {
+    const fc = useFormatCurrency();
     // State for controlling which lines are visible
     const [visibleLines, setVisibleLines] = useState({
         real: true,
@@ -65,16 +66,61 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
     // Custom Tooltip
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
+            // Extract values for calculations
+            const presupuesto = payload.find((p: any) => p.dataKey === 'Presupuesto')?.value;
+            const real = payload.find((p: any) => p.dataKey === 'Real')?.value;
+            const anterior = payload.find((p: any) => p.dataKey === 'Año Anterior')?.value;
+            const anteriorAjustado = payload.find((p: any) => p.dataKey === 'Año Anterior Ajustado')?.value;
+
+            // Diff vs Presupuesto
+            const difPpto = (real != null && presupuesto != null) ? real - presupuesto : null;
+            const pctPpto = (presupuesto != null && presupuesto !== 0 && real != null) ? (real / presupuesto * 100) : null;
+
+            // Diff vs Año Anterior (whichever is visible)
+            const anteriorVal = anteriorAjustado ?? anterior;
+            const anteriorLabel = anteriorAjustado != null ? 'Ajust.' : 'Ant.';
+            const difAnt = (real != null && anteriorVal != null) ? real - anteriorVal : null;
+            const pctAnt = (anteriorVal != null && anteriorVal !== 0 && real != null) ? (real / anteriorVal * 100) : null;
+
             return (
-                <div className="bg-white p-4 border border-gray-100 shadow-xl rounded-xl">
+                <div className="bg-white p-4 border border-gray-100 shadow-xl rounded-xl min-w-[200px]">
                     <p className="font-bold text-gray-700 mb-2">{label}</p>
                     {payload.map((entry: any, index: number) => (
                         <div key={index} className="flex items-center gap-2 text-xs font-medium">
                             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></div>
                             <span className="text-gray-500">{entry.name}:</span>
-                            <span className="text-gray-900 font-mono">{formatCurrency(entry.value, kpi)}</span>
+                            <span className="text-gray-900 font-mono">{fc(entry.value, kpi)}</span>
                         </div>
                     ))}
+                    {difPpto != null && (
+                        <>
+                            <div className="h-px bg-gray-100 my-1.5" />
+                            <div className="flex items-center gap-2 text-xs font-medium">
+                                <span className="text-gray-500">Dif. Ppto:</span>
+                                <span className={`font-mono font-bold ${difPpto >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {difPpto >= 0 ? '+' : ''}{fc(difPpto, kpi)}
+                                </span>
+                                {pctPpto != null && (
+                                    <span className={`font-mono font-bold ${pctPpto >= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                        ({pctPpto.toFixed(1)}%)
+                                    </span>
+                                )}
+                            </div>
+                        </>
+                    )}
+                    {difAnt != null && (
+                        <div className="flex items-center gap-2 text-xs font-medium">
+                            <span className="text-gray-500">Dif. {anteriorLabel}:</span>
+                            <span className={`font-mono font-bold ${difAnt >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {difAnt >= 0 ? '+' : ''}{fc(difAnt, kpi)}
+                            </span>
+                            {pctAnt != null && (
+                                <span className={`font-mono font-bold ${pctAnt >= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                    ({pctAnt.toFixed(1)}%)
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </div>
             );
         }

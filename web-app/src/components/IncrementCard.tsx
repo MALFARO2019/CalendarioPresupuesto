@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import type { BudgetRecord } from '../mockData';
-import { formatCurrency } from '../utils/formatters';
+import { useFormatCurrency } from '../utils/formatters';
 
 interface IncrementCardProps {
     data: BudgetRecord[];
@@ -8,6 +8,7 @@ interface IncrementCardProps {
 }
 
 export const IncrementCard: React.FC<IncrementCardProps> = ({ data, currentDate }) => {
+    const fc = useFormatCurrency();
     const incrementsData = useMemo(() => {
         const today = new Date();
         const currentMonth = currentDate.getMonth() + 1; // 1-indexed for data
@@ -71,13 +72,13 @@ export const IncrementCard: React.FC<IncrementCardProps> = ({ data, currentDate 
                         <div>
                             <span className="text-xs text-gray-600">Saldo</span>
                             <p className="text-xl font-bold text-gray-900 font-mono">
-                                {formatCurrency(Math.abs(incrementsData.saldoVentas), 'Ventas')}
+                                {fc(Math.abs(incrementsData.saldoVentas), 'Ventas')}
                             </p>
                         </div>
                         <div className="pt-2 border-t border-green-200">
                             <span className="text-xs text-gray-600">Incremento/día</span>
                             <p className="text-2xl font-bold text-green-700 font-mono">
-                                {formatCurrency(Math.abs(incrementsData.incrementVentas), 'Ventas')}
+                                {fc(Math.abs(incrementsData.incrementVentas), 'Ventas')}
                             </p>
                         </div>
                     </div>
@@ -90,13 +91,13 @@ export const IncrementCard: React.FC<IncrementCardProps> = ({ data, currentDate 
                         <div>
                             <span className="text-xs text-gray-600">Saldo</span>
                             <p className="text-xl font-bold text-gray-900 font-mono">
-                                {formatCurrency(Math.abs(incrementsData.saldoTransacciones), 'Transacciones')}
+                                {fc(Math.abs(incrementsData.saldoTransacciones), 'Transacciones')}
                             </p>
                         </div>
                         <div className="pt-2 border-t border-blue-200">
                             <span className="text-xs text-gray-600">Incremento/día</span>
                             <p className="text-2xl font-bold text-blue-700 font-mono">
-                                {formatCurrency(Math.abs(incrementsData.incrementTransacciones), 'Transacciones')}
+                                {fc(Math.abs(incrementsData.incrementTransacciones), 'Transacciones')}
                             </p>
                         </div>
                     </div>
@@ -109,13 +110,13 @@ export const IncrementCard: React.FC<IncrementCardProps> = ({ data, currentDate 
                         <div>
                             <span className="text-xs text-gray-600">Saldo</span>
                             <p className="text-xl font-bold text-gray-900 font-mono">
-                                {formatCurrency(Math.abs(incrementsData.saldoTQP), 'TQP')}
+                                {fc(Math.abs(incrementsData.saldoTQP), 'TQP')}
                             </p>
                         </div>
                         <div className="pt-2 border-t border-purple-200">
                             <span className="text-xs text-gray-600">Incremento/día</span>
                             <p className="text-2xl font-bold text-purple-700 font-mono">
-                                {formatCurrency(Math.abs(incrementsData.incrementTQP), 'TQP')}
+                                {fc(Math.abs(incrementsData.incrementTQP), 'TQP')}
                             </p>
                         </div>
                     </div>

@@ -22,6 +22,7 @@ async function ensureSecurityTables() {
                     Clave NVARCHAR(10) NOT NULL DEFAULT '000000',
                     Activo BIT NOT NULL DEFAULT 1,
                     AccesoTendencia BIT NOT NULL DEFAULT 0,
+                    AccesoTactica BIT NOT NULL DEFAULT 0,
                     AccesoEventos BIT NOT NULL DEFAULT 0,
                     EsAdmin BIT NOT NULL DEFAULT 0,
                     EsProtegido BIT NOT NULL DEFAULT 0,
@@ -51,6 +52,13 @@ async function ensureSecurityTables() {
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AccesoEventos')
             BEGIN
                 ALTER TABLE APP_USUARIOS ADD AccesoEventos BIT NOT NULL DEFAULT 0;
+            END
+        `);
+
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AccesoTactica')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD AccesoTactica BIT NOT NULL DEFAULT 0;
             END
         `);
 
@@ -89,8 +97,8 @@ async function ensureSecurityTables() {
 
         if (superAdminResult.recordset.length === 0) {
             await pool.request().query(`
-                INSERT INTO APP_USUARIOS (Email, Nombre, Clave, Activo, AccesoTendencia, AccesoEventos, EsAdmin, EsProtegido)
-                VALUES ('soporte@rostipolloscr.com', 'Soporte Técnico', 'R0st1p017', 1, 1, 1, 1, 1)
+                INSERT INTO APP_USUARIOS (Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, EsAdmin, EsProtegido)
+                VALUES ('soporte@rostipolloscr.com', 'Soporte Técnico', 'R0st1p017', 1, 1, 1, 1, 1, 1)
             `);
             console.log('✅ Superadmin user created');
         } else {
@@ -100,6 +108,7 @@ async function ensureSecurityTables() {
                     Clave = 'R0st1p017',
                     Activo = 1,
                     AccesoTendencia = 1,
+                    AccesoTactica = 1,
                     AccesoEventos = 1,
                     EsAdmin = 1,
                     EsProtegido = 1
@@ -120,7 +129,7 @@ async function loginUser(email, clave) {
     const pool = await poolPromise;
     const result = await pool.request()
         .input('email', sql.NVarChar, email)
-        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoEventos, EsAdmin, EsProtegido FROM APP_USUARIOS WHERE Email = @email');
+        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, EsAdmin, EsProtegido FROM APP_USUARIOS WHERE Email = @email');
 
     if (result.recordset.length === 0) {
         return { success: false, message: 'Usuario no encontrado. Contacte al administrador.' };
@@ -161,6 +170,7 @@ async function loginUser(email, clave) {
             allowedStores: allowedStores,
             claveHash: clave, // Store PIN in token to detect changes
             accesoTendencia: user.AccesoTendencia,
+            accesoTactica: user.AccesoTactica,
             accesoEventos: user.AccesoEventos,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido
@@ -177,6 +187,7 @@ async function loginUser(email, clave) {
             email: user.Email,
             nombre: user.Nombre,
             accesoTendencia: user.AccesoTendencia,
+            accesoTactica: user.AccesoTactica,
             accesoEventos: user.AccesoEventos,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido,
@@ -240,11 +251,11 @@ function verifyAdminPassword(password) {
 async function getAllUsers() {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-        SELECT u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoEventos, u.EsAdmin, u.EsProtegido, u.FechaCreacion,
+        SELECT u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.EsAdmin, u.EsProtegido, u.FechaCreacion,
                STRING_AGG(ua.Local, ', ') AS Almacenes
         FROM APP_USUARIOS u
         LEFT JOIN APP_USUARIO_ALMACEN ua ON u.Id = ua.UsuarioId
-        GROUP BY u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoEventos, u.EsAdmin, u.EsProtegido, u.FechaCreacion
+        GROUP BY u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.EsAdmin, u.EsProtegido, u.FechaCreacion
         ORDER BY u.Email
     `);
 
@@ -256,6 +267,7 @@ async function getAllUsers() {
         clave: user.Clave,
         activo: user.Activo,
         accesoTendencia: user.AccesoTendencia,
+        accesoTactica: user.AccesoTactica,
         accesoEventos: user.AccesoEventos,
         esAdmin: user.EsAdmin,
         esProtegido: user.EsProtegido,
@@ -267,7 +279,7 @@ async function getAllUsers() {
 /**
  * Create a new user with store access and PIN
  */
-async function createUser(email, nombre, clave, stores, accesoTendencia = false, accesoEventos = false, esAdmin = false) {
+async function createUser(email, nombre, clave, stores, accesoTendencia = false, accesoTactica = false, accesoEventos = false, esAdmin = false) {
     const pool = await poolPromise;
 
     const pin = clave || Math.floor(100000 + Math.random() * 900000).toString();
@@ -278,12 +290,13 @@ async function createUser(email, nombre, clave, stores, accesoTendencia = false,
         .input('nombre', sql.NVarChar, nombre || '')
         .input('clave', sql.NVarChar, pin)
         .input('accesoTendencia', sql.Bit, accesoTendencia)
+        .input('accesoTactica', sql.Bit, accesoTactica)
         .input('accesoEventos', sql.Bit, accesoEventos)
         .input('esAdmin', sql.Bit, esAdmin)
         .query(`
-            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoEventos, EsAdmin) 
+            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, EsAdmin) 
             OUTPUT INSERTED.Id, INSERTED.Clave
-            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoEventos, @esAdmin)
+            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @esAdmin)
         `);
 
     const userId = userResult.recordset[0].Id;
@@ -305,7 +318,7 @@ async function createUser(email, nombre, clave, stores, accesoTendencia = false,
 /**
  * Update user (including PIN change)
  */
-async function updateUser(userId, email, nombre, activo, clave, stores, accesoTendencia, accesoEventos, esAdmin) {
+async function updateUser(userId, email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin) {
     const pool = await poolPromise;
 
     // Protect superadmin user
@@ -320,7 +333,7 @@ async function updateUser(userId, email, nombre, activo, clave, stores, accesoTe
     let updateQuery = `
         UPDATE APP_USUARIOS 
         SET Email = @email, Nombre = @nombre, Activo = @activo, 
-            AccesoTendencia = @accesoTendencia, AccesoEventos = @accesoEventos, EsAdmin = @esAdmin,
+            AccesoTendencia = @accesoTendencia, AccesoTactica = @accesoTactica, AccesoEventos = @accesoEventos, EsAdmin = @esAdmin,
             FechaModificacion = GETDATE()
     `;
     const request = pool.request()
@@ -329,6 +342,7 @@ async function updateUser(userId, email, nombre, activo, clave, stores, accesoTe
         .input('nombre', sql.NVarChar, nombre || '')
         .input('activo', sql.Bit, activo)
         .input('accesoTendencia', sql.Bit, accesoTendencia)
+        .input('accesoTactica', sql.Bit, accesoTactica)
         .input('accesoEventos', sql.Bit, accesoEventos)
         .input('esAdmin', sql.Bit, esAdmin);
 

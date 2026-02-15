@@ -2,6 +2,7 @@ import React from 'react';
 import type { BudgetRecord } from '../mockData';
 import { DayCell } from './DayCell';
 import { getDaysInMonth, startOfMonth, getDay } from 'date-fns';
+import { useUserPreferences } from '../context/UserPreferences';
 
 interface CalendarGridProps {
     data: BudgetRecord[];
@@ -15,6 +16,7 @@ interface CalendarGridProps {
 const DAYS_OF_WEEK = ['L', 'K', 'M', 'J', 'V', 'S', 'D'];
 
 export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, comparisonType, kpi }) => {
+    const { formatPct100 } = useUserPreferences();
     // Data is already filtered for the month by parent component
     const monthData = data;
     const totalDays = getDaysInMonth(new Date(year, month));
@@ -163,7 +165,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                 <div className="grid grid-cols-7">
                     {columnTotals.map((col, idx) => (
                         <div key={idx} className={`px-2 py-2 text-center font-bold text-xs ${getPercentColor(col.pct)}`}>
-                            {col.pct.toFixed(0)}%
+                            {formatPct100(col.pct)}
                         </div>
                     ))}
                 </div>

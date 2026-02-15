@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { login } from '../api';
+import { login, API_BASE } from '../api';
 import { Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
 
 interface LoginPageProps {
@@ -54,7 +54,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         setError('');
 
         try {
-            const response = await fetch('http://localhost:3000/api/auth/send-password', {
+            const response = await fetch(`${API_BASE}/auth/send-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: forgotEmail.trim() })

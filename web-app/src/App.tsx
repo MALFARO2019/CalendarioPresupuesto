@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { FilterBar } from './components/FilterBar';
 import { CalendarGrid } from './components/CalendarGrid';
 import { LoginPage } from './components/LoginPage';
@@ -8,10 +8,12 @@ import type { BudgetRecord } from './mockData';
 import { fetchBudgetData, fetchStores, fetchGroupStores, getToken, getUser, logout, verifyToken, API_BASE } from './api';
 import { addMonths, format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X, SlidersHorizontal } from 'lucide-react';
 
 import { formatCurrency } from './utils/formatters';
+import { useUserPreferences } from './context/UserPreferences';
 import { AnnualCalendar } from './components/AnnualCalendar';
+import { exportMonthlyExcel, exportAnnualExcel } from './utils/excelExporter';
 import { TendenciaAlcance } from './components/TendenciaAlcance';
 import { WeekDayBehavior } from './components/WeekDayBehavior';
 import { WeeklyBehavior } from './components/WeeklyBehavior';
@@ -35,7 +37,8 @@ function App() {
   const [filterCanal, setFilterCanal] = useState('Todos');
   const [filterKpi, setFilterKpi] = useState('Ventas');
   const [filterType, setFilterType] = useState('Presupuesto');
-  const [yearType, setYearType] = useState<'Año Anterior' | 'Año Anterior Ajustado'>('Año Anterior');
+  const { preferences, setPctDisplayMode, setPctDecimals, setValueDecimals, setDefaultYearType } = useUserPreferences();
+  const [yearType, setYearType] = useState<'Año Anterior' | 'Año Anterior Ajustado'>(preferences.defaultYearType);
 
   const [data, setData] = useState<BudgetRecord[]>([]);
   const [dataVentas, setDataVentas] = useState<BudgetRecord[]>([]);
@@ -193,9 +196,13 @@ function App() {
   };
 
   const [showReportMenu, setShowReportMenu] = useState(false);
+  const [showUserPrefs, setShowUserPrefs] = useState(false);
+  const [tacticaOpen, setTacticaOpen] = useState(false);
+  const tendenciaExportRef = useRef<(() => void) | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailTo, setEmailTo] = useState('');
   const [emailSending, setEmailSending] = useState(false);
+
 
   const handlePrintPDF = () => {
     setShowReportMenu(false);
@@ -397,6 +404,28 @@ function App() {
                     </button>
                     <div className="h-px bg-gray-100" />
                     <button
+                      onClick={() => {
+                        setShowReportMenu(false);
+                        if (dashboardTab === 'mensual') {
+                          exportMonthlyExcel(data, year, currentDate.getMonth(), filterLocal, filterKpi);
+                        } else if (dashboardTab === 'anual') {
+                          exportAnnualExcel(data, year, filterLocal, filterKpi);
+                        } else if (dashboardTab === 'tendencia' && tendenciaExportRef.current) {
+                          tendenciaExportRef.current();
+                        }
+                      }}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 transition-all"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <div className="text-left">
+                        <div className="font-semibold">Exportar Excel</div>
+                        <div className="text-xs text-gray-400">Datos de vista actual</div>
+                      </div>
+                    </button>
+                    <div className="h-px bg-gray-100" />
+                    <button
                       onClick={handleSendEmail}
                       className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all"
                     >
@@ -410,6 +439,123 @@ function App() {
                 </>
               )}
             </div>
+
+            {/* User Preferences */}
+            <div className="relative">
+              <button
+                onClick={() => setShowUserPrefs(!showUserPrefs)}
+                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                title="Preferencias"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </button>
+              {showUserPrefs && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setShowUserPrefs(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
+                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                      <h4 className="text-sm font-bold text-gray-700">⚙️ Preferencias</h4>
+                    </div>
+                    <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                      {/* Formato de Porcentajes */}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Formato de Porcentajes</label>
+                        <div className="flex flex-col gap-2">
+                          <label className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border ${preferences.pctDisplayMode === 'base100' ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
+                            <input type="radio" name="pctMode" checked={preferences.pctDisplayMode === 'base100'} onChange={() => setPctDisplayMode('base100')} className="accent-indigo-600" />
+                            <div>
+                              <div className="text-sm font-semibold text-gray-800">Base 100</div>
+                              <div className="text-xs text-gray-500">Ej: 105%, 92%</div>
+                            </div>
+                          </label>
+                          <label className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border ${preferences.pctDisplayMode === 'differential' ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
+                            <input type="radio" name="pctMode" checked={preferences.pctDisplayMode === 'differential'} onChange={() => setPctDisplayMode('differential')} className="accent-indigo-600" />
+                            <div>
+                              <div className="text-sm font-semibold text-gray-800">Diferencial</div>
+                              <div className="text-xs text-gray-500">Ej: +5%, -8%</div>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="h-px bg-gray-100" />
+
+                      {/* Decimales de Porcentajes */}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Decimales en Porcentajes</label>
+                        <div className="flex gap-1">
+                          {[0, 1, 2, 3].map(d => (
+                            <button
+                              key={d}
+                              onClick={() => setPctDecimals(d)}
+                              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all border ${preferences.pctDecimals === d
+                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                                }`}
+                            >{d}</button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">Ej: {(105.1234).toFixed(preferences.pctDecimals)}%</p>
+                      </div>
+
+                      <div className="h-px bg-gray-100" />
+
+                      {/* Decimales de Valores */}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Decimales en Valores</label>
+                        <div className="flex gap-1">
+                          {[0, 1, 2, 3].map(d => (
+                            <button
+                              key={d}
+                              onClick={() => setValueDecimals(d)}
+                              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all border ${preferences.valueDecimals === d
+                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                                }`}
+                            >{d}</button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">Ej: ₡{new Intl.NumberFormat('es-CR', { minimumFractionDigits: preferences.valueDecimals, maximumFractionDigits: preferences.valueDecimals }).format(1234567.89)}</p>
+                      </div>
+
+                      <div className="h-px bg-gray-100" />
+
+                      {/* Tipo Año Predeterminado */}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Tipo Año Predeterminado</label>
+                        <select
+                          value={preferences.defaultYearType}
+                          onChange={e => {
+                            const val = e.target.value as 'Año Anterior' | 'Año Anterior Ajustado';
+                            setDefaultYearType(val);
+                            setYearType(val);
+                          }}
+                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        >
+                          <option value="Año Anterior">Año Anterior</option>
+                          <option value="Año Anterior Ajustado">Año Anterior Ajustado</option>
+                        </select>
+                      </div>
+
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Táctica Button - only in Annual view and if enabled */}
+            {dashboardTab === 'anual' && user?.accesoTactica && (
+              <button
+                onClick={() => setTacticaOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all text-sm font-medium"
+                title="Análisis Táctico IA"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                Táctica
+              </button>
+            )}
 
             {/* Admin/Events button - for admin or eventos users */}
             {(user?.esAdmin || user?.accesoEventos) && (
@@ -658,6 +804,9 @@ function App() {
                 comparisonType={filterType}
                 kpi={filterKpi}
                 yearType={yearType}
+                storeName={filterLocal}
+                tacticaOpen={tacticaOpen}
+                onTacticaClose={() => setTacticaOpen(false)}
               />
             </div>
 
@@ -681,6 +830,7 @@ function App() {
               endDate={format(new Date(), 'yyyy-MM-dd')}
               groups={groups}
               individualStores={individualStores}
+              onExportExcel={(fn) => { tendenciaExportRef.current = fn; }}
             />
           </div>
         )}

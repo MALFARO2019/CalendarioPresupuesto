@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
-import { formatCurrency } from '../utils/formatters';
+import { useFormatCurrency } from '../utils/formatters';
+import { useUserPreferences } from '../context/UserPreferences';
 
 interface SummaryCardProps {
     dataVentas: any[];
@@ -13,6 +14,8 @@ interface SummaryCardProps {
 }
 
 export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransacciones, dataTQP, currentMonth, comparisonType, yearType, filterLocal, isAnnual = false }) => {
+    const { formatPct100 } = useUserPreferences();
+    const fc = useFormatCurrency();
     const summary = useMemo(() => {
         if (!dataVentas || !dataTransacciones || !dataTQP) return null;
 
@@ -213,56 +216,56 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
                             <tbody className="text-xs">
                                 <tr className="border-b border-gray-100">
                                     <td className="py-2 px-2 font-semibold text-gray-600">{isAnnual ? 'P. Año' : 'P. Mes'}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.presupuesto.Ventas.mes, 'Ventas')}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.presupuesto.Transacciones.mes, 'Transacciones')}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.presupuesto.TQP.mes, 'TQP')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.presupuesto.Ventas.mes, 'Ventas')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.presupuesto.Transacciones.mes, 'Transacciones')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.presupuesto.TQP.mes, 'TQP')}</td>
                                 </tr>
                                 <tr className="border-b border-gray-100">
                                     <td className="py-2 px-2 font-semibold text-gray-600">P. Acum</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.presupuesto.Ventas.acum, 'Ventas')}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.presupuesto.Transacciones.acum, 'Transacciones')}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.presupuesto.TQP.acum, 'TQP')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.presupuesto.Ventas.acum, 'Ventas')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.presupuesto.Transacciones.acum, 'Transacciones')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.presupuesto.TQP.acum, 'TQP')}</td>
                                 </tr>
                                 <tr className="border-b border-gray-100 bg-blue-50">
                                     <td className="py-2 px-2 font-bold text-gray-800">Real</td>
-                                    <td className="py-2 px-2 text-right font-mono font-bold">{formatCurrency(summary.presupuesto.Ventas.real, 'Ventas')}</td>
-                                    <td className="py-2 px-2 text-right font-mono font-bold">{formatCurrency(summary.presupuesto.Transacciones.real, 'Transacciones')}</td>
-                                    <td className="py-2 px-2 text-right font-mono font-bold">{formatCurrency(summary.presupuesto.TQP.real, 'TQP')}</td>
+                                    <td className="py-2 px-2 text-right font-mono font-bold">{fc(summary.presupuesto.Ventas.real, 'Ventas')}</td>
+                                    <td className="py-2 px-2 text-right font-mono font-bold">{fc(summary.presupuesto.Transacciones.real, 'Transacciones')}</td>
+                                    <td className="py-2 px-2 text-right font-mono font-bold">{fc(summary.presupuesto.TQP.real, 'TQP')}</td>
                                 </tr>
                                 <tr className="border-b border-gray-100">
                                     <td className="py-2 px-2 font-semibold text-gray-600">Dif. Acum</td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.presupuesto.Ventas.difAcum >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {summary.presupuesto.Ventas.difAcum >= 0 ? '+' : ''}{formatCurrency(summary.presupuesto.Ventas.difAcum, 'Ventas')}
+                                        {summary.presupuesto.Ventas.difAcum >= 0 ? '+' : ''}{fc(summary.presupuesto.Ventas.difAcum, 'Ventas')}
                                     </td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.presupuesto.Transacciones.difAcum >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {summary.presupuesto.Transacciones.difAcum >= 0 ? '+' : ''}{formatCurrency(summary.presupuesto.Transacciones.difAcum, 'Transacciones')}
+                                        {summary.presupuesto.Transacciones.difAcum >= 0 ? '+' : ''}{fc(summary.presupuesto.Transacciones.difAcum, 'Transacciones')}
                                     </td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.presupuesto.TQP.difAcum >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {summary.presupuesto.TQP.difAcum >= 0 ? '+' : ''}{formatCurrency(summary.presupuesto.TQP.difAcum, 'TQP')}
+                                        {summary.presupuesto.TQP.difAcum >= 0 ? '+' : ''}{fc(summary.presupuesto.TQP.difAcum, 'TQP')}
                                     </td>
                                 </tr>
                                 <tr className="border-b-2 border-gray-300 bg-yellow-50">
                                     <td className="py-3 px-2 font-bold text-gray-800 text-sm">Alcance</td>
                                     <td className={`py-3 px-2 text-right font-extrabold text-xl ${getAlcanceColor(summary.presupuesto.Ventas.alcance)}`}>
-                                        {summary.presupuesto.Ventas.alcance.toFixed(1)}%
+                                        {formatPct100(summary.presupuesto.Ventas.alcance)}
                                     </td>
                                     <td className={`py-3 px-2 text-right font-extrabold text-xl ${getAlcanceColor(summary.presupuesto.Transacciones.alcance)}`}>
-                                        {summary.presupuesto.Transacciones.alcance.toFixed(1)}%
+                                        {formatPct100(summary.presupuesto.Transacciones.alcance)}
                                     </td>
                                     <td className={`py-3 px-2 text-right font-extrabold text-xl ${getAlcanceColor(summary.presupuesto.TQP.alcance)}`}>
-                                        {summary.presupuesto.TQP.alcance.toFixed(1)}%
+                                        {formatPct100(summary.presupuesto.TQP.alcance)}
                                     </td>
                                 </tr>
                                 <tr>
                                     <td className="py-2 px-2 font-semibold text-gray-600">Saldo</td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.presupuesto.Ventas.saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                        {formatCurrency(Math.abs(summary.presupuesto.Ventas.saldo), 'Ventas')}
+                                        {fc(Math.abs(summary.presupuesto.Ventas.saldo), 'Ventas')}
                                     </td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.presupuesto.Transacciones.saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                        {formatCurrency(Math.abs(summary.presupuesto.Transacciones.saldo), 'Transacciones')}
+                                        {fc(Math.abs(summary.presupuesto.Transacciones.saldo), 'Transacciones')}
                                     </td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.presupuesto.TQP.saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                        {formatCurrency(Math.abs(summary.presupuesto.TQP.saldo), 'TQP')}
+                                        {fc(Math.abs(summary.presupuesto.TQP.saldo), 'TQP')}
                                     </td>
                                 </tr>
                             </tbody>
@@ -290,56 +293,56 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
                             <tbody className="text-xs">
                                 <tr className="border-b border-gray-100">
                                     <td className="py-2 px-2 font-semibold text-gray-600">{isAnnual ? 'Año' : 'Mes'}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.anoAnterior.Ventas.mes, 'Ventas')}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.anoAnterior.Transacciones.mes, 'Transacciones')}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.anoAnterior.TQP.mes, 'TQP')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.anoAnterior.Ventas.mes, 'Ventas')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.anoAnterior.Transacciones.mes, 'Transacciones')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.anoAnterior.TQP.mes, 'TQP')}</td>
                                 </tr>
                                 <tr className="border-b border-gray-100">
                                     <td className="py-2 px-2 font-semibold text-gray-600">P. Acum</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.anoAnterior.Ventas.acum, 'Ventas')}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.anoAnterior.Transacciones.acum, 'Transacciones')}</td>
-                                    <td className="py-2 px-2 text-right font-mono">{formatCurrency(summary.anoAnterior.TQP.acum, 'TQP')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.anoAnterior.Ventas.acum, 'Ventas')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.anoAnterior.Transacciones.acum, 'Transacciones')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fc(summary.anoAnterior.TQP.acum, 'TQP')}</td>
                                 </tr>
                                 <tr className="border-b border-gray-100 bg-purple-50">
                                     <td className="py-2 px-2 font-bold text-gray-800">Real</td>
-                                    <td className="py-2 px-2 text-right font-mono font-bold">{formatCurrency(summary.anoAnterior.Ventas.real, 'Ventas')}</td>
-                                    <td className="py-2 px-2 text-right font-mono font-bold">{formatCurrency(summary.anoAnterior.Transacciones.real, 'Transacciones')}</td>
-                                    <td className="py-2 px-2 text-right font-mono font-bold">{formatCurrency(summary.anoAnterior.TQP.real, 'TQP')}</td>
+                                    <td className="py-2 px-2 text-right font-mono font-bold">{fc(summary.anoAnterior.Ventas.real, 'Ventas')}</td>
+                                    <td className="py-2 px-2 text-right font-mono font-bold">{fc(summary.anoAnterior.Transacciones.real, 'Transacciones')}</td>
+                                    <td className="py-2 px-2 text-right font-mono font-bold">{fc(summary.anoAnterior.TQP.real, 'TQP')}</td>
                                 </tr>
                                 <tr className="border-b border-gray-100">
                                     <td className="py-2 px-2 font-semibold text-gray-600">Dif. Acum</td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.anoAnterior.Ventas.difAcum >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {summary.anoAnterior.Ventas.difAcum >= 0 ? '+' : ''}{formatCurrency(summary.anoAnterior.Ventas.difAcum, 'Ventas')}
+                                        {summary.anoAnterior.Ventas.difAcum >= 0 ? '+' : ''}{fc(summary.anoAnterior.Ventas.difAcum, 'Ventas')}
                                     </td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.anoAnterior.Transacciones.difAcum >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {summary.anoAnterior.Transacciones.difAcum >= 0 ? '+' : ''}{formatCurrency(summary.anoAnterior.Transacciones.difAcum, 'Transacciones')}
+                                        {summary.anoAnterior.Transacciones.difAcum >= 0 ? '+' : ''}{fc(summary.anoAnterior.Transacciones.difAcum, 'Transacciones')}
                                     </td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.anoAnterior.TQP.difAcum >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {summary.anoAnterior.TQP.difAcum >= 0 ? '+' : ''}{formatCurrency(summary.anoAnterior.TQP.difAcum, 'TQP')}
+                                        {summary.anoAnterior.TQP.difAcum >= 0 ? '+' : ''}{fc(summary.anoAnterior.TQP.difAcum, 'TQP')}
                                     </td>
                                 </tr>
                                 <tr className="border-b-2 border-gray-300 bg-yellow-50">
                                     <td className="py-3 px-2 font-bold text-gray-800 text-sm">Alcance</td>
                                     <td className={`py-3 px-2 text-right font-extrabold text-xl ${getAlcanceColor(summary.anoAnterior.Ventas.alcance)}`}>
-                                        {summary.anoAnterior.Ventas.alcance.toFixed(1)}%
+                                        {formatPct100(summary.anoAnterior.Ventas.alcance)}
                                     </td>
                                     <td className={`py-3 px-2 text-right font-extrabold text-xl ${getAlcanceColor(summary.anoAnterior.Transacciones.alcance)}`}>
-                                        {summary.anoAnterior.Transacciones.alcance.toFixed(1)}%
+                                        {formatPct100(summary.anoAnterior.Transacciones.alcance)}
                                     </td>
                                     <td className={`py-3 px-2 text-right font-extrabold text-xl ${getAlcanceColor(summary.anoAnterior.TQP.alcance)}`}>
-                                        {summary.anoAnterior.TQP.alcance.toFixed(1)}%
+                                        {formatPct100(summary.anoAnterior.TQP.alcance)}
                                     </td>
                                 </tr>
                                 <tr>
                                     <td className="py-2 px-2 font-semibold text-gray-600">Saldo</td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.anoAnterior.Ventas.saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                        {formatCurrency(Math.abs(summary.anoAnterior.Ventas.saldo), 'Ventas')}
+                                        {fc(Math.abs(summary.anoAnterior.Ventas.saldo), 'Ventas')}
                                     </td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.anoAnterior.Transacciones.saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                        {formatCurrency(Math.abs(summary.anoAnterior.Transacciones.saldo), 'Transacciones')}
+                                        {fc(Math.abs(summary.anoAnterior.Transacciones.saldo), 'Transacciones')}
                                     </td>
                                     <td className={`py-2 px-2 text-right font-mono font-bold ${summary.anoAnterior.TQP.saldo > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                        {formatCurrency(Math.abs(summary.anoAnterior.TQP.saldo), 'TQP')}
+                                        {fc(Math.abs(summary.anoAnterior.TQP.saldo), 'TQP')}
                                     </td>
                                 </tr>
                             </tbody>

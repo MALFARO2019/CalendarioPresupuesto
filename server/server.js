@@ -14,6 +14,7 @@ const {
 } = require('./auth');
 const { sendPasswordEmail, sendReportEmail, verifyEmailService } = require('./emailService');
 const { getTendenciaData } = require('./tendencia');
+const { generateTacticaAnalysis } = require('./tacticaAI');
 const {
     getAllEventos,
     createEvento,
@@ -140,8 +141,8 @@ app.post('/api/admin/users', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, clave, stores, accesoTendencia, accesoEventos, esAdmin } = req.body;
-        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, accesoTendencia, accesoEventos, esAdmin);
+        const { email, nombre, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin } = req.body;
+        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin);
         res.json({ success: true, userId: result.userId, clave: result.clave });
     } catch (err) {
         console.error('Error creating user:', err);
@@ -159,8 +160,8 @@ app.put('/api/admin/users/:id', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, activo, clave, stores, accesoTendencia, accesoEventos, esAdmin } = req.body;
-        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, accesoTendencia, accesoEventos, esAdmin);
+        const { email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin } = req.body;
+        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin);
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating user:', err);
@@ -205,13 +206,66 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
             return res.status(403).json({ error: 'No tiene acceso a este local' });
         }
 
+        // Detect if local is a group (CODALMACEN starts with 'G')
+        let memberLocals = null;
+        const idGrupoQuery = `
+            SELECT GA.IDGRUPO
+            FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENCAB GA
+            WHERE GA.CODVISIBLE = 20 AND GA.DESCRIPCION = @groupName
+        `;
+        const idGrupoRequest = pool.request();
+        idGrupoRequest.input('groupName', sql.NVarChar, local);
+        const idGrupoResult = await idGrupoRequest.query(idGrupoQuery);
+
+        if (idGrupoResult.recordset.length > 0) {
+            // It's a group - find member stores
+            const idGrupos = idGrupoResult.recordset.map(r => r.IDGRUPO);
+            const memberCodesQuery = `
+                SELECT DISTINCT GL.CODALMACEN
+                FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENLIN GL
+                WHERE GL.IDGRUPO IN (${idGrupos.map((_, i) => `@idgrupo${i}`).join(', ')})
+            `;
+            const memberCodesRequest = pool.request();
+            idGrupos.forEach((id, i) => memberCodesRequest.input(`idgrupo${i}`, sql.Int, id));
+            const memberCodesResult = await memberCodesRequest.query(memberCodesQuery);
+            const memberCodes = memberCodesResult.recordset.map(r => r.CODALMACEN);
+
+            if (memberCodes.length > 0) {
+                const localsQuery = `
+                    SELECT DISTINCT Local
+                    FROM RSM_ALCANCE_DIARIO
+                    WHERE Año = @year
+                    AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
+                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                `;
+                const localsRequest = pool.request();
+                localsRequest.input('year', sql.Int, year);
+                memberCodes.forEach((code, i) => localsRequest.input(`mcode${i}`, sql.NVarChar, code));
+                const localsResult = await localsRequest.query(localsQuery);
+                memberLocals = localsResult.recordset.map(r => r.Local);
+                console.log(`🏪 Group "${local}" members (${memberLocals.length}):`, memberLocals);
+            }
+        }
+
+        // Build local filter
+        let localFilter = '';
+        const localParams = {};
+        if (memberLocals && memberLocals.length > 0) {
+            const ph = memberLocals.map((_, i) => `@ml${i}`).join(', ');
+            localFilter = `Local IN (${ph})`;
+            memberLocals.forEach((name, i) => { localParams[`ml${i}`] = name; });
+        } else {
+            localFilter = 'Local = @local';
+            localParams['local'] = local;
+        }
+
         const query = `
             SELECT 
                 Fecha, 
                 Año, 
                 Mes, 
                 Dia, 
-                Local, 
+                '${local}' as Local, 
                 Canal, 
                 Tipo,
                 SUM(MontoReal) AS MontoReal, 
@@ -222,15 +276,20 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
                 SUM(MontoAnteriorAjustado) AS MontoAnteriorAjustado, 
                 SUM(MontoAnteriorAjustado_Acumulado) AS MontoAnteriorAjustado_Acumulado
             FROM RSM_ALCANCE_DIARIO 
-            WHERE Año = @year AND Local = @local AND Canal = @canal AND Tipo = @tipo
-            GROUP BY Fecha, Año, Mes, Dia, Local, Canal, Tipo
+            WHERE Año = @year AND ${localFilter} AND Canal = @canal AND Tipo = @tipo
+                AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+            GROUP BY Fecha, Año, Mes, Dia, Canal, Tipo
             ORDER BY Mes, Dia
         `;
         const request = pool.request()
             .input('year', sql.Int, year)
-            .input('local', sql.NVarChar, local)
             .input('canal', sql.NVarChar, canal)
             .input('tipo', sql.NVarChar, tipo);
+
+        // Add local filter params
+        Object.entries(localParams).forEach(([key, val]) => {
+            request.input(key, sql.NVarChar, val);
+        });
 
         const result = await request.query(query);
         console.log(`📊 Budget data for ${local} (${canal}/${tipo}): ${result.recordset.length} records`);
@@ -682,6 +741,22 @@ app.post('/api/send-report', authMiddleware, async (req, res) => {
         }
     } catch (err) {
         console.error('Error in /api/send-report:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/tactica - Generate AI tactical analysis
+app.post('/api/tactica', authMiddleware, async (req, res) => {
+    try {
+        const data = req.body;
+        if (!data || !data.monthlyData || !data.annualTotals) {
+            return res.status(400).json({ error: 'Datos mensuales y totales anuales son requeridos' });
+        }
+        console.log(`🤖 Táctica requested for ${data.storeName} (${data.kpi}) by ${req.user?.email}`);
+        const analysis = await generateTacticaAnalysis(data);
+        res.json({ analysis });
+    } catch (err) {
+        console.error('Error in /api/tactica:', err);
         res.status(500).json({ error: err.message });
     }
 });

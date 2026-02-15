@@ -71,6 +71,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [newClave, setNewClave] = useState('');
     const [newStores, setNewStores] = useState<string[]>([]);
     const [newAccesoTendencia, setNewAccesoTendencia] = useState(false);
+    const [newAccesoTactica, setNewAccesoTactica] = useState(false);
     const [newAccesoEventos, setNewAccesoEventos] = useState(false);
     const [newEsAdmin, setNewEsAdmin] = useState(false);
     const [formError, setFormError] = useState('');
@@ -84,6 +85,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editStores, setEditStores] = useState<string[]>([]);
     const [editActivo, setEditActivo] = useState(true);
     const [editAccesoTendencia, setEditAccesoTendencia] = useState(false);
+    const [editAccesoTactica, setEditAccesoTactica] = useState(false);
     const [editAccesoEventos, setEditAccesoEventos] = useState(false);
     const [editEsAdmin, setEditEsAdmin] = useState(false);
 
@@ -131,6 +133,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 newClave,
                 newStores,
                 newAccesoTendencia,
+                newAccesoTactica,
                 newAccesoEventos,
                 newEsAdmin
             );
@@ -140,6 +143,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             setNewClave('');
             setNewStores([]);
             setNewAccesoTendencia(false);
+            setNewAccesoTactica(false);
             setNewAccesoEventos(false);
             setNewEsAdmin(false);
             setShowForm(false);
@@ -157,6 +161,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setEditStores(user.allowedStores || []);
         setEditActivo(user.activo);
         setEditAccesoTendencia(user.accesoTendencia);
+        setEditAccesoTactica(user.accesoTactica);
         setEditAccesoEventos(user.accesoEventos);
         setEditEsAdmin(user.esAdmin);
     };
@@ -175,6 +180,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 editClave || null,
                 editStores,
                 editAccesoTendencia,
+                editAccesoTactica,
                 editAccesoEventos,
                 editEsAdmin
             );
@@ -367,6 +373,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                             <label className="flex items-center gap-2 cursor-pointer">
                                                 <input
                                                     type="checkbox"
+                                                    checked={newAccesoTactica}
+                                                    onChange={e => setNewAccesoTactica(e.target.checked)}
+                                                    className="w-4 h-4 text-indigo-600 rounded"
+                                                />
+                                                <span className="text-sm font-medium text-gray-700">Acceso a Táctica IA</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
                                                     checked={newAccesoEventos}
                                                     onChange={e => setNewAccesoEventos(e.target.checked)}
                                                     className="w-4 h-4 text-indigo-600 rounded"
@@ -498,6 +513,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                         <div className="flex flex-wrap gap-1">
                                                             {user.esAdmin && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">Admin</span>}
                                                             {user.accesoTendencia && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Tendencia</span>}
+                                                            {user.accesoTactica && <span className="text-xs bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-full font-semibold">Táctica</span>}
                                                             {user.accesoEventos && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Eventos</span>}
                                                         </div>
                                                     </td>
@@ -613,6 +629,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             className="w-4 h-4 text-indigo-600 rounded"
                                                         />
                                                         <span className="text-sm font-medium text-gray-700">Acceso a Tendencia</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editAccesoTactica}
+                                                            onChange={e => setEditAccesoTactica(e.target.checked)}
+                                                            className="w-4 h-4 text-indigo-600 rounded"
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">Acceso a Táctica IA</span>
                                                     </label>
                                                     <label className="flex items-center gap-2 cursor-pointer">
                                                         <input

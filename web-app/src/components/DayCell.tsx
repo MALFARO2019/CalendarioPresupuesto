@@ -1,5 +1,6 @@
 import React from 'react';
 import type { BudgetRecord } from '../mockData';
+import { useUserPreferences } from '../context/UserPreferences';
 
 interface DayCellProps {
     day: number;
@@ -55,6 +56,8 @@ export const DayCell: React.FC<DayCellProps> = ({ day, data, isCurrentMonth, com
         return isTransaction ? formatted : `₡${formatted}`;
     };
 
+    const { formatPct100 } = useUserPreferences();
+
     return (
         <div className="h-28 border border-gray-200 flex flex-col bg-white hover:shadow-md transition-shadow">
             {/* Day Number */}
@@ -83,7 +86,7 @@ export const DayCell: React.FC<DayCellProps> = ({ day, data, isCurrentMonth, com
             <div className="flex items-center h-7 border-t border-gray-200">
                 {real > 0 ? (
                     <div className={`h-full ${barColor} flex items-center justify-center px-2 text-white font-bold text-xs min-w-[45px]`}>
-                        {percentage.toFixed(1)}%
+                        {formatPct100(percentage)}
                     </div>
                 ) : (
                     <div className="h-full bg-gray-100 flex items-center justify-center px-2 text-gray-400 font-medium text-xs w-full">

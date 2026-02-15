@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { formatCurrency } from '../utils/formatters';
+import { useFormatCurrency } from '../utils/formatters';
 import { getToken, API_BASE } from '../api';
+import { useUserPreferences } from '../context/UserPreferences';
+import { exportTendenciaExcel } from '../utils/excelExporter';
 
 interface TendenciaAlcanceProps {
     year: number;
@@ -8,6 +10,7 @@ interface TendenciaAlcanceProps {
     endDate: string;
     groups?: string[];
     individualStores?: string[];
+    onExportExcel?: (exportFn: () => void) => void;
 }
 
 interface EvaluacionRecord {
@@ -32,7 +35,8 @@ interface ResumenData {
 type SortColumn = 'local' | 'presupuesto' | 'presupuestoAcum' | 'real' | 'pctPresupuesto' | 'anterior' | 'pctAnterior';
 type SortDir = 'asc' | 'desc';
 
-export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startDate, endDate, groups = [], individualStores = [] }) => {
+export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startDate, endDate, groups = [], individualStores = [], onExportExcel }) => {
+    const fc = useFormatCurrency();
     const [activeTab, setActiveTab] = useState<'evaluacion' | 'resumen' | 'top10'>('evaluacion');
     const [kpi, setKpi] = useState<string>('Ventas');
     const [channel, setChannel] = useState<string>('Total');
@@ -78,6 +82,22 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
         fetchData();
     }, [startDate, endDate, kpi, channel, selectedLocal, yearType]);
 
+    // Register export function with parent
+    useEffect(() => {
+        if (data && onExportExcel) {
+            onExportExcel(() => {
+                exportTendenciaExcel(
+                    data.evaluacion,
+                    data.resumen,
+                    year,
+                    `${startDate} - ${endDate}`,
+                    kpi,
+                    channel
+                );
+            });
+        }
+    }, [data, kpi, channel, year, startDate, endDate, onExportExcel]);
+
     const handleSort = (col: SortColumn) => {
         if (sortCol === col) {
             setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -107,7 +127,8 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
         return 'bg-red-100 text-red-800';
     };
 
-    const formatPct = (pct: number) => `${(pct * 100).toFixed(1)}%`;
+    const { formatPctValue } = useUserPreferences();
+    const formatPct = (pct: number) => formatPctValue(pct);
 
     const yearTypeLabel = yearType === 'ajustado' ? 'Año Ant. Ajust.' : 'Año Anterior';
     const yearTypePctLabel = yearType === 'ajustado' ? '% Ajust.' : '% Ant.';
@@ -143,8 +164,15 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             <div className="bg-white rounded-3xl p-6 shadow-lg border border-gray-100">
                 <div className="flex items-center justify-between mb-4">
                     <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Tendencia Alcance {year}</h1>
-                    <div className="text-sm text-gray-500">
-                        {startDate} — {endDate}
+                    <div className="text-right">
+                        <div className="text-sm text-gray-500">
+                            {startDate} — {endDate}
+                        </div>
+                        {groups.includes(selectedLocal) && data?.evaluacion && (
+                            <div className="text-xs text-indigo-500 font-medium mt-0.5">
+                                {data.evaluacion.length} {data.evaluacion.length === 1 ? 'local' : 'locales'}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -202,15 +230,15 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                         <div>
                             <p className="text-xs text-gray-500 font-semibold uppercase">Presupuesto</p>
-                            <p className="text-lg font-bold text-gray-900 font-mono">{formatCurrency(data.resumen.totalPresupuesto, kpi)}</p>
+                            <p className="text-lg font-bold text-gray-900 font-mono">{fc(data.resumen.totalPresupuesto, kpi)}</p>
                         </div>
                         <div>
                             <p className="text-xs text-gray-500 font-semibold uppercase">P. Acumulado</p>
-                            <p className="text-lg font-bold text-gray-900 font-mono">{formatCurrency(data.resumen.totalPresupuestoAcum, kpi)}</p>
+                            <p className="text-lg font-bold text-gray-900 font-mono">{fc(data.resumen.totalPresupuestoAcum, kpi)}</p>
                         </div>
                         <div>
                             <p className="text-xs text-gray-500 font-semibold uppercase">Real</p>
-                            <p className="text-lg font-bold text-gray-900 font-mono">{formatCurrency(data.resumen.totalReal, kpi)}</p>
+                            <p className="text-lg font-bold text-gray-900 font-mono">{fc(data.resumen.totalReal, kpi)}</p>
                         </div>
                         <div>
                             <p className="text-xs text-gray-500 font-semibold uppercase">% Ppto</p>
@@ -220,7 +248,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                         </div>
                         <div>
                             <p className="text-xs text-gray-500 font-semibold uppercase">{yearTypeLabel}</p>
-                            <p className="text-lg font-bold text-gray-900 font-mono">{formatCurrency(data.resumen.totalAnterior, kpi)}</p>
+                            <p className="text-lg font-bold text-gray-900 font-mono">{fc(data.resumen.totalAnterior, kpi)}</p>
                         </div>
                         <div>
                             <p className="text-xs text-gray-500 font-semibold uppercase">{yearTypePctLabel}</p>
@@ -316,15 +344,15 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                     {sortedEvaluacion.map((row, idx) => (
                                         <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
                                             <td className="py-3 px-3 text-sm font-medium text-gray-800">{row.local}</td>
-                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{formatCurrency(row.presupuesto, kpi)}</td>
-                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{formatCurrency(row.presupuestoAcum, kpi)}</td>
-                                            <td className="py-3 px-3 text-sm text-right font-mono font-semibold text-gray-900">{formatCurrency(row.real, kpi)}</td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.presupuesto, kpi)}</td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.presupuestoAcum, kpi)}</td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
                                             <td className="py-3 px-3 text-right">
                                                 <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${getAlcanceBadge(row.pctPresupuesto)}`}>
                                                     {formatPct(row.pctPresupuesto)}
                                                 </span>
                                             </td>
-                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{formatCurrency(row.anterior, kpi)}</td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.anterior, kpi)}</td>
                                             <td className="py-3 px-3 text-right">
                                                 <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${getAlcanceBadge(row.pctAnterior)}`}>
                                                     {formatPct(row.pctAnterior)}
@@ -357,8 +385,8 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                         {(data?.evaluacion || []).sort((a, b) => b.pctPresupuesto - a.pctPresupuesto).slice(0, 5).map((row, idx) => (
                                             <tr key={idx} className="border-b border-green-100 bg-green-50">
                                                 <td className="py-2 px-2 text-sm font-medium text-gray-800">{row.local}</td>
-                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-600">{formatCurrency(row.presupuestoAcum, kpi)}</td>
-                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-800 font-semibold">{formatCurrency(row.real, kpi)}</td>
+                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-600">{fc(row.presupuestoAcum, kpi)}</td>
+                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-800 font-semibold">{fc(row.real, kpi)}</td>
                                                 <td className="py-2 px-2 text-right">
                                                     <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${getAlcanceBadge(row.pctPresupuesto)}`}>
                                                         {formatPct(row.pctPresupuesto)}
@@ -384,8 +412,8 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                         {(data?.evaluacion || []).sort((a, b) => a.pctPresupuesto - b.pctPresupuesto).slice(0, 5).map((row, idx) => (
                                             <tr key={idx} className="border-b border-red-100 bg-red-50">
                                                 <td className="py-2 px-2 text-sm font-medium text-gray-800">{row.local}</td>
-                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-600">{formatCurrency(row.presupuestoAcum, kpi)}</td>
-                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-800 font-semibold">{formatCurrency(row.real, kpi)}</td>
+                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-600">{fc(row.presupuestoAcum, kpi)}</td>
+                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-800 font-semibold">{fc(row.real, kpi)}</td>
                                                 <td className="py-2 px-2 text-right">
                                                     <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-red-100 text-red-800">
                                                         {formatPct(row.pctPresupuesto)}

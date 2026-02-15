@@ -1,6 +1,6 @@
 import type { BudgetRecord } from './mockData';
 
-export const API_BASE = 'http://localhost:3000/api';
+export const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 export interface User {
     id: number;
@@ -9,6 +9,7 @@ export interface User {
     clave?: string;
     activo: boolean;
     accesoTendencia: boolean;
+    accesoTactica: boolean;
     accesoEventos: boolean;
     esAdmin: boolean;
     esProtegido: boolean;
@@ -138,13 +139,14 @@ export async function createAdminUser(
     clave: string,
     stores: string[],
     accesoTendencia: boolean = false,
+    accesoTactica: boolean = false,
     accesoEventos: boolean = false,
     esAdmin: boolean = false
 ): Promise<{ success: boolean; userId: number; clave: string }> {
     const response = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, clave, stores, accesoTendencia, accesoEventos, esAdmin })
+        body: JSON.stringify({ email, nombre, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -161,13 +163,14 @@ export async function updateAdminUser(
     clave: string | null,
     stores: string[],
     accesoTendencia: boolean,
+    accesoTactica: boolean,
     accesoEventos: boolean,
     esAdmin: boolean
 ): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, activo, clave, stores, accesoTendencia, accesoEventos, esAdmin })
+        body: JSON.stringify({ email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -391,5 +394,35 @@ export async function deleteEventoFecha(idEvento: number, fecha: string): Promis
         headers: authHeaders()
     });
     if (!response.ok) throw new Error('Error deleting evento fecha');
+    return response.json();
+}
+
+export async function fetchTactica(data: {
+    storeName: string;
+    year: number;
+    kpi: string;
+    monthlyData: any[];
+    annualTotals: any;
+}): Promise<{ analysis: string }> {
+    const response = await fetch(`${API_BASE}/tactica`, {
+        method: 'POST',
+        headers: {
+            ...authHeaders(),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (response.status === 401) {
+        clearToken();
+        window.location.reload();
+        return { analysis: '' };
+    }
+
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Error al generar análisis táctico');
+    }
+
     return response.json();
 }
