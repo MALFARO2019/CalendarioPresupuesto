@@ -32,21 +32,42 @@ interface ResumenData {
     pctAnterior: number;
 }
 
+interface CanalRecord {
+    canal: string;
+    real: number;
+    presupuesto: number;
+    anterior: number;
+    pctPresupuesto: number;
+    pctCrecimiento: number;
+    contribucion: number;
+}
+
+interface CanalTotals {
+    real: number;
+    presupuesto: number;
+    anterior: number;
+    pctPresupuesto: number;
+    pctCrecimiento: number;
+    contribucion: number;
+}
+
 type SortColumn = 'local' | 'presupuesto' | 'presupuestoAcum' | 'real' | 'pctPresupuesto' | 'anterior' | 'pctAnterior';
 type SortDir = 'asc' | 'desc';
 
 export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startDate, endDate, groups = [], individualStores = [], onExportExcel }) => {
     const fc = useFormatCurrency();
-    const [activeTab, setActiveTab] = useState<'evaluacion' | 'resumen' | 'top10'>('evaluacion');
+    const [activeTab, setActiveTab] = useState<'evaluacion' | 'resumenCanal' | 'top10'>('evaluacion');
     const [kpi, setKpi] = useState<string>('Ventas');
     const [channel, setChannel] = useState<string>('Total');
     const [selectedLocal, setSelectedLocal] = useState<string>('Corporativo');
     const [yearType, setYearType] = useState<string>('anterior');
-    const [data, setData] = useState<{ evaluacion: EvaluacionRecord[], resumen: ResumenData } | null>(null);
+    const [data, setData] = useState<{ evaluacion: EvaluacionRecord[], resumen: ResumenData, resumenMultiKpi?: Record<string, { totalPresupuestoAcum: number, totalReal: number, totalAnterior: number, pctPresupuesto: number, pctAnterior: number }> } | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [sortCol, setSortCol] = useState<SortColumn>('pctPresupuesto');
     const [sortDir, setSortDir] = useState<SortDir>('desc');
+    const [canalData, setCanalData] = useState<{ canales: CanalRecord[], totals: CanalTotals } | null>(null);
+    const [canalLoading, setCanalLoading] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -81,6 +102,35 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
         };
         fetchData();
     }, [startDate, endDate, kpi, channel, selectedLocal, yearType]);
+
+    // Fetch canal breakdown data when resumenCanal tab is active
+    useEffect(() => {
+        if (activeTab !== 'resumenCanal') return;
+        const fetchCanalData = async () => {
+            setCanalLoading(true);
+            try {
+                const token = getToken();
+                if (!token) return;
+                const params = new URLSearchParams({ startDate, endDate, kpi, yearType });
+                if (selectedLocal) params.set('local', selectedLocal);
+                const url = `${API_BASE}/tendencia/resumen-canal?${params}`;
+                console.log('📡 Fetching resumen canal:', url);
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                });
+                if (response.status === 401) { localStorage.clear(); window.location.reload(); return; }
+                if (!response.ok) throw new Error(`Error ${response.status}`);
+                const result = await response.json();
+                console.log('✅ Resumen canal data:', result.canales?.length, 'channels');
+                setCanalData(result);
+            } catch (err: any) {
+                console.error('Error fetching resumen canal:', err);
+            } finally {
+                setCanalLoading(false);
+            }
+        };
+        fetchCanalData();
+    }, [activeTab, startDate, endDate, kpi, selectedLocal, yearType]);
 
     // Register export function with parent
     useEffect(() => {
@@ -257,17 +307,60 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                             </p>
                         </div>
                     </div>
+
+                    {/* Extra KPI rows: Transacciones & TQP — same grid layout as Ventas */}
+                    {data.resumenMultiKpi && (['Transacciones', 'TQP'] as const).map(tipo => {
+                        const mkpi = data.resumenMultiKpi?.[tipo];
+                        if (!mkpi) return null;
+                        return (
+                            <div key={tipo} className="mt-4 pt-4 border-t border-indigo-200/50">
+                                <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">
+                                    {tipo === 'TQP' ? 'Tiquete Promedio' : tipo}
+                                </h2>
+                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                                    <div>
+                                        <p className="text-xs text-gray-500 font-semibold uppercase">Presupuesto</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono">{fc(mkpi.totalPresupuestoAcum, tipo)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 font-semibold uppercase">P. Acumulado</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono">{fc(mkpi.totalPresupuestoAcum, tipo)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 font-semibold uppercase">Real</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono">{fc(mkpi.totalReal, tipo)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 font-semibold uppercase">% Ppto</p>
+                                        <p className={`text-xl font-extrabold ${mkpi.pctPresupuesto >= 1.0 ? 'text-green-600' : mkpi.pctPresupuesto >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                            {formatPct(mkpi.pctPresupuesto)}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 font-semibold uppercase">{yearTypeLabel}</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono">{fc(mkpi.totalAnterior, tipo)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 font-semibold uppercase">{yearTypePctLabel}</p>
+                                        <p className={`text-xl font-extrabold ${mkpi.pctAnterior >= 1.0 ? 'text-green-600' : mkpi.pctAnterior >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                            {formatPct(mkpi.pctAnterior)}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
             {/* Tabs */}
             <div className="bg-white rounded-t-3xl shadow-lg border-b border-gray-200">
                 <div className="flex gap-2 px-6 pt-6">
-                    {(['evaluacion', 'top10'] as const).map(tab => (
+                    {(['evaluacion', 'resumenCanal', 'top10'] as const).map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)}
                             className={`px-6 py-3 font-semibold text-sm rounded-t-xl transition-colors ${activeTab === tab
                                 ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                            {tab === 'evaluacion' ? 'Evaluación' : 'Top 10'}
+                            {tab === 'evaluacion' ? 'Evaluación' : tab === 'resumenCanal' ? 'Resumen Canal' : 'Top 10'}
                         </button>
                     ))}
                 </div>
@@ -363,6 +456,86 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                )}
+
+                {activeTab === 'resumenCanal' && (
+                    <div>
+                        <h2 className="text-lg font-bold text-gray-800 mb-4">Resumen por Canal</h2>
+                        {canalLoading ? (
+                            <div className="flex items-center justify-center py-10">
+                                <svg className="w-6 h-6 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span className="ml-2 text-gray-500 text-sm">Cargando canales...</span>
+                            </div>
+                        ) : canalData ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b-2 border-gray-200">
+                                            <th className="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Canal</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Real</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Presupuesto</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">% Ppto</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">{yearTypeLabel}</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">% Crec.</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Contribución</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {canalData.canales.map((row, idx) => (
+                                            <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                                                <td className="py-3 px-3 text-sm font-semibold text-gray-800">{row.canal}</td>
+                                                <td className="py-3 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
+                                                <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.presupuesto, kpi)}</td>
+                                                <td className="py-3 px-3 text-right">
+                                                    <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${getAlcanceBadge(row.pctPresupuesto)}`}>
+                                                        {formatPct(row.pctPresupuesto)}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.anterior, kpi)}</td>
+                                                <td className="py-3 px-3 text-right">
+                                                    <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${row.pctCrecimiento >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                        {row.pctCrecimiento >= 0 ? '+' : ''}{(row.pctCrecimiento * 100).toFixed(1)}%
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-3 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <div className="w-16 bg-gray-200 rounded-full h-2">
+                                                            <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(row.contribucion * 100, 100)}%` }}></div>
+                                                        </div>
+                                                        <span className="text-xs font-mono text-gray-600 w-12 text-right">{(row.contribucion * 100).toFixed(1)}%</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                                            <td className="py-3 px-3 text-sm text-gray-900">TOTAL</td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-900">{fc(canalData.totals.real, kpi)}</td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-900">{fc(canalData.totals.presupuesto, kpi)}</td>
+                                            <td className="py-3 px-3 text-right">
+                                                <span className={`inline-block px-2 py-1 rounded-md text-xs font-bold ${getAlcanceBadge(canalData.totals.pctPresupuesto)}`}>
+                                                    {formatPct(canalData.totals.pctPresupuesto)}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-900">{fc(canalData.totals.anterior, kpi)}</td>
+                                            <td className="py-3 px-3 text-right">
+                                                <span className={`inline-block px-2 py-1 rounded-md text-xs font-bold ${canalData.totals.pctCrecimiento >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                    {canalData.totals.pctCrecimiento >= 0 ? '+' : ''}{(canalData.totals.pctCrecimiento * 100).toFixed(1)}%
+                                                </span>
+                                            </td>
+                                            <td className="py-3 px-3 text-right text-xs font-mono text-gray-600">100.0%</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="text-gray-500 text-sm">Sin datos disponibles.</p>
+                        )}
                     </div>
                 )}
 

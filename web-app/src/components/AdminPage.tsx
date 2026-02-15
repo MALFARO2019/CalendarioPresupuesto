@@ -5,11 +5,13 @@ import {
     updateAdminUser,
     deleteAdminUser,
     fetchAllStores,
+    fetchConfig,
+    saveConfig,
     type User
 } from '../api';
 import {
     ArrowLeft, UserPlus, Trash2, Loader2, AlertCircle,
-    CheckCircle, Users, Store, Calendar, Edit2, X, Check, Shield
+    CheckCircle, Users, Store, Calendar, Edit2, X, Check, Shield, Bot, Save, RotateCcw
 } from 'lucide-react';
 import { EventsManagement } from './EventsManagement';
 
@@ -59,7 +61,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
 
     // Auto-select tab based on permissions: if user has eventos but not admin, default to eventos
     const defaultTab = canAccessUsers ? 'users' : 'events';
-    const [activeTab, setActiveTab] = useState<'users' | 'events'>(defaultTab);
+    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [allStores, setAllStores] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
@@ -91,9 +93,58 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
 
     const [serverError, setServerError] = useState('');
 
+    // IA Prompt state
+    const [promptValue, setPromptValue] = useState('');
+    const [promptOriginal, setPromptOriginal] = useState('');
+    const [promptLoading, setPromptLoading] = useState(false);
+    const [promptSaving, setPromptSaving] = useState(false);
+    const [promptMessage, setPromptMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [promptMeta, setPromptMeta] = useState<{ fecha: string | null; usuario: string | null }>({ fecha: null, usuario: null });
+
     useEffect(() => {
         loadData();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 'ia') {
+            loadPrompt();
+        }
+    }, [activeTab]);
+
+    const loadPrompt = async () => {
+        setPromptLoading(true);
+        setPromptMessage(null);
+        try {
+            const config = await fetchConfig('TACTICA_PROMPT');
+            setPromptValue(config.Valor);
+            setPromptOriginal(config.Valor);
+            setPromptMeta({ fecha: config.FechaModificacion, usuario: config.UsuarioModificacion });
+        } catch (err: any) {
+            setPromptMessage({ type: 'error', text: 'No se pudo cargar el prompt: ' + (err.message || 'Error desconocido') });
+        } finally {
+            setPromptLoading(false);
+        }
+    };
+
+    const handleSavePrompt = async () => {
+        setPromptSaving(true);
+        setPromptMessage(null);
+        try {
+            await saveConfig('TACTICA_PROMPT', promptValue);
+            setPromptOriginal(promptValue);
+            setPromptMessage({ type: 'success', text: 'Prompt guardado exitosamente' });
+            loadPrompt(); // refresh metadata
+        } catch (err: any) {
+            setPromptMessage({ type: 'error', text: 'Error al guardar: ' + (err.message || 'Error desconocido') });
+        } finally {
+            setPromptSaving(false);
+        }
+    };
+
+    const handleResetPrompt = () => {
+        setPromptValue(promptOriginal);
+        setPromptMessage(null);
+    };
 
     const loadData = async () => {
         setLoading(true);
@@ -267,6 +318,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             >
                                 <Calendar className="w-4 h-4" />
                                 Eventos
+                            </button>
+                        )}
+                        {canAccessUsers && (
+                            <button
+                                onClick={() => setActiveTab('ia')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'ia'
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                <Bot className="w-4 h-4" />
+                                IA Táctica
                             </button>
                         )}
                     </div>
@@ -727,8 +790,108 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             </div>
                         )}
                     </>
-                ) : (
+                ) : activeTab === 'events' ? (
                     <EventsManagement />
+                ) : (
+                    /* IA Táctica Tab */
+                    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-2 bg-cyan-100 rounded-xl">
+                                <Bot className="w-5 h-5 text-cyan-700" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-800">Prompt de Análisis Táctico</h2>
+                                <p className="text-sm text-gray-500">Personalizá el prompt que se envía a la IA para generar análisis</p>
+                            </div>
+                        </div>
+
+                        {/* Messages */}
+                        {promptMessage && (
+                            <div className={`flex items-center gap-2 rounded-xl px-4 py-3 mb-4 ${promptMessage.type === 'success'
+                                    ? 'bg-green-50 border border-green-200'
+                                    : 'bg-red-50 border border-red-200'
+                                }`}>
+                                {promptMessage.type === 'success'
+                                    ? <CheckCircle className="w-4 h-4 text-green-600" />
+                                    : <AlertCircle className="w-4 h-4 text-red-500" />
+                                }
+                                <span className={`text-sm font-medium ${promptMessage.type === 'success' ? 'text-green-700' : 'text-red-700'
+                                    }`}>{promptMessage.text}</span>
+                            </div>
+                        )}
+
+                        {promptLoading ? (
+                            <div className="flex items-center justify-center py-16">
+                                <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
+                                <span className="ml-3 text-gray-500">Cargando prompt...</span>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Placeholders info */}
+                                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                                    <p className="text-xs font-bold text-blue-800 uppercase mb-2">Placeholders disponibles</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {['{{storeName}}', '{{year}}', '{{kpi}}', '{{monthlyTable}}', '{{annualTotals}}'].map(ph => (
+                                            <code
+                                                key={ph}
+                                                className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-mono cursor-pointer hover:bg-blue-200 transition-all"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(ph);
+                                                    setPromptMessage({ type: 'success', text: `${ph} copiado al portapapeles` });
+                                                    setTimeout(() => setPromptMessage(null), 2000);
+                                                }}
+                                                title="Click para copiar"
+                                            >
+                                                {ph}
+                                            </code>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-blue-600 mt-2">
+                                        Estos placeholders se reemplazan automáticamente con los datos reales al generar el análisis. Click para copiar.
+                                    </p>
+                                </div>
+
+                                {/* Prompt textarea */}
+                                <textarea
+                                    value={promptValue}
+                                    onChange={e => setPromptValue(e.target.value)}
+                                    rows={18}
+                                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 text-sm font-mono transition-all resize-y leading-relaxed"
+                                    placeholder="Escribí el prompt para el análisis táctico..."
+                                />
+
+                                {/* Metadata */}
+                                {promptMeta.fecha && (
+                                    <p className="text-xs text-gray-400 mt-2">
+                                        Última modificación: {new Date(promptMeta.fecha).toLocaleString('es-CR')} por {promptMeta.usuario || 'desconocido'}
+                                    </p>
+                                )}
+
+                                {/* Actions */}
+                                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+                                    <button
+                                        onClick={handleResetPrompt}
+                                        disabled={promptValue === promptOriginal}
+                                        className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        <RotateCcw className="w-4 h-4" />
+                                        Descartar Cambios
+                                    </button>
+                                    <button
+                                        onClick={handleSavePrompt}
+                                        disabled={promptSaving || promptValue === promptOriginal || !promptValue.trim()}
+                                        className="flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        {promptSaving
+                                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                                            : <Save className="w-4 h-4" />
+                                        }
+                                        {promptSaving ? 'Guardando...' : 'Guardar Prompt'}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 )}
             </div>
         </div>

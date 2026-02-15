@@ -452,11 +452,11 @@ function App() {
               {showUserPrefs && (
                 <>
                   <div className="fixed inset-0 z-20" onClick={() => setShowUserPrefs(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
                     <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
                       <h4 className="text-sm font-bold text-gray-700">⚙️ Preferencias</h4>
                     </div>
-                    <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div className="p-4 space-y-3">
                       {/* Formato de Porcentajes */}
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Formato de Porcentajes</label>

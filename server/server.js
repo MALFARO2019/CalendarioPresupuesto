@@ -13,7 +13,7 @@ const {
     deleteUser
 } = require('./auth');
 const { sendPasswordEmail, sendReportEmail, verifyEmailService } = require('./emailService');
-const { getTendenciaData } = require('./tendencia');
+const { getTendenciaData, getResumenCanal } = require('./tendencia');
 const { generateTacticaAnalysis } = require('./tacticaAI');
 const {
     getAllEventos,
@@ -585,6 +585,7 @@ app.get('/api/columns', async (req, res) => {
 // ==========================================
 
 app.get('/api/tendencia', authMiddleware, getTendenciaData);
+app.get('/api/tendencia/resumen-canal', authMiddleware, getResumenCanal);
 
 // ==========================================
 // EVENTOS ENDPOINTS (protected by AccesoEventos permission)
@@ -745,6 +746,65 @@ app.post('/api/send-report', authMiddleware, async (req, res) => {
     }
 });
 
+// ==========================================
+// CONFIG ENDPOINTS (admin only)
+// ==========================================
+
+// GET /api/admin/config/:key - Get a config value
+app.get('/api/admin/config/:key', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos de administrador' });
+        }
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('clave', sql.NVarChar, req.params.key)
+            .query('SELECT Valor, FechaModificacion, UsuarioModificacion FROM APP_CONFIGURACION WHERE Clave = @clave');
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({ error: 'Configuración no encontrada' });
+        }
+        res.json(result.recordset[0]);
+    } catch (err) {
+        console.error('Error in GET /api/admin/config:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/admin/config/:key - Save a config value
+app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos de administrador' });
+        }
+        const { valor } = req.body;
+        if (!valor || !valor.trim()) {
+            return res.status(400).json({ error: 'El valor es requerido' });
+        }
+
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('clave', sql.NVarChar, req.params.key)
+            .input('valor', sql.NVarChar, valor)
+            .input('usuario', sql.NVarChar, req.user.email || 'admin')
+            .query(`
+                MERGE APP_CONFIGURACION AS target
+                USING (SELECT @clave AS Clave) AS source
+                ON target.Clave = source.Clave
+                WHEN MATCHED THEN
+                    UPDATE SET Valor = @valor, FechaModificacion = GETDATE(), UsuarioModificacion = @usuario
+                WHEN NOT MATCHED THEN
+                    INSERT (Clave, Valor, FechaModificacion, UsuarioModificacion) VALUES (@clave, @valor, GETDATE(), @usuario);
+            `);
+
+        console.log(`✅ Config '${req.params.key}' updated by ${req.user.email}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error in PUT /api/admin/config:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // POST /api/tactica - Generate AI tactical analysis
 app.post('/api/tactica', authMiddleware, async (req, res) => {
     try {
@@ -753,7 +813,22 @@ app.post('/api/tactica', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Datos mensuales y totales anuales son requeridos' });
         }
         console.log(`🤖 Táctica requested for ${data.storeName} (${data.kpi}) by ${req.user?.email}`);
-        const analysis = await generateTacticaAnalysis(data);
+
+        // Read custom prompt from DB
+        let customPrompt = null;
+        try {
+            const pool = await poolPromise;
+            const configResult = await pool.request()
+                .input('clave', sql.NVarChar, 'TACTICA_PROMPT')
+                .query('SELECT Valor FROM APP_CONFIGURACION WHERE Clave = @clave');
+            if (configResult.recordset.length > 0) {
+                customPrompt = configResult.recordset[0].Valor;
+            }
+        } catch (configErr) {
+            console.warn('⚠️ Could not read custom prompt, using default:', configErr.message);
+        }
+
+        const analysis = await generateTacticaAnalysis(data, customPrompt);
         res.json({ analysis });
     } catch (err) {
         console.error('Error in /api/tactica:', err);

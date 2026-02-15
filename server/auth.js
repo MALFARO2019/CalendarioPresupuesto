@@ -116,6 +116,71 @@ async function ensureSecurityTables() {
             `);
         }
 
+        // Create APP_CONFIGURACION table for system-wide settings
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_CONFIGURACION' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_CONFIGURACION (
+                    Clave NVARCHAR(100) NOT NULL PRIMARY KEY,
+                    Valor NVARCHAR(MAX) NOT NULL,
+                    FechaModificacion DATETIME NULL,
+                    UsuarioModificacion NVARCHAR(255) NULL
+                );
+            END
+        `);
+
+        // Insert default Tactica prompt if not exists
+        const tacticaPromptExists = await pool.request()
+            .input('clave', sql.NVarChar, 'TACTICA_PROMPT')
+            .query('SELECT Clave FROM APP_CONFIGURACION WHERE Clave = @clave');
+
+        if (tacticaPromptExists.recordset.length === 0) {
+            const defaultPrompt = `Sos un consultor estratégico de ventas para la cadena de restaurantes Rostipollos en Costa Rica.
+
+Analizá los siguientes datos de **{{kpi}}** para **{{storeName}}** del año **{{year}}** y generá un reporte EJECUTIVO de oportunidades tácticas.
+
+## Datos Mensuales
+{{monthlyTable}}
+
+## Totales Anuales
+{{annualTotals}}
+
+## Instrucciones
+Generá un análisis EJECUTIVO en español, con las siguientes secciones. Usá formato markdown:
+
+### 1. 📊 Resumen Ejecutivo
+Un párrafo conciso con la situación actual del negocio.
+
+### 2. 🔍 Análisis de Brechas
+- Identificá los meses con mayor diferencia negativa entre Real y Presupuesto.
+- Comparación con año anterior: ¿estamos creciendo o decreciendo?
+- Identificá patrones (ej: meses débiles sistemáticos).
+
+### 3. 🎯 Oportunidades Tácticas (Top 5)
+Las 5 oportunidades más concretas y accionables para mejorar {{kpi}}, con estimación de impacto potencial en colones o porcentaje.
+
+### 4. ⚠️ Alertas y Riesgos
+Meses futuros que requieren atención especial basándose en tendencias históricas.
+
+### 5. 📈 Proyección y Metas
+- ¿Es alcanzable el presupuesto anual basándose en la tendencia actual?
+- ¿Cuánto necesitamos vender diariamente en promedio para cerrar la brecha?
+- Meta sugerida para los próximos 3 meses.
+
+IMPORTANTE:
+- Sé específico con números y porcentajes.
+- Enfocate en acciones PRÁCTICAS para un gerente de restaurante.
+- No repitas los datos crudos, interpretalos.
+- Máximo 600 palabras.
+- Usá colones costarricenses (₡) como moneda.`;
+
+            await pool.request()
+                .input('clave', sql.NVarChar, 'TACTICA_PROMPT')
+                .input('valor', sql.NVarChar, defaultPrompt)
+                .query('INSERT INTO APP_CONFIGURACION (Clave, Valor) VALUES (@clave, @valor)');
+            console.log('✅ Default Tactica prompt inserted');
+        }
+
         console.log('✅ Security tables verified/created');
     } catch (err) {
         console.error('⚠️ Could not create security tables:', err.message);

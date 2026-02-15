@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { formatCurrencyCompact, useFormatCurrency } from '../utils/formatters';
+import { useUserPreferences } from '../context/UserPreferences';
 
 interface DailyBehaviorChartProps {
     data: any[];
@@ -11,6 +12,7 @@ const DAY_LETTERS = ['D', 'L', 'K', 'M', 'J', 'V', 'S'];
 
 export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi }) => {
     const fc = useFormatCurrency();
+    const { formatPct100 } = useUserPreferences();
     // State for controlling which lines are visible
     const [visibleLines, setVisibleLines] = useState({
         real: true,
@@ -102,7 +104,7 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                 </span>
                                 {pctPpto != null && (
                                     <span className={`font-mono font-bold ${pctPpto >= 100 ? 'text-green-600' : 'text-red-600'}`}>
-                                        ({pctPpto.toFixed(1)}%)
+                                        ({formatPct100(pctPpto)})
                                     </span>
                                 )}
                             </div>
@@ -116,7 +118,7 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                             </span>
                             {pctAnt != null && (
                                 <span className={`font-mono font-bold ${pctAnt >= 100 ? 'text-green-600' : 'text-red-600'}`}>
-                                    ({pctAnt.toFixed(1)}%)
+                                    ({formatPct100(pctAnt)})
                                 </span>
                             )}
                         </div>

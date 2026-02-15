@@ -426,3 +426,31 @@ export async function fetchTactica(data: {
 
     return response.json();
 }
+
+// ==========================================
+// Config API (admin only)
+// ==========================================
+
+export async function fetchConfig(key: string): Promise<{ Valor: string; FechaModificacion: string | null; UsuarioModificacion: string | null }> {
+    const response = await fetch(`${API_BASE}/admin/config/${encodeURIComponent(key)}`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error fetching config');
+    }
+    return response.json();
+}
+
+export async function saveConfig(key: string, valor: string): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/admin/config/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ valor })
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error saving config');
+    }
+    return response.json();
+}

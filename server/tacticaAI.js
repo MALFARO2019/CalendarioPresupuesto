@@ -1,21 +1,24 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { sql, poolPromise } = require('./db');
 
 /**
  * Generate tactical sales analysis using Gemini AI
  * @param {object} data - Annual data summary with monthly breakdowns
+ * @param {string|null} customPrompt - Custom prompt template from DB (uses placeholders)
  * @returns {string} - Markdown analysis
  */
-async function generateTacticaAnalysis(data) {
+async function generateTacticaAnalysis(data, customPrompt = null) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
         throw new Error('GEMINI_API_KEY no está configurada en .env');
     }
 
-    const prompt = buildPrompt(data);
+    const prompt = customPrompt
+        ? applyTemplate(customPrompt, data)
+        : buildDefaultPrompt(data);
+
     console.log('🤖 Calling Gemini for tactical analysis...');
 
-    // Use REST API v1 directly (SDK uses v1beta which may have different quota rules)
-    const model = 'gemini-2.0-flash-lite';
+    const model = 'gemini-2.5-flash-lite';
     const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
@@ -44,33 +47,71 @@ async function generateTacticaAnalysis(data) {
     return text;
 }
 
-function buildPrompt(data) {
+/**
+ * Apply template placeholders to a custom prompt
+ */
+function applyTemplate(template, data) {
     const { storeName, year, kpi, monthlyData, annualTotals } = data;
 
-    // Build monthly data table for context
-    const monthRows = monthlyData.map(m => {
+    const monthlyTable = buildMonthlyTable(monthlyData);
+    const annualSummary = buildAnnualSummary(annualTotals);
+
+    return template
+        .replace(/\{\{storeName\}\}/g, storeName || '')
+        .replace(/\{\{year\}\}/g, year || '')
+        .replace(/\{\{kpi\}\}/g, kpi || '')
+        .replace(/\{\{monthlyTable\}\}/g, monthlyTable)
+        .replace(/\{\{annualTotals\}\}/g, annualSummary);
+}
+
+/**
+ * Build markdown table from monthly data
+ */
+function buildMonthlyTable(monthlyData) {
+    if (!monthlyData || monthlyData.length === 0) return '(Sin datos mensuales)';
+
+    const header = '| Mes | Presupuesto | Real | % Alcance Acum. | Año Anterior | Tiene Datos |\n|-----|------------|------|-----------------|-------------|-------------|';
+    const rows = monthlyData.map(m => {
         const pctAlcance = m.presupuestoAcumuladoConDatos > 0
             ? ((m.realAcumulado / m.presupuestoAcumuladoConDatos) * 100).toFixed(1)
             : '—';
         return `| ${m.monthName} | ${fmt(m.presupuesto)} | ${fmt(m.real)} | ${pctAlcance}% | ${fmt(m.anterior)} | ${m.hasData ? 'Sí' : 'No'} |`;
     }).join('\n');
 
+    return `${header}\n${rows}`;
+}
+
+/**
+ * Build annual summary text
+ */
+function buildAnnualSummary(annualTotals) {
+    if (!annualTotals) return '(Sin totales anuales)';
+    return `- **Presupuesto anual**: ${fmt(annualTotals.presupuestoAnual)}
+- **Presupuesto acumulado (días con datos)**: ${fmt(annualTotals.presupuestoAcumulado)}
+- **Real acumulado**: ${fmt(annualTotals.real)}
+- **Alcance**: ${annualTotals.alcance?.toFixed(1) || '—'}%
+- **Año anterior acumulado**: ${fmt(annualTotals.anterior)}
+- **Año anterior ajustado acum.**: ${fmt(annualTotals.anteriorAjustado)}`;
+}
+
+/**
+ * Default prompt (fallback if no custom prompt in DB)
+ */
+function buildDefaultPrompt(data) {
+    const { storeName, year, kpi, monthlyData, annualTotals } = data;
+
+    const monthlyTable = buildMonthlyTable(monthlyData);
+    const annualSummary = buildAnnualSummary(annualTotals);
+
     return `Sos un consultor estratégico de ventas para la cadena de restaurantes Rostipollos en Costa Rica.
 
 Analizá los siguientes datos de **${kpi}** para **${storeName}** del año **${year}** y generá un reporte EJECUTIVO de oportunidades tácticas.
 
 ## Datos Mensuales
-| Mes | Presupuesto | Real | % Alcance Acum. | Año Anterior | Tiene Datos |
-|-----|------------|------|-----------------|-------------|-------------|
-${monthRows}
+${monthlyTable}
 
 ## Totales Anuales
-- **Presupuesto anual**: ${fmt(annualTotals.presupuestoAnual)}
-- **Presupuesto acumulado (días con datos)**: ${fmt(annualTotals.presupuestoAcumulado)}
-- **Real acumulado**: ${fmt(annualTotals.real)}
-- **Alcance**: ${annualTotals.alcance.toFixed(1)}%
-- **Año anterior acumulado**: ${fmt(annualTotals.anterior)}
-- **Año anterior ajustado acum.**: ${fmt(annualTotals.anteriorAjustado)}
+${annualSummary}
 
 ## Instrucciones
 Generá un análisis EJECUTIVO en español, con las siguientes secciones. Usá formato markdown:

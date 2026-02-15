@@ -160,8 +160,21 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
 
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
+            const presupuesto = payload.find((p: any) => p.dataKey === 'Presupuesto')?.value;
+            const real = payload.find((p: any) => p.dataKey === 'Real')?.value;
+            const anterior = payload.find((p: any) => p.dataKey === 'Año Anterior')?.value;
+            const anteriorAjustado = payload.find((p: any) => p.dataKey === 'Año Anterior Ajustado')?.value;
+
+            const difPpto = (real != null && presupuesto != null) ? real - presupuesto : null;
+            const pctPpto = (presupuesto != null && presupuesto !== 0 && real != null) ? (real / presupuesto * 100) : null;
+
+            const anteriorVal = anteriorAjustado ?? anterior;
+            const anteriorLabel = anteriorAjustado != null ? 'Ajust.' : 'Ant.';
+            const difAnt = (real != null && anteriorVal != null) ? real - anteriorVal : null;
+            const pctAnt = (anteriorVal != null && anteriorVal !== 0 && real != null) ? (real / anteriorVal * 100) : null;
+
             return (
-                <div className="bg-white p-4 border border-gray-100 shadow-xl rounded-xl">
+                <div className="bg-white p-4 border border-gray-100 shadow-xl rounded-xl min-w-[200px]">
                     <p className="font-bold text-gray-700 mb-2">{label}</p>
                     {payload.map((entry: any, index: number) => (
                         <div key={index} className="flex items-center gap-2 text-xs font-medium">
@@ -170,6 +183,35 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
                             <span className="text-gray-900 font-mono">{fc(entry.value, kpi)}</span>
                         </div>
                     ))}
+                    {difPpto != null && (
+                        <>
+                            <div className="h-px bg-gray-100 my-1.5" />
+                            <div className="flex items-center gap-2 text-xs font-medium">
+                                <span className="text-gray-500">Dif. Ppto:</span>
+                                <span className={`font-mono font-bold ${difPpto >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {difPpto >= 0 ? '+' : ''}{fc(difPpto, kpi)}
+                                </span>
+                                {pctPpto != null && (
+                                    <span className={`font-mono font-bold ${pctPpto >= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                        ({formatPct100(pctPpto)})
+                                    </span>
+                                )}
+                            </div>
+                        </>
+                    )}
+                    {difAnt != null && (
+                        <div className="flex items-center gap-2 text-xs font-medium">
+                            <span className="text-gray-500">Dif. {anteriorLabel}:</span>
+                            <span className={`font-mono font-bold ${difAnt >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {difAnt >= 0 ? '+' : ''}{fc(difAnt, kpi)}
+                            </span>
+                            {pctAnt != null && (
+                                <span className={`font-mono font-bold ${pctAnt >= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                    ({formatPct100(pctAnt)})
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </div>
             );
         }
