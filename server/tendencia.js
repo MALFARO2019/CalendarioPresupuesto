@@ -102,32 +102,36 @@ async function getTendenciaData(req, res) {
                     ${localFilter}
                 GROUP BY Local
             ),
-            -- Period data: only days with actual real data (MontoReal > 0)
-            -- P. Acumulado = SUM(Monto) for days with real data
-            -- Real = SUM(MontoReal)
-            -- Año Anterior = SUM(MontoAnterior or Ajustado) for days with real data
-            PeriodData AS (
+            -- First, aggregate by date to get daily totals (like /api/budget returns)
+            DailyAggregates AS (
                 SELECT 
-                    Local,
-                    SUM(Monto) as PresupuestoAcum,
-                    SUM(MontoReal) as RealAcum,
-                    SUM(${anteriorField}) as AnteriorAcum
+                    Fecha,
+                    SUM(MontoReal) as DayReal,
+                    SUM(Monto) as DayMonto,
+                    SUM(${anteriorField}) as DayAnterior
                 FROM RSM_ALCANCE_DIARIO
                 WHERE Fecha BETWEEN @startDate AND @endDate
                     AND Año = YEAR(@endDate) AND Tipo = @kpi AND Canal = @canal
                     AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-                    AND MontoReal > 0
                     ${localFilter}
-                GROUP BY Local
+                GROUP BY Fecha
+            ),
+            -- Then filter days with sales and sum (like frontend does)
+            PeriodData AS (
+                SELECT 
+                    SUM(CASE WHEN DayReal > 0 THEN DayMonto ELSE 0 END) as PresupuestoAcum,
+                    SUM(DayReal) as RealAcum,
+                    SUM(CASE WHEN DayReal > 0 THEN DayAnterior ELSE 0 END) as AnteriorAcum
+                FROM DailyAggregates
             )
             SELECT 
                 ab.Local,
                 ab.PresupuestoAnual,
-                ISNULL(pd.PresupuestoAcum, 0) as PresupuestoAcum,
-                ISNULL(pd.RealAcum, 0) as RealAcum,
-                ISNULL(pd.AnteriorAcum, 0) as AnteriorAcum
+                pd.PresupuestoAcum,
+                pd.RealAcum,
+                pd.AnteriorAcum
             FROM AnnualBudget ab
-            LEFT JOIN PeriodData pd ON ab.Local = pd.Local
+            CROSS JOIN PeriodData pd
             ORDER BY ab.Local
         `;
 
