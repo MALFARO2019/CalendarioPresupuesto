@@ -1,6 +1,7 @@
-# Calendario Presupuesto
+# KPIs Rosti
 
-Este proyecto consta de dos partes:
+Plataforma modular de análisis de KPIs para restaurantes Rosti, incluyendo:
+- **Alcance de Presupuesto**: Análisis mensual, anual y tendencias
 1. **server**: Backend en Node.js/Express.
 2. **web-app**: Frontend en React/Vite.
 

@@ -50,26 +50,32 @@ if (-not $SkipFrontend) {
     if (Test-Path (Join-Path $webAppSrc "package.json")) {
         Write-Info "Compilando frontend..."
         Push-Location $webAppSrc
+        $ErrorActionPreference = "Continue"
         & npm install 2>&1 | Out-Null
         & npm run build 2>&1
+        $ErrorActionPreference = "Stop"
         Pop-Location
         
         if (Test-Path $webAppDist) {
             Write-Info "Copiando frontend compilado..."
             robocopy "$webAppDist" "$InstallDir\web-app" /MIR /XF web.config /NFL /NDL /NJH /NJS /nc /ns /np 2>&1 | Out-Null
             Write-Ok "Frontend actualizado"
-        } else {
+        }
+        else {
             Write-Err "Error al compilar frontend"
         }
-    } elseif (Test-Path $webAppDist) {
+    }
+    elseif (Test-Path $webAppDist) {
         # Si solo tenemos dist, copiarlo directamente
         Write-Info "Copiando frontend precompilado..."
         robocopy "$webAppDist" "$InstallDir\web-app" /MIR /XF web.config /NFL /NDL /NJH /NJS /nc /ns /np 2>&1 | Out-Null
         Write-Ok "Frontend actualizado"
-    } else {
+    }
+    else {
         Write-Err "No se encontro el frontend compilado en $webAppDist"
     }
-} else {
+}
+else {
     Write-Info "Frontend omitido (flag -SkipFrontend)"
 }
 
@@ -89,12 +95,14 @@ if (-not $SkipBackend) {
     & $nssmPath stop $ServiceName 2>$null
     Start-Sleep -Seconds 2
     
-    # Copiar archivos del backend
-    $backendFiles = @("server.js", "db.js", "auth.js", "emailService.js", "eventos.js", "tendencia.js", "package.json", "package-lock.json")
-    foreach ($file in $backendFiles) {
-        $src = Join-Path $serverSrc $file
+    # Copiar archivos del backend (todos los .js y package files)
+    Get-ChildItem -Path $serverSrc -Filter "*.js" | ForEach-Object {
+        Copy-Item $_.FullName -Destination "$InstallDir\server\$($_.Name)" -Force
+    }
+    @("package.json", "package-lock.json") | ForEach-Object {
+        $src = Join-Path $serverSrc $_
         if (Test-Path $src) {
-            Copy-Item $src -Destination "$InstallDir\server\$file" -Force
+            Copy-Item $src -Destination "$InstallDir\server\$_" -Force
         }
     }
     Write-Ok "Archivos del backend copiados"
@@ -102,7 +110,9 @@ if (-not $SkipBackend) {
     # Actualizar dependencias si package.json cambio
     Write-Info "Verificando dependencias..."
     Push-Location "$InstallDir\server"
-    & npm install --production 2>&1 | Out-Null
+    $ErrorActionPreference = "Continue"
+    & npm install --omit=dev 2>&1 | Out-Null
+    $ErrorActionPreference = "Stop"
     Pop-Location
     Write-Ok "Dependencias actualizadas"
     
@@ -114,10 +124,12 @@ if (-not $SkipBackend) {
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($svc -and $svc.Status -eq "Running") {
         Write-Ok "Servicio reiniciado correctamente"
-    } else {
+    }
+    else {
         Write-Err "El servicio no inicio. Revise los logs en $InstallDir\server\logs\"
     }
-} else {
+}
+else {
     Write-Info "Backend omitido (flag -SkipBackend)"
 }
 
@@ -133,7 +145,8 @@ try {
     if ($apiTest.StatusCode -eq 200) {
         Write-Ok "API respondiendo correctamente"
     }
-} catch {
+}
+catch {
     Write-Info "API aun iniciando... espere unos segundos"
 }
 

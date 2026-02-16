@@ -65,6 +65,17 @@ async function getTendenciaData(req, res) {
                     const localsResult = await localsRequest.query(localsQuery);
                     memberLocals = localsResult.recordset.map(r => r.Local);
                     console.log(`🏪 Group "${local}" members (${memberLocals.length}):`, memberLocals);
+
+                    // DETAILED LOGGING FOR CORPORATIVO
+                    if (local === 'Corporativo' && kpi === 'Ventas') {
+                        console.log('\n🏢🏢🏢 CORPORATIVO GROUP RESOLUTION 🏢🏢🏢');
+                        console.log(`   IDGRUPOs found: ${idGrupos.join(', ')}`);
+                        console.log(`   Member stores (CODALMACEN) count: ${memberCodes.length}`);
+                        console.log(`   Member locales count: ${memberLocals.length}`);
+                        console.log(`   First 5 locales: ${memberLocals.slice(0, 5).join(', ')}`);
+                        console.log(`   EXPECTED: 41 stores for correct calculation`);
+                        console.log('🏢🏢🏢\n');
+                    }
                 }
             }
         }
@@ -155,9 +166,34 @@ async function getTendenciaData(req, res) {
             resumen.totalAnterior += anterior;
         });
 
+
+        console.log(`⚡ About to check debug condition: local='${local}', memberLocals?.length=${memberLocals?.length}, kpi='${kpi}'`);
+
+        // SPECIAL DEBUG FOR CORPORATIVO + VENTAS - Show raw totals
+        if ((local === 'Corporativo' || memberLocals?.length === 41) && kpi === 'Ventas') {
+            console.log('🔥🔥🔥 RESUMEN TOTALS (Before pct calc) - Corporativo Ventas 🔥🔥🔥');
+            console.log(`   resumen.totalReal: ${resumen.totalReal}`);
+            console.log(`   resumen.totalPresupuestoAcum: ${resumen.totalPresupuestoAcum}`);
+            console.log(`   resumen.totalPresupuesto (Annual): ${resumen.totalPresupuesto}`);
+            console.log(`   Number of locales aggregated: ${result.recordset.length}`);
+            console.log(`   Expected Real: ₡1,898,584,984`);
+            console.log(`   Expected P.Acum: ₡2,094,959,645`);
+            console.log(`   Expected %: 90.6%`);
+        }
+
+        // SPECIAL DEBUG FOR CORPORATIVO + VENTAS
+        if ((local === 'Corporativo' || memberLocals?.length === 41) && kpi === 'Ventas') {
+            console.log('🔥🔥🔥 DEBUGGING CORPORATIVO VENTAS (RESUMEN) 🔥🔥🔥');
+            console.log(`   totalReal: ${resumen.totalReal}`);
+            console.log(`   totalPresupuestoAcum: ${resumen.totalPresupuestoAcum}`);
+            console.log(`   Calculation: ${resumen.totalReal} / ${resumen.totalPresupuestoAcum}`);
+            console.log(`   Result: ${resumen.totalReal / resumen.totalPresupuestoAcum}`);
+            console.log(`   Expected: 0.906 (90.6%)`);
+            console.log(`   Actual pctPresupuesto will be: ${resumen.totalPresupuestoAcum > 0 ? (resumen.totalReal / resumen.totalPresupuestoAcum) : 0}`);
+        }
+
         resumen.pctPresupuesto = resumen.totalPresupuestoAcum > 0 ? (resumen.totalReal / resumen.totalPresupuestoAcum) : 0;
         resumen.pctAnterior = resumen.totalAnterior > 0 ? (resumen.totalReal / resumen.totalAnterior) : 0;
-
         // Multi-KPI summary: get totals for all three KPIs (Ventas, Transacciones, TQP)
         const multiKpiQuery = `
             SELECT 
@@ -189,21 +225,166 @@ async function getTendenciaData(req, res) {
             const pAcum = row.PresupuestoAcum || 0;
             const real = row.RealAcum || 0;
             const ant = row.AnteriorAcum || 0;
+            const pctPpto = pAcum > 0 ? (real / pAcum) : 0;
             resumenMultiKpi[row.Tipo] = {
                 totalPresupuestoAcum: pAcum,
                 totalReal: real,
                 totalAnterior: ant,
+                pctPresupuesto: pctPpto,
+                pctAnterior: ant > 0 ? (real / ant) : 0
+            };
+            // DEBUG: Log Ventas percentage for Corporativo
+            if (row.Tipo === 'Ventas' && (local === 'Corporativo' || memberLocals?.length === 41)) {
+                console.log('🔥🔥🔥 VENTAS PERCENTAGE FROM multiKpiQuery 🔥🔥🔥');
+                console.log(`   PresupuestoAcum: ${pAcum}`);
+                console.log(`   RealAcum: ${real}`);
+                console.log(`   Calculation: ${real} / ${pAcum}`);
+                console.log(`   pctPresupuesto: ${pctPpto}`);
+                console.log(`   As percentage: ${(pctPpto * 100).toFixed(1)}%`);
+                console.log(`   Expected: 90.6%`);
+            }
+        });
+        console.log('📊 Multi-KPI summary keys:', Object.keys(resumenMultiKpi), 'rows:', multiResult.recordset.length);
+
+        // TREND CALCULATION: Fetch previous period data to calculate trends
+        let trendPresupuesto = null;
+        let trendAnterior = null;
+        const resumenMultiKpiWithTrends = {};
+
+        // Check if comparativePeriod parameter exists (default to 'Month')
+        const comparativePeriod = req.query.comparativePeriod || 'Month';
+
+        // Calculate previous period dates
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        let prevStart, prevEnd;
+
+        if (comparativePeriod === 'Week') {
+            prevStart = new Date(start);
+            prevStart.setDate(prevStart.getDate() - 7);
+            prevEnd = new Date(end);
+            prevEnd.setDate(prevEnd.getDate() - 7);
+        } else if (comparativePeriod === 'Month') {
+            prevStart = new Date(start);
+            prevStart.setMonth(prevStart.getMonth() - 1);
+            prevEnd = new Date(end);
+            prevEnd.setMonth(prevEnd.getMonth() - 1);
+        } else {  // Year
+            prevStart = new Date(start);
+            prevStart.setFullYear(prevStart.getFullYear() - 1);
+            prevEnd = new Date(end);
+            prevEnd.setFullYear(prevEnd.getFullYear() - 1);
+        }
+
+        const formatDate = (d) => d.toISOString().split('T')[0];
+        const prevStartDate = formatDate(prevStart);
+        const prevEndDate = formatDate(prevEnd);
+
+        // Fetch previous period multi-KPI data
+        const prevMultiKpiQuery = `
+            SELECT 
+                Tipo,
+                SUM(Monto) as PresupuestoAcum,
+                SUM(MontoReal) as RealAcum,
+                SUM(${anteriorField}) as AnteriorAcum
+            FROM RSM_ALCANCE_DIARIO
+            WHERE Fecha BETWEEN @prevStartDate AND @prevEndDate
+                AND Año = YEAR(@prevEndDate) AND Canal = @canal3
+                AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                ${localFilter.replace(/@ml/g, '@ml3_').replace(/@local/g, '@local3')}
+            GROUP BY Tipo
+        `;
+        const prevMultiReq = pool.request();
+        prevMultiReq.input('prevStartDate', sql.Date, prevStartDate);
+        prevMultiReq.input('prevEndDate', sql.Date, prevEndDate);
+        prevMultiReq.input('canal3', sql.VarChar, dbCanal);
+        if (memberLocals && memberLocals.length > 0) {
+            memberLocals.forEach((name, i) => prevMultiReq.input(`ml3_${i}`, sql.NVarChar, name));
+        } else if (local) {
+            prevMultiReq.input('local3', sql.NVarChar, local);
+        }
+        const prevMultiResult = await prevMultiReq.query(prevMultiKpiQuery);
+
+        // Build previous period KPI map
+        const prevKpiMap = {};
+        prevMultiResult.recordset.forEach(row => {
+            const pAcum = row.PresupuestoAcum || 0;
+            const real = row.RealAcum || 0;
+            const ant = row.AnteriorAcum || 0;
+            prevKpiMap[row.Tipo] = {
                 pctPresupuesto: pAcum > 0 ? (real / pAcum) : 0,
                 pctAnterior: ant > 0 ? (real / ant) : 0
             };
         });
-        console.log('📊 Multi-KPI summary keys:', Object.keys(resumenMultiKpi), 'rows:', multiResult.recordset.length);
+
+        // Calculate trends for each KPI
+        Object.keys(resumenMultiKpi).forEach(kpi => {
+            const current = resumenMultiKpi[kpi];
+            const prev = prevKpiMap[kpi];
+
+            let trendPpto = null;
+            let trendAnt = null;
+
+            if (prev) {
+                // Trend for Presupuesto
+                const diffPpto = current.pctPresupuesto - prev.pctPresupuesto;
+                const pctChangePpto = prev.pctPresupuesto !== 0 ? (diffPpto / prev.pctPresupuesto) * 100 : 0;
+                trendPpto = {
+                    direction: diffPpto > 0.001 ? 'up' : diffPpto < -0.001 ? 'down' : 'neutral',
+                    percentage: pctChangePpto,
+                    previousValue: prev.pctPresupuesto
+                };
+
+                // Trend for Anterior
+                const diffAnt = current.pctAnterior - prev.pctAnterior;
+                const pctChangeAnt = prev.pctAnterior !== 0 ? (diffAnt / prev.pctAnterior) * 100 : 0;
+                trendAnt = {
+                    direction: diffAnt > 0.001 ? 'up' : diffAnt < -0.001 ? 'down' : 'neutral',
+                    percentage: pctChangeAnt,
+                    previousValue: prev.pctAnterior
+                };
+            }
+
+            resumenMultiKpiWithTrends[kpi] = {
+                ...current,
+                trendPresupuesto: trendPpto,
+                trendAnterior: trendAnt
+            };
+        });
+
+        // Calculate trends for main resumen (using primary KPI data)
+        if (prevKpiMap[kpi]) {
+            const currentPctPpto = resumen.pctPresupuesto;
+            const currentPctAnt = resumen.pctAnterior;
+            const prevPctPpto = prevKpiMap[kpi].pctPresupuesto;
+            const prevPctAnt = prevKpiMap[kpi].pctAnterior;
+
+            const diffPpto = currentPctPpto - prevPctPpto;
+            const pctChangePpto = prevPctPpto !== 0 ? (diffPpto / prevPctPpto) * 100 : 0;
+            trendPresupuesto = {
+                direction: diffPpto > 0.001 ? 'up' : diffPpto < -0.001 ? 'down' : 'neutral',
+                percentage: pctChangePpto,
+                previousValue: prevPctPpto
+            };
+
+            const diffAnt = currentPctAnt - prevPctAnt;
+            const pctChangeAnt = prevPctAnt !== 0 ? (diffAnt / prevPctAnt) * 100 : 0;
+            trendAnterior = {
+                direction: diffAnt > 0.001 ? 'up' : diffAnt < -0.001 ? 'down' : 'neutral',
+                percentage: pctChangeAnt,
+                previousValue: prevPctAnt
+            };
+        }
 
         res.json({
             evaluacion: evaluacion.sort((a, b) => a.local.localeCompare(b.local)),
-            resumen,
-            resumenMultiKpi,
-            parameters: { startDate, endDate, kpi, channel, local: local || 'all', yearType, isGroup: memberLocals !== null }
+            resumen: {
+                ...resumen,
+                trendPresupuesto,
+                trendAnterior
+            },
+            resumenMultiKpi: resumenMultiKpiWithTrends,
+            parameters: { startDate, endDate, kpi, channel, local: local || 'all', yearType, isGroup: memberLocals !== null, comparativePeriod }
         });
 
     } catch (error) {

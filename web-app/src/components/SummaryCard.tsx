@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { useFormatCurrency } from '../utils/formatters';
 import { useUserPreferences } from '../context/UserPreferences';
+// Note: Trend indicators for SummaryCard will be implemented in Phase 8
 
 interface SummaryCardProps {
     dataVentas: any[];

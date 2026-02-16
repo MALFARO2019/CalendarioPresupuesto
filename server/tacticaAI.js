@@ -56,12 +56,17 @@ function applyTemplate(template, data) {
     const monthlyTable = buildMonthlyTable(monthlyData);
     const annualSummary = buildAnnualSummary(annualTotals);
 
+    console.log('📝 Building prompt with:');
+    console.log(`   Store: ${storeName}, Year: ${year}, KPI: ${kpi}`);
+    console.log(`   Monthly data rows: ${monthlyData?.length || 0}`);
+    console.log(`   Annual totals:`, annualTotals);
+
     return template
         .replace(/\{\{storeName\}\}/g, storeName || '')
         .replace(/\{\{year\}\}/g, year || '')
         .replace(/\{\{kpi\}\}/g, kpi || '')
         .replace(/\{\{monthlyTable\}\}/g, monthlyTable)
-        .replace(/\{\{annualTotals\}\}/g, annualSummary);
+        .replace(/\{\{annualSummary\}\}/g, annualSummary);
 }
 
 /**

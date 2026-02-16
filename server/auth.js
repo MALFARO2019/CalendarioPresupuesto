@@ -76,6 +76,74 @@ async function ensureSecurityTables() {
             END
         `);
 
+        // Add module-specific permissions
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AccesoPresupuesto')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD AccesoPresupuesto BIT NOT NULL DEFAULT 1;
+            END
+        `);
+
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AccesoTiempos')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD AccesoTiempos BIT NOT NULL DEFAULT 0;
+            END
+        `);
+
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AccesoEvaluaciones')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD AccesoEvaluaciones BIT NOT NULL DEFAULT 0;
+            END
+        `);
+
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AccesoInventarios')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD AccesoInventarios BIT NOT NULL DEFAULT 0;
+            END
+        `);
+
+        // Add DashboardLocales column for user-specific KPI config
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'DashboardLocales')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD DashboardLocales NVARCHAR(MAX) NULL;
+            END
+        `);
+
+        // Add ComparativePeriod column for user-specific comparative period preference
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'ComparativePeriod')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD ComparativePeriod VARCHAR(20) NULL DEFAULT 'Month';
+            END
+        `);
+
+        // TODO:  Create performance indexes on RSM_ALCANCE_DIARIO if they don't exist
+        // Temporarily commented out - KPI column doesn't exist in RSM_ALCANCE_DIARIO
+        /*
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ALCANCE_Local_KPI_Fecha' AND object_id = OBJECT_ID('RSM_ALCANCE_DIARIO'))
+            BEGIN
+                CREATE NONCLUSTERED INDEX IX_ALCANCE_Local_KPI_Fecha 
+                ON RSM_ALCANCE_DIARIO (Local, KPI, Fecha)
+                INCLUDE (MontoReal, Monto, MontoAnterior, MontoRealAcumulado, MontoAcumulado);
+            END
+        `);
+
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ALCANCE_Fecha' AND object_id = OBJECT_ID('RSM_ALCANCE_DIARIO'))
+            BEGIN
+                CREATE NONCLUSTERED INDEX IX_ALCANCE_Fecha 
+                ON RSM_ALCANCE_DIARIO (Fecha)
+                INCLUDE (Local, KPI, MontoReal, Monto, MontoAnterior);
+            END
+        `);
+        */
+
+
         // Create APP_USUARIO_ALMACEN table
         await pool.request().query(`
             IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_USUARIO_ALMACEN' AND xtype='U')
@@ -97,8 +165,8 @@ async function ensureSecurityTables() {
 
         if (superAdminResult.recordset.length === 0) {
             await pool.request().query(`
-                INSERT INTO APP_USUARIOS (Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, EsAdmin, EsProtegido)
-                VALUES ('soporte@rostipolloscr.com', 'Soporte Técnico', 'R0st1p017', 1, 1, 1, 1, 1, 1)
+                INSERT INTO APP_USUARIOS (Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, EsAdmin, EsProtegido)
+                VALUES ('soporte@rostipolloscr.com', 'Soporte Técnico', 'R0st1p017', 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
             `);
             console.log('✅ Superadmin user created');
         } else {
@@ -110,6 +178,10 @@ async function ensureSecurityTables() {
                     AccesoTendencia = 1,
                     AccesoTactica = 1,
                     AccesoEventos = 1,
+                    AccesoPresupuesto = 1,
+                    AccesoTiempos = 1,
+                    AccesoEvaluaciones = 1,
+                    AccesoInventarios = 1,
                     EsAdmin = 1,
                     EsProtegido = 1
                 WHERE Email = 'soporte@rostipolloscr.com'
@@ -194,7 +266,7 @@ async function loginUser(email, clave) {
     const pool = await poolPromise;
     const result = await pool.request()
         .input('email', sql.NVarChar, email)
-        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, EsAdmin, EsProtegido FROM APP_USUARIOS WHERE Email = @email');
+        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, EsAdmin, EsProtegido FROM APP_USUARIOS WHERE Email = @email');
 
     if (result.recordset.length === 0) {
         return { success: false, message: 'Usuario no encontrado. Contacte al administrador.' };
@@ -237,6 +309,10 @@ async function loginUser(email, clave) {
             accesoTendencia: user.AccesoTendencia,
             accesoTactica: user.AccesoTactica,
             accesoEventos: user.AccesoEventos,
+            accesoPresupuesto: user.AccesoPresupuesto,
+            accesoTiempos: user.AccesoTiempos,
+            accesoEvaluaciones: user.AccesoEvaluaciones,
+            accesoInventarios: user.AccesoInventarios,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido
         },
@@ -254,6 +330,10 @@ async function loginUser(email, clave) {
             accesoTendencia: user.AccesoTendencia,
             accesoTactica: user.AccesoTactica,
             accesoEventos: user.AccesoEventos,
+            accesoPresupuesto: user.AccesoPresupuesto,
+            accesoTiempos: user.AccesoTiempos,
+            accesoEvaluaciones: user.AccesoEvaluaciones,
+            accesoInventarios: user.AccesoInventarios,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido,
             allowedStores
@@ -316,11 +396,11 @@ function verifyAdminPassword(password) {
 async function getAllUsers() {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-        SELECT u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.EsAdmin, u.EsProtegido, u.FechaCreacion,
+        SELECT u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.AccesoPresupuesto, u.AccesoTiempos, u.AccesoEvaluaciones, u.AccesoInventarios, u.EsAdmin, u.EsProtegido, u.FechaCreacion,
                STRING_AGG(ua.Local, ', ') AS Almacenes
         FROM APP_USUARIOS u
         LEFT JOIN APP_USUARIO_ALMACEN ua ON u.Id = ua.UsuarioId
-        GROUP BY u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.EsAdmin, u.EsProtegido, u.FechaCreacion
+        GROUP BY u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.AccesoPresupuesto, u.AccesoTiempos, u.AccesoEvaluaciones, u.AccesoInventarios, u.EsAdmin, u.EsProtegido, u.FechaCreacion
         ORDER BY u.Email
     `);
 
@@ -334,6 +414,10 @@ async function getAllUsers() {
         accesoTendencia: user.AccesoTendencia,
         accesoTactica: user.AccesoTactica,
         accesoEventos: user.AccesoEventos,
+        accesoPresupuesto: user.AccesoPresupuesto,
+        accesoTiempos: user.AccesoTiempos,
+        accesoEvaluaciones: user.AccesoEvaluaciones,
+        accesoInventarios: user.AccesoInventarios,
         esAdmin: user.EsAdmin,
         esProtegido: user.EsProtegido,
         fechaCreacion: user.FechaCreacion,
@@ -344,8 +428,13 @@ async function getAllUsers() {
 /**
  * Create a new user with store access and PIN
  */
-async function createUser(email, nombre, clave, stores, accesoTendencia = false, accesoTactica = false, accesoEventos = false, esAdmin = false) {
+async function createUser(email, nombre, clave, stores, accesoTendencia = false, accesoTactica = false, accesoEventos = false, accesoPresupuesto = true, accesoTiempos = false, accesoEvaluaciones = false, accesoInventarios = false, esAdmin = false) {
     const pool = await poolPromise;
+
+    // Validate: at least one module permission must be active (unless admin)
+    if (!esAdmin && !accesoPresupuesto && !accesoTiempos && !accesoEvaluaciones && !accesoInventarios) {
+        throw new Error('Al menos un módulo debe estar activo');
+    }
 
     const pin = clave || Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -357,11 +446,15 @@ async function createUser(email, nombre, clave, stores, accesoTendencia = false,
         .input('accesoTendencia', sql.Bit, accesoTendencia)
         .input('accesoTactica', sql.Bit, accesoTactica)
         .input('accesoEventos', sql.Bit, accesoEventos)
+        .input('accesoPresupuesto', sql.Bit, accesoPresupuesto)
+        .input('accesoTiempos', sql.Bit, accesoTiempos)
+        .input('accesoEvaluaciones', sql.Bit, accesoEvaluaciones)
+        .input('accesoInventarios', sql.Bit, accesoInventarios)
         .input('esAdmin', sql.Bit, esAdmin)
         .query(`
-            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, EsAdmin) 
+            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, EsAdmin) 
             OUTPUT INSERTED.Id, INSERTED.Clave
-            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @esAdmin)
+            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @accesoPresupuesto, @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @esAdmin)
         `);
 
     const userId = userResult.recordset[0].Id;
@@ -383,7 +476,7 @@ async function createUser(email, nombre, clave, stores, accesoTendencia = false,
 /**
  * Update user (including PIN change)
  */
-async function updateUser(userId, email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin) {
+async function updateUser(userId, email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin) {
     const pool = await poolPromise;
 
     // Protect superadmin user
@@ -395,10 +488,17 @@ async function updateUser(userId, email, nombre, activo, clave, stores, accesoTe
         throw new Error('No se puede modificar el usuario protegido del sistema');
     }
 
+    // Validate: at least one module permission must be active for active users (unless admin)
+    if (activo && !esAdmin && !accesoPresupuesto && !accesoTiempos && !accesoEvaluaciones && !accesoInventarios) {
+        throw new Error('Al menos un módulo debe estar activo para usuarios activos');
+    }
+
     let updateQuery = `
         UPDATE APP_USUARIOS 
         SET Email = @email, Nombre = @nombre, Activo = @activo, 
-            AccesoTendencia = @accesoTendencia, AccesoTactica = @accesoTactica, AccesoEventos = @accesoEventos, EsAdmin = @esAdmin,
+            AccesoTendencia = @accesoTendencia, AccesoTactica = @accesoTactica, AccesoEventos = @accesoEventos,
+            AccesoPresupuesto = @accesoPresupuesto, AccesoTiempos = @accesoTiempos, AccesoEvaluaciones = @accesoEvaluaciones, AccesoInventarios = @accesoInventarios,
+            EsAdmin = @esAdmin,
             FechaModificacion = GETDATE()
     `;
     const request = pool.request()
@@ -409,6 +509,10 @@ async function updateUser(userId, email, nombre, activo, clave, stores, accesoTe
         .input('accesoTendencia', sql.Bit, accesoTendencia)
         .input('accesoTactica', sql.Bit, accesoTactica)
         .input('accesoEventos', sql.Bit, accesoEventos)
+        .input('accesoPresupuesto', sql.Bit, accesoPresupuesto)
+        .input('accesoTiempos', sql.Bit, accesoTiempos)
+        .input('accesoEvaluaciones', sql.Bit, accesoEvaluaciones)
+        .input('accesoInventarios', sql.Bit, accesoInventarios)
         .input('esAdmin', sql.Bit, esAdmin);
 
     if (clave) {

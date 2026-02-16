@@ -33,7 +33,15 @@ app.use(cors());
 app.use(express.json());
 
 // Initialize security tables on startup
-ensureSecurityTables();
+(async () => {
+    await ensureSecurityTables();
+})();
+
+// TEST ENDPOINT
+app.get('/api/test', (req, res) => {
+    res.json({ message: 'Server is working!' });
+});
+
 
 // ==========================================
 // AUTH ENDPOINTS (public)
@@ -588,6 +596,173 @@ app.get('/api/tendencia', authMiddleware, getTendenciaData);
 app.get('/api/tendencia/resumen-canal', authMiddleware, getResumenCanal);
 
 // ==========================================
+// DASHBOARD MULTI-KPI BATCH ENDPOINT (optimized with trends)
+// ==========================================
+
+// Helper function to calculate previous period dates
+function getPreviousPeriodDates(startDate, endDate, comparativePeriod) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    let prevStart, prevEnd;
+
+    if (comparativePeriod === 'Week') {
+        // Previous week: subtract 7 days
+        prevStart = new Date(start);
+        prevStart.setDate(prevStart.getDate() - 7);
+        prevEnd = new Date(end);
+        prevEnd.setDate(prevEnd.getDate() - 7);
+    } else if (comparativePeriod === 'Month') {
+        // Previous month: subtract 1 month
+        prevStart = new Date(start);
+        prevStart.setMonth(prevStart.getMonth() - 1);
+        prevEnd = new Date(end);
+        prevEnd.setMonth(prevEnd.getMonth() - 1);
+    } else {  // Year
+        // Previous year: subtract 1 year
+        prevStart = new Date(start);
+        prevStart.setFullYear(prevStart.getFullYear() - 1);
+        prevEnd = new Date(end);
+        prevEnd.setFullYear(prevEnd.getFullYear() - 1);
+    }
+
+    // Format as YYYY-MM-DD
+    const formatDate = (d) => d.toISOString().split('T')[0];
+    return {
+        prevStartDate: formatDate(prevStart),
+        prevEndDate: formatDate(prevEnd)
+    };
+}
+
+// GET /api/dashboard/multi-kpi - Fetch all KPIs for multiple locales with trend data
+app.get('/api/dashboard/multi-kpi', authMiddleware, async (req, res) => {
+    try {
+        const { locales, startDate, endDate, yearType = 'anterior', comparativePeriod = 'Month' } = req.query;
+
+        if (!locales) {
+            return res.status(400).json({ error: 'locales parameter is required' });
+        }
+
+        const localesArray = locales.split(',');
+        const kpis = ['Ventas', 'Transacciones', 'TQP'];
+
+        // Calculate previous period dates for trend comparison
+        const { prevStartDate, prevEndDate } = getPreviousPeriodDates(startDate, endDate, comparativePeriod);
+
+        // Fetch data for all locales IN PARALLEL (major performance improvement)
+        const results = await Promise.all(localesArray.map(async (local) => {
+            // Fetch all KPIs for current and previous periods IN PARALLEL
+            const kpiPromises = kpis.flatMap(kpi => [
+                // Current period
+                new Promise((resolve) => {
+                    const mockReq = {
+                        query: { startDate, endDate, kpi, channel: 'Total', yearType, local },
+                        user: req.user
+                    };
+                    const mockRes = {
+                        json: (data) => resolve({ kpi, period: 'current', data }),
+                        status: () => mockRes,
+                        send: () => { }
+                    };
+                    getTendenciaData(mockReq, mockRes);
+                }),
+                // Previous period
+                new Promise((resolve) => {
+                    const prevMockReq = {
+                        query: { startDate: prevStartDate, endDate: prevEndDate, kpi, channel: 'Total', yearType, local },
+                        user: req.user
+                    };
+                    const prevMockRes = {
+                        json: (data) => resolve({ kpi, period: 'previous', data }),
+                        status: () => prevMockRes,
+                        send: () => { }
+                    };
+                    getTendenciaData(prevMockReq, prevMockRes);
+                })
+            ]);
+
+            // Wait for all KPI data to load in parallel
+            const allKpiData = await Promise.all(kpiPromises);
+
+            // Organize data by KPI
+            const kpiData = {};
+            const prevKpiData = {};
+            allKpiData.forEach(result => {
+                if (result.period === 'current') {
+                    kpiData[result.kpi] = result.data;
+                } else {
+                    prevKpiData[result.kpi] = result.data;
+                }
+            });
+
+            // Extract pctPresupuesto and pctAnterior with trend data
+            const stats = {};
+            for (const kpi of kpis) {
+                if (kpiData[kpi] && kpiData[kpi].resumen) {
+                    const currentPctPpto = kpiData[kpi].resumen.pctPresupuesto;
+                    const currentPctAnt = kpiData[kpi].resumen.pctAnterior;
+
+                    // Calculate trends if previous period data is available
+                    let trendPpto = null;
+                    let trendAnt = null;
+
+                    if (prevKpiData[kpi] && prevKpiData[kpi].resumen) {
+                        const prevPctPpto = prevKpiData[kpi].resumen.pctPresupuesto;
+                        const prevPctAnt = prevKpiData[kpi].resumen.pctAnterior;
+
+                        // Calculate trend for Presupuesto
+                        const diffPpto = currentPctPpto - prevPctPpto;
+                        const pctChangePpto = prevPctPpto !== 0 ? (diffPpto / prevPctPpto) * 100 : 0;
+                        trendPpto = {
+                            direction: diffPpto > 0.001 ? 'up' : diffPpto < -0.001 ? 'down' : 'neutral',
+                            percentage: pctChangePpto,
+                            previousValue: prevPctPpto
+                        };
+
+                        // Calculate trend for Anterior
+                        const diffAnt = currentPctAnt - prevPctAnt;
+                        const pctChangeAnt = prevPctAnt !== 0 ? (diffAnt / prevPctAnt) * 100 : 0;
+                        trendAnt = {
+                            direction: diffAnt > 0.001 ? 'up' : diffAnt < -0.001 ? 'down' : 'neutral',
+                            percentage: pctChangeAnt,
+                            previousValue: prevPctAnt
+                        };
+                    }
+
+                    stats[kpi] = {
+                        pctPresupuesto: currentPctPpto,
+                        pctAnterior: currentPctAnt,
+                        trendPresupuesto: trendPpto,
+                        trendAnterior: trendAnt
+                    };
+                }
+            }
+
+            return {
+                local,
+                stats
+            };
+        }));
+
+        console.log('🎯 Dashboard multi-KPI results for', localesArray, ':');
+        results.forEach(r => {
+            console.log(`  ${r.local}:`, {
+                Ventas_pctPpto: r.stats.Ventas?.pctPresupuesto,
+                Trans_pctPpto: r.stats.Transacciones?.pctPresupuesto,
+                TQP_pctPpto: r.stats.TQP?.pctPresupuesto
+            });
+        });
+
+        res.json({ results });
+    } catch (err) {
+        console.error('Error in /api/dashboard/multi-kpi:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+
+// ==========================================
 // EVENTOS ENDPOINTS (protected by AccesoEventos permission)
 //==========================================
 
@@ -805,7 +980,87 @@ app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
     }
 });
 
+// ==========================================
+// DASHBOARD CONFIG ENDPOINTS (user-specific)
+// ==========================================
+
+// GET /api/user/dashboard-config - Get current user's dashboard preferences
+app.get('/api/user/dashboard-config', authMiddleware, async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('userId', sql.Int, req.user.userId)
+            .query('SELECT DashboardLocales, ComparativePeriod FROM APP_USUARIOS WHERE Id = @userId');
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        const dashboardLocalesJson = result.recordset[0].DashboardLocales;
+        const dashboardLocales = dashboardLocalesJson ? JSON.parse(dashboardLocalesJson) : [];
+        const comparativePeriod = result.recordset[0].ComparativePeriod || 'Month';
+
+        res.json({ dashboardLocales, comparativePeriod });
+    } catch (err) {
+        console.error('Error in GET /api/user/dashboard-config:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/user/dashboard-config - Save current user's dashboard preferences
+app.put('/api/user/dashboard-config', authMiddleware, async (req, res) => {
+    try {
+        const { dashboardLocales, comparativePeriod } = req.body;
+
+        // Validate dashboardLocales: must be array, max 5 items
+        if (dashboardLocales !== undefined) {
+            if (!Array.isArray(dashboardLocales)) {
+                return res.status(400).json({ error: 'dashboardLocales debe ser un array' });
+            }
+            if (dashboardLocales.length > 5) {
+                return res.status(400).json({ error: 'Máximo 5 locales permitidos' });
+            }
+        }
+
+        // Validate comparativePeriod: must be 'Week', 'Month', or 'Year'
+        if (comparativePeriod !== undefined) {
+            if (!['Week', 'Month', 'Year'].includes(comparativePeriod)) {
+                return res.status(400).json({ error: 'comparativePeriod debe ser Week, Month o Year' });
+            }
+        }
+
+        const pool = await poolPromise;
+        const updates = [];
+        const inputs = { userId: req.user.userId };
+
+        if (dashboardLocales !== undefined) {
+            updates.push('DashboardLocales = @dashboardLocales');
+            inputs.dashboardLocales = JSON.stringify(dashboardLocales);
+        }
+        if (comparativePeriod !== undefined) {
+            updates.push('ComparativePeriod = @comparativePeriod');
+            inputs.comparativePeriod = comparativePeriod;
+        }
+
+        if (updates.length > 0) {
+            const request = pool.request();
+            request.input('userId', sql.Int, inputs.userId);
+            if (inputs.dashboardLocales) request.input('dashboardLocales', sql.NVarChar, inputs.dashboardLocales);
+            if (inputs.comparativePeriod) request.input('comparativePeriod', sql.VarChar, inputs.comparativePeriod);
+
+            await request.query(`UPDATE APP_USUARIOS SET ${updates.join(', ')} WHERE Id = @userId`);
+        }
+
+        console.log(`✅ Dashboard config saved for user ${req.user.email}:`, { dashboardLocales, comparativePeriod });
+        res.json({ success: true, dashboardLocales, comparativePeriod });
+    } catch (err) {
+        console.error('Error in PUT /api/user/dashboard-config:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // POST /api/tactica - Generate AI tactical analysis
+
 app.post('/api/tactica', authMiddleware, async (req, res) => {
     try {
         const data = req.body;
@@ -836,7 +1091,86 @@ app.post('/api/tactica', authMiddleware, async (req, res) => {
     }
 });
 
+// ==========================================
+// DATABASE CONFIGURATION ENDPOINTS (admin only)
+// ==========================================
+
+const { getDBConfig, saveDBConfig, testConnection } = require('./dbConfig');
+const { getCurrentMode, MODES } = require('./db');
+
+// GET /api/admin/db-config - Get current database configuration
+app.get('/api/admin/db-config', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos de administrador' });
+        }
+
+        const config = await getDBConfig();
+        const currentMode = getCurrentMode();
+
+        res.json({
+            config,
+            currentMode,
+            availableModes: Object.values(MODES)
+        });
+    } catch (err) {
+        console.error('Error in GET /api/admin/db-config:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/admin/test-db-connection - Test a database connection
+app.post('/api/admin/test-db-connection', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos de administrador' });
+        }
+
+        const config = req.body;
+        const result = await testConnection(config);
+
+        res.json(result);
+    } catch (err) {
+        console.error('Error testing connection:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/admin/db-config - Save database configuration
+app.post('/api/admin/db-config', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos de administrador' });
+        }
+
+        const config = req.body;
+        const username = req.user.email || req.user.nombre || 'admin';
+
+        // Test connection first
+        const testResult = await testConnection(config);
+        if (!testResult.success) {
+            return res.status(400).json({
+                error: 'Conexión fallida',
+                message: testResult.message
+            });
+        }
+
+        // Save configuration
+        await saveDBConfig(config, username);
+
+        res.json({
+            success: true,
+            message: 'Configuración guardada. Reinicie el servidor para aplicar los cambios.',
+            requiresRestart: true
+        });
+    } catch (err) {
+        console.error('Error saving DB config:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
+    console.log(`📊 Database mode: ${getCurrentMode() || 'initializing...'}`);
 });
 

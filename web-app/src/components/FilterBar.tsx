@@ -31,15 +31,15 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     const canales = ['Todos', 'Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp'];
 
     return (
-        <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-100 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-md border border-gray-100 mb-4 sm:mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 sm:gap-6">
                 <div>
-                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Año</label>
+                    <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Año</label>
                     <div className="relative">
                         <select
                             value={year}
                             disabled
-                            className="block w-full rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed shadow-sm px-4 py-3 font-semibold text-sm appearance-none transition-smooth"
+                            className="block w-full rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed shadow-sm px-3 sm:px-4 py-2.5 sm:py-3 font-semibold text-sm appearance-none transition-smooth touch-target"
                         >
                             <option value={2026}>2026</option>
                         </select>
@@ -47,11 +47,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 </div>
 
                 <div>
-                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Local</label>
+                    <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Local</label>
                     <select
                         value={filterLocal}
                         onChange={(e) => setFilterLocal(e.target.value)}
-                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-4 py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300"
+                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300 touch-target"
                     >
                         <option value="">Seleccionar...</option>
                         {groups.length > 0 && (
@@ -72,11 +72,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 </div>
 
                 <div>
-                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">KPI</label>
+                    <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">KPI</label>
                     <select
                         value={filterKpi}
                         onChange={(e) => setFilterKpi(e.target.value)}
-                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-4 py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300"
+                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300 touch-target"
                     >
                         <option value="Ventas">Ventas</option>
                         <option value="Transacciones">Transacciones</option>
@@ -85,11 +85,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 </div>
 
                 <div>
-                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Canal</label>
+                    <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Canal</label>
                     <select
                         value={filterCanal}
                         onChange={(e) => setFilterCanal(e.target.value)}
-                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-4 py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300"
+                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300 touch-target"
                     >
                         {canales.map(canal => (
                             <option key={canal} value={canal}>{canal}</option>
@@ -98,11 +98,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 </div>
 
                 <div>
-                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Comparar con</label>
+                    <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Comparar con</label>
                     <select
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value)}
-                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-4 py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300"
+                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300 touch-target"
                     >
                         <option value="Presupuesto">Presupuesto</option>
                         <option value="Año Anterior">Año Anterior</option>
@@ -111,11 +111,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 </div>
 
                 <div>
-                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Tipo Año</label>
+                    <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Tipo Año</label>
                     <select
                         value={yearType}
                         onChange={(e) => setYearType(e.target.value as 'Año Anterior' | 'Año Anterior Ajustado')}
-                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-4 py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300"
+                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300 touch-target"
                     >
                         <option value="Año Anterior">Natural</option>
                         <option value="Año Anterior Ajustado">Ajustado</option>

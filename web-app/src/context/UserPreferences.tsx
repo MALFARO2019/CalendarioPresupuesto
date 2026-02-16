@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { getDashboardConfig, saveDashboardConfig } from '../api';
+import type { ComparativePeriod } from '../shared/types/modules';
 
 export type PctDisplayMode = 'base100' | 'differential';
 export type YearType = 'Año Anterior' | 'Año Anterior Ajustado';
@@ -8,6 +10,8 @@ interface UserPreferences {
     pctDecimals: number;         // Decimals for percentages (0-3)
     valueDecimals: number;       // Decimals for currency/values (0-3)
     defaultYearType: YearType;   // Default year comparison type
+    dashboardLocales?: string[]; // User-selected locales for dashboard KPIs (max 5)
+    comparativePeriod: ComparativePeriod; // Comparative period for trend calculations
 }
 
 interface UserPreferencesContextType {
@@ -16,6 +20,10 @@ interface UserPreferencesContextType {
     setPctDecimals: (decimals: number) => void;
     setValueDecimals: (decimals: number) => void;
     setDefaultYearType: (yearType: YearType) => void;
+    setDashboardLocales: (locales: string[]) => void;
+    setComparativePeriod: (period: ComparativePeriod) => void;
+    addDashboardLocal: (local: string) => boolean;
+    removeDashboardLocal: (local: string) => void;
     /** Format a percentage (already in 0-1 scale, e.g. 1.05 = 105%) */
     formatPctValue: (pct: number) => string;
     /** Format a percentage already in 0-100 scale (e.g. 105 = 105%) */
@@ -29,6 +37,7 @@ const defaultPreferences: UserPreferences = {
     pctDecimals: 1,
     valueDecimals: 0,
     defaultYearType: 'Año Anterior',
+    comparativePeriod: 'Month',
 };
 
 const UserPreferencesContext = createContext<UserPreferencesContextType | null>(null);
@@ -50,10 +59,52 @@ function savePreferences(prefs: UserPreferences) {
 
 export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [preferences, setPreferences] = useState<UserPreferences>(loadPreferences);
+    const [serverSynced, setServerSynced] = useState(false);
 
+    // Load dashboard config (locales + comparative period) from server on mount
+    useEffect(() => {
+        const loadDashboardConfig = async () => {
+            try {
+                const config = await getDashboardConfig();
+                setPreferences(prev => ({
+                    ...prev,
+                    dashboardLocales: config.dashboardLocales && config.dashboardLocales.length > 0
+                        ? config.dashboardLocales
+                        : prev.dashboardLocales,
+                    comparativePeriod: (config.comparativePeriod as ComparativePeriod) || prev.comparativePeriod
+                }));
+                setServerSynced(true);
+            } catch (err) {
+                console.error('Error loading dashboard config from server:', err);
+                setServerSynced(true); // Still mark as synced to allow using localStorage fallback
+            }
+        };
+        loadDashboardConfig();
+    }, []);
+
+    // Save to localStorage whenever preferences change
     useEffect(() => {
         savePreferences(preferences);
     }, [preferences]);
+
+    // Save dashboard config to server whenever it changes (debounced)
+    useEffect(() => {
+        if (!serverSynced) return; // Don't save until initial load is complete
+
+        const timeoutId = setTimeout(async () => {
+            try {
+                await saveDashboardConfig({
+                    dashboardLocales: preferences.dashboardLocales,
+                    comparativePeriod: preferences.comparativePeriod
+                });
+                console.log('✅ Dashboard config saved to server');
+            } catch (err) {
+                console.error('Error saving dashboard config to server:', err);
+            }
+        }, 1000); // Debounce 1 second
+
+        return () => clearTimeout(timeoutId);
+    }, [preferences.dashboardLocales, preferences.comparativePeriod, serverSynced]);
 
     const setPctDisplayMode = (mode: PctDisplayMode) => {
         setPreferences(prev => ({ ...prev, pctDisplayMode: mode }));
@@ -69,6 +120,27 @@ export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ chi
 
     const setDefaultYearType = (yearType: YearType) => {
         setPreferences(prev => ({ ...prev, defaultYearType: yearType }));
+    };
+
+    const setDashboardLocales = (locales: string[]) => {
+        setPreferences(prev => ({ ...prev, dashboardLocales: locales.slice(0, 5) }));
+    };
+
+    const setComparativePeriod = (period: ComparativePeriod) => {
+        setPreferences(prev => ({ ...prev, comparativePeriod: period }));
+    };
+
+    const addDashboardLocal = (local: string): boolean => {
+        const current = preferences.dashboardLocales || [];
+        if (current.length >= 5) return false;
+        if (current.includes(local)) return true;
+        setPreferences(prev => ({ ...prev, dashboardLocales: [...current, local] }));
+        return true;
+    };
+
+    const removeDashboardLocal = (local: string) => {
+        const current = preferences.dashboardLocales || [];
+        setPreferences(prev => ({ ...prev, dashboardLocales: current.filter(l => l !== local) }));
     };
 
     /** Format a percentage value where 1.0 = 100% (0-1 scale) */
@@ -93,8 +165,17 @@ export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ chi
 
     return (
         <UserPreferencesContext.Provider value={{
-            preferences, setPctDisplayMode, setPctDecimals, setValueDecimals, setDefaultYearType,
-            formatPctValue, formatPct100
+            preferences,
+            setPctDisplayMode,
+            setPctDecimals,
+            setValueDecimals,
+            setDefaultYearType,
+            setDashboardLocales,
+            setComparativePeriod,
+            addDashboardLocal,
+            removeDashboardLocal,
+            formatPctValue,
+            formatPct100
         }}>
             {children}
         </UserPreferencesContext.Provider>

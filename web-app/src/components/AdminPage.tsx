@@ -14,6 +14,7 @@ import {
     CheckCircle, Users, Store, Calendar, Edit2, X, Check, Shield, Bot, Save, RotateCcw
 } from 'lucide-react';
 import { EventsManagement } from './EventsManagement';
+import { DatabaseConfigPanel } from './DatabaseConfigPanel';
 
 interface AdminPageProps {
     onBack: () => void;
@@ -61,7 +62,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
 
     // Auto-select tab based on permissions: if user has eventos but not admin, default to eventos
     const defaultTab = canAccessUsers ? 'users' : 'events';
-    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia'>(defaultTab);
+    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [allStores, setAllStores] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
@@ -75,6 +76,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [newAccesoTendencia, setNewAccesoTendencia] = useState(false);
     const [newAccesoTactica, setNewAccesoTactica] = useState(false);
     const [newAccesoEventos, setNewAccesoEventos] = useState(false);
+    const [newAccesoPresupuesto, setNewAccesoPresupuesto] = useState(true);
+    const [newAccesoTiempos, setNewAccesoTiempos] = useState(false);
+    const [newAccesoEvaluaciones, setNewAccesoEvaluaciones] = useState(false);
+    const [newAccesoInventarios, setNewAccesoInventarios] = useState(false);
     const [newEsAdmin, setNewEsAdmin] = useState(false);
     const [formError, setFormError] = useState('');
     const [formSuccess, setFormSuccess] = useState('');
@@ -89,6 +94,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editAccesoTendencia, setEditAccesoTendencia] = useState(false);
     const [editAccesoTactica, setEditAccesoTactica] = useState(false);
     const [editAccesoEventos, setEditAccesoEventos] = useState(false);
+    const [editAccesoPresupuesto, setEditAccesoPresupuesto] = useState(true);
+    const [editAccesoTiempos, setEditAccesoTiempos] = useState(false);
+    const [editAccesoEvaluaciones, setEditAccesoEvaluaciones] = useState(false);
+    const [editAccesoInventarios, setEditAccesoInventarios] = useState(false);
     const [editEsAdmin, setEditEsAdmin] = useState(false);
 
     const [serverError, setServerError] = useState('');
@@ -186,6 +195,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 newAccesoTendencia,
                 newAccesoTactica,
                 newAccesoEventos,
+                newAccesoPresupuesto,
+                newAccesoTiempos,
+                newAccesoEvaluaciones,
+                newAccesoInventarios,
                 newEsAdmin
             );
             setFormSuccess(`Usuario ${newEmail} creado. Clave: ${result.clave}`);
@@ -196,6 +209,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             setNewAccesoTendencia(false);
             setNewAccesoTactica(false);
             setNewAccesoEventos(false);
+            setNewAccesoPresupuesto(true);
+            setNewAccesoTiempos(false);
+            setNewAccesoEvaluaciones(false);
+            setNewAccesoInventarios(false);
             setNewEsAdmin(false);
             setShowForm(false);
             loadData();
@@ -214,6 +231,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setEditAccesoTendencia(user.accesoTendencia);
         setEditAccesoTactica(user.accesoTactica);
         setEditAccesoEventos(user.accesoEventos);
+        setEditAccesoPresupuesto(user.accesoPresupuesto);
+        setEditAccesoTiempos(user.accesoTiempos);
+        setEditAccesoEvaluaciones(user.accesoEvaluaciones);
+        setEditAccesoInventarios(user.accesoInventarios);
         setEditEsAdmin(user.esAdmin);
     };
 
@@ -233,6 +254,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 editAccesoTendencia,
                 editAccesoTactica,
                 editAccesoEventos,
+                editAccesoPresupuesto,
+                editAccesoTiempos,
+                editAccesoEvaluaciones,
+                editAccesoInventarios,
                 editEsAdmin
             );
             setFormSuccess(`Usuario ${editEmail} actualizado exitosamente`);
@@ -332,6 +357,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                 IA Táctica
                             </button>
                         )}
+                        {canAccessUsers && (
+                            <button
+                                onClick={() => setActiveTab('database')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'database'
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                <Store className="w-4 h-4" />
+                                Base de Datos
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -423,7 +460,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                     {/* Permissions */}
                                     <div>
                                         <label className="block text-xs font-bold text-gray-600 uppercase mb-2">Permisos</label>
-                                        <div className="flex flex-wrap gap-3">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             <label className="flex items-center gap-2 cursor-pointer">
                                                 <input
                                                     type="checkbox"
@@ -459,6 +496,49 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                     className="w-4 h-4 text-indigo-600 rounded"
                                                 />
                                                 <span className="text-sm font-medium text-gray-700">Es Administrador</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Module Permissions */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-600 uppercase mb-2">Módulos KPI</label>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <label className="flex items-center gap-2 cursor-pointer bg-orange-50 p-2 rounded-lg border border-orange-200">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={newAccesoPresupuesto}
+                                                    onChange={e => setNewAccesoPresupuesto(e.target.checked)}
+                                                    className="w-4 h-4 text-orange-600 rounded"
+                                                />
+                                                <span className="text-sm font-medium text-gray-700">🔥 Presupuesto</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer bg-blue-50 p-2 rounded-lg border border-blue-200">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={newAccesoTiempos}
+                                                    onChange={e => setNewAccesoTiempos(e.target.checked)}
+                                                    className="w-4 h-4 text-blue-600 rounded"
+                                                />
+                                                <span className="text-sm font-medium text-gray-700">⏱️ Tiempos</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer bg-green-50 p-2 rounded-lg border border-green-200">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={newAccesoEvaluaciones}
+                                                    onChange={e => setNewAccesoEvaluaciones(e.target.checked)}
+                                                    className="w-4 h-4 text-green-600 rounded"
+                                                />
+                                                <span className="text-sm font-medium text-gray-700">✅ Evaluaciones</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer bg-purple-50 p-2 rounded-lg border border-purple-200">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={newAccesoInventarios}
+                                                    onChange={e => setNewAccesoInventarios(e.target.checked)}
+                                                    className="w-4 h-4 text-purple-600 rounded"
+                                                />
+                                                <span className="text-sm font-medium text-gray-700">📦 Inventarios</span>
                                             </label>
                                         </div>
                                     </div>
@@ -578,6 +658,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             {user.accesoTendencia && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Tendencia</span>}
                                                             {user.accesoTactica && <span className="text-xs bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-full font-semibold">Táctica</span>}
                                                             {user.accesoEventos && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Eventos</span>}
+                                                            {user.accesoPresupuesto && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">🔥 Presupuesto</span>}
+                                                            {user.accesoTiempos && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">⏱️ Tiempos</span>}
+                                                            {user.accesoEvaluaciones && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">✅ Evaluaciones</span>}
+                                                            {user.accesoInventarios && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">📦 Inventarios</span>}
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4">
@@ -683,7 +767,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                             {/* Permissions */}
                                             <div>
                                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-2">Permisos</label>
-                                                <div className="flex flex-wrap gap-3">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                     <label className="flex items-center gap-2 cursor-pointer">
                                                         <input
                                                             type="checkbox"
@@ -719,6 +803,49 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             className="w-4 h-4 text-indigo-600 rounded"
                                                         />
                                                         <span className="text-sm font-medium text-gray-700">Es Administrador</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            {/* Module Permissions */}
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-600 uppercase mb-2">Módulos KPI</label>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-orange-50 p-2 rounded-lg border border-orange-200">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editAccesoPresupuesto}
+                                                            onChange={e => setEditAccesoPresupuesto(e.target.checked)}
+                                                            className="w-4 h-4 text-orange-600 rounded"
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">🔥 Presupuesto</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-blue-50 p-2 rounded-lg border border-blue-200">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editAccesoTiempos}
+                                                            onChange={e => setEditAccesoTiempos(e.target.checked)}
+                                                            className="w-4 h-4 text-blue-600 rounded"
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">⏱️ Tiempos</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-green-50 p-2 rounded-lg border border-green-200">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editAccesoEvaluaciones}
+                                                            onChange={e => setEditAccesoEvaluaciones(e.target.checked)}
+                                                            className="w-4 h-4 text-green-600 rounded"
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">✅ Evaluaciones</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-purple-50 p-2 rounded-lg border border-purple-200">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editAccesoInventarios}
+                                                            onChange={e => setEditAccesoInventarios(e.target.checked)}
+                                                            className="w-4 h-4 text-purple-600 rounded"
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">📦 Inventarios</span>
                                                     </label>
                                                 </div>
                                             </div>
@@ -792,6 +919,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                     </>
                 ) : activeTab === 'events' ? (
                     <EventsManagement />
+                ) : activeTab === 'database' ? (
+                    <DatabaseConfigPanel />
                 ) : (
                     /* IA Táctica Tab */
                     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
@@ -800,93 +929,78 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                 <Bot className="w-5 h-5 text-cyan-700" />
                             </div>
                             <div>
-                                <h2 className="text-lg font-bold text-gray-800">Prompt de Análisis Táctico</h2>
-                                <p className="text-sm text-gray-500">Personalizá el prompt que se envía a la IA para generar análisis</p>
+                                <h2 className="text-xl font-bold text-gray-900">Configuración IA Táctica</h2>
+                                <p className="text-sm text-gray-500">Personalizar el prompt de análisis estratégico</p>
                             </div>
                         </div>
 
-                        {/* Messages */}
                         {promptMessage && (
-                            <div className={`flex items-center gap-2 rounded-xl px-4 py-3 mb-4 ${promptMessage.type === 'success'
-                                    ? 'bg-green-50 border border-green-200'
-                                    : 'bg-red-50 border border-red-200'
+                            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl mb-4 ${promptMessage.type === 'success'
+                                ? 'bg-green-50 border border-green-200'
+                                : 'bg-red-50 border border-red-200'
                                 }`}>
-                                {promptMessage.type === 'success'
-                                    ? <CheckCircle className="w-4 h-4 text-green-600" />
-                                    : <AlertCircle className="w-4 h-4 text-red-500" />
-                                }
+                                {promptMessage.type === 'success' ? (
+                                    <CheckCircle className="w-5 h-5 text-green-600" />
+                                ) : (
+                                    <AlertCircle className="w-5 h-5 text-red-600" />
+                                )}
                                 <span className={`text-sm font-medium ${promptMessage.type === 'success' ? 'text-green-700' : 'text-red-700'
-                                    }`}>{promptMessage.text}</span>
+                                    }`}>
+                                    {promptMessage.text}
+                                </span>
                             </div>
                         )}
 
                         {promptLoading ? (
-                            <div className="flex items-center justify-center py-16">
-                                <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
-                                <span className="ml-3 text-gray-500">Cargando prompt...</span>
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                                <span className="ml-3 text-gray-600">Cargando configuración...</span>
                             </div>
                         ) : (
                             <>
-                                {/* Placeholders info */}
-                                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-                                    <p className="text-xs font-bold text-blue-800 uppercase mb-2">Placeholders disponibles</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {['{{storeName}}', '{{year}}', '{{kpi}}', '{{monthlyTable}}', '{{annualTotals}}'].map(ph => (
-                                            <code
-                                                key={ph}
-                                                className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-mono cursor-pointer hover:bg-blue-200 transition-all"
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText(ph);
-                                                    setPromptMessage({ type: 'success', text: `${ph} copiado al portapapeles` });
-                                                    setTimeout(() => setPromptMessage(null), 2000);
-                                                }}
-                                                title="Click para copiar"
-                                            >
-                                                {ph}
-                                            </code>
-                                        ))}
-                                    </div>
-                                    <p className="text-xs text-blue-600 mt-2">
-                                        Estos placeholders se reemplazan automáticamente con los datos reales al generar el análisis. Click para copiar.
-                                    </p>
+                                <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-4">
+                                    <label className="block text-xs font-bold text-gray-600 uppercase mb-2">
+                                        Prompt del Sistema
+                                    </label>
+                                    <textarea
+                                        value={promptValue}
+                                        onChange={e => setPromptValue(e.target.value)}
+                                        className="w-full h-64 px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm font-mono resize-none transition-all"
+                                        placeholder="Escribe el prompt para el análisis de la IA..."
+                                    />
+                                    {promptMeta.fecha && (
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Última modificación: {new Date(promptMeta.fecha).toLocaleString('es-CR')}
+                                            {promptMeta.usuario && ` por ${promptMeta.usuario}`}
+                                        </p>
+                                    )}
                                 </div>
 
-                                {/* Prompt textarea */}
-                                <textarea
-                                    value={promptValue}
-                                    onChange={e => setPromptValue(e.target.value)}
-                                    rows={18}
-                                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 text-sm font-mono transition-all resize-y leading-relaxed"
-                                    placeholder="Escribí el prompt para el análisis táctico..."
-                                />
-
-                                {/* Metadata */}
-                                {promptMeta.fecha && (
-                                    <p className="text-xs text-gray-400 mt-2">
-                                        Última modificación: {new Date(promptMeta.fecha).toLocaleString('es-CR')} por {promptMeta.usuario || 'desconocido'}
-                                    </p>
-                                )}
-
-                                {/* Actions */}
-                                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+                                <div className="flex gap-3 justify-end">
                                     <button
                                         onClick={handleResetPrompt}
-                                        disabled={promptValue === promptOriginal}
-                                        className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                        disabled={promptValue === promptOriginal || promptSaving}
+                                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <RotateCcw className="w-4 h-4" />
-                                        Descartar Cambios
+                                        Revertir
                                     </button>
                                     <button
                                         onClick={handleSavePrompt}
-                                        disabled={promptSaving || promptValue === promptOriginal || !promptValue.trim()}
-                                        className="flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                                        disabled={promptValue === promptOriginal || promptSaving}
+                                        className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                                     >
-                                        {promptSaving
-                                            ? <Loader2 className="w-4 h-4 animate-spin" />
-                                            : <Save className="w-4 h-4" />
-                                        }
-                                        {promptSaving ? 'Guardando...' : 'Guardar Prompt'}
+                                        {promptSaving ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Guardando...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Save className="w-4 h-4" />
+                                                Guardar Cambios
+                                            </>
+                                        )}
                                     </button>
                                 </div>
                             </>
@@ -897,4 +1011,3 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         </div>
     );
 };
-

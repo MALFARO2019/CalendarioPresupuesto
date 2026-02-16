@@ -57,7 +57,8 @@ try {
         Write-Ok "Node.js ya instalado: $nodeVersion"
         $nodeInstalled = $true
     }
-} catch {}
+}
+catch {}
 
 if (-not $nodeInstalled) {
     Write-Info "Descargando Node.js LTS..."
@@ -76,7 +77,8 @@ if (-not $nodeInstalled) {
     $nodeVersion = & node --version 2>$null
     if ($nodeVersion) {
         Write-Ok "Node.js instalado exitosamente: $nodeVersion"
-    } else {
+    }
+    else {
         Write-Err "No se pudo instalar Node.js. Instalelo manualmente desde https://nodejs.org"
         exit 1
     }
@@ -99,7 +101,8 @@ if (-not $nssmInstalled) {
             $nssmInstalled = $true
             Write-Ok "NSSM ya disponible en PATH: $nssmPath"
         }
-    } catch {}
+    }
+    catch {}
 }
 
 if (-not $nssmInstalled) {
@@ -120,7 +123,8 @@ if (-not $nssmInstalled) {
     $nssm64 = Get-ChildItem -Path $nssmExtract -Recurse -Filter "nssm.exe" | Where-Object { $_.DirectoryName -like "*win64*" } | Select-Object -First 1
     if ($nssm64) {
         Copy-Item $nssm64.FullName -Destination $nssmPath -Force
-    } else {
+    }
+    else {
         # Fallback: cualquier nssm.exe encontrado
         $nssmAny = Get-ChildItem -Path $nssmExtract -Recurse -Filter "nssm.exe" | Select-Object -First 1
         Copy-Item $nssmAny.FullName -Destination $nssmPath -Force
@@ -143,9 +147,10 @@ $iisInstalled = (Get-WindowsFeature Web-Server).Installed
 
 if (-not $iisInstalled) {
     Write-Info "Instalando IIS..."
-    Install-WindowsFeature -Name Web-Server,Web-Common-Http,Web-Default-Doc,Web-Static-Content,Web-Http-Redirect,Web-Http-Logging,Web-Request-Monitor,Web-Filtering,Web-Stat-Compression,Web-Dyn-Compression -IncludeManagementTools
+    Install-WindowsFeature -Name Web-Server, Web-Common-Http, Web-Default-Doc, Web-Static-Content, Web-Http-Redirect, Web-Http-Logging, Web-Request-Monitor, Web-Filtering, Web-Stat-Compression, Web-Dyn-Compression -IncludeManagementTools
     Write-Ok "IIS instalado"
-} else {
+}
+else {
     Write-Ok "IIS ya instalado"
 }
 
@@ -165,7 +170,8 @@ if (-not $urlRewriteInstalled) {
     Write-Info "Instalando URL Rewrite..."
     Start-Process msiexec.exe -ArgumentList "/i `"$urlRewritePath`" /qn /norestart" -Wait -NoNewWindow
     Write-Ok "URL Rewrite instalado"
-} else {
+}
+else {
     Write-Ok "URL Rewrite ya instalado"
 }
 
@@ -181,7 +187,8 @@ if (-not $arrInstalled) {
     Write-Info "Instalando ARR..."
     Start-Process msiexec.exe -ArgumentList "/i `"$arrPath`" /qn /norestart" -Wait -NoNewWindow
     Write-Ok "ARR instalado"
-} else {
+}
+else {
     Write-Ok "ARR ya instalado"
 }
 
@@ -190,7 +197,8 @@ Write-Info "Habilitando ARR Proxy..."
 try {
     Set-WebConfigurationProperty -pspath 'MACHINE/WEBROOT/APPHOST' -filter "system.webServer/proxy" -name "enabled" -value "True" -ErrorAction SilentlyContinue
     Write-Ok "ARR Proxy habilitado"
-} catch {
+}
+catch {
     Write-Warn "No se pudo habilitar ARR automaticamente. Habilitelo manualmente en IIS Manager -> Application Request Routing -> Server Proxy Settings"
 }
 
@@ -223,13 +231,16 @@ if (-not (Test-Path $webAppDist)) {
     $webAppSrc = Join-Path (Split-Path $SourceDir) "web-app"
     
     Push-Location $webAppSrc
+    $ErrorActionPreference = "Continue"
     & npm install 2>&1 | Out-Null
     & npm run build 2>&1
+    $ErrorActionPreference = "Stop"
     Pop-Location
     
     if (Test-Path $webAppDist) {
         Write-Ok "Frontend compilado exitosamente"
-    } else {
+    }
+    else {
         Write-Err "Error al compilar el frontend. Ejecute 'npm run build' en la carpeta web-app manualmente."
         exit 1
     }
@@ -240,13 +251,17 @@ Write-Info "Copiando frontend..."
 robocopy "$webAppDist" "$InstallDir\web-app" /MIR /NFL /NDL /NJH /NJS /nc /ns /np 2>&1 | Out-Null
 Write-Ok "Frontend copiado a $InstallDir\web-app"
 
-# Copiar backend (excluyendo node_modules y .env)
+# Copiar backend (todos los .js y package files, excluyendo node_modules y .env)
 Write-Info "Copiando backend..."
-$backendFiles = @("server.js", "db.js", "auth.js", "emailService.js", "eventos.js", "tendencia.js", "package.json", "package-lock.json")
-foreach ($file in $backendFiles) {
-    $src = Join-Path $serverSrc $file
+# Copiar todos los archivos .js
+Get-ChildItem -Path $serverSrc -Filter "*.js" | ForEach-Object {
+    Copy-Item $_.FullName -Destination "$InstallDir\server\$($_.Name)" -Force
+}
+# Copiar package files
+@("package.json", "package-lock.json") | ForEach-Object {
+    $src = Join-Path $serverSrc $_
     if (Test-Path $src) {
-        Copy-Item $src -Destination "$InstallDir\server\$file" -Force
+        Copy-Item $src -Destination "$InstallDir\server\$_" -Force
     }
 }
 Write-Ok "Backend copiado a $InstallDir\server"
@@ -278,14 +293,17 @@ SMTP_PASS=Rosti2020
     
     Write-Ok "Archivo .env creado (REVISE y ajuste las credenciales)"
     Write-Warn "IMPORTANTE: Edite $envFile con las credenciales correctas de produccion"
-} else {
+}
+else {
     Write-Ok "Archivo .env ya existe, no se sobreescribe"
 }
 
 # Instalar dependencias de Node.js
 Write-Info "Instalando dependencias de Node.js..."
 Push-Location "$InstallDir\server"
-& npm install --production 2>&1 | Out-Null
+$ErrorActionPreference = "Continue"
+& npm install --omit=dev 2>&1 | Out-Null
+$ErrorActionPreference = "Stop"
 Pop-Location
 Write-Ok "Dependencias instaladas"
 
@@ -303,7 +321,7 @@ $webConfig = @"
                 <!-- Redirigir /api/* al backend Node.js -->
                 <rule name="API Proxy" stopProcessing="true">
                     <match url="^api/(.*)" />
-                    <action type="Rewrite" url="http://localhost:$NodePort/api/{R:1}" />
+                    <action type="Rewrite" url="http://localhost:${NodePort}/api/{R:1}" />
                 </rule>
                 
                 <!-- SPA fallback: servir index.html para rutas del frontend -->
@@ -358,7 +376,8 @@ try {
             Write-Ok "Default Web Site detenido"
         }
     }
-} catch {}
+}
+catch {}
 
 # Crear o actualizar el sitio
 $existingSite = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
@@ -367,7 +386,8 @@ if ($existingSite) {
     Write-Info "Actualizando sitio existente '$SiteName'..."
     Set-ItemProperty "IIS:\Sites\$SiteName" -Name physicalPath -Value "$InstallDir\web-app"
     Write-Ok "Sitio actualizado"
-} else {
+}
+else {
     Write-Info "Creando sitio '$SiteName'..."
     New-Website -Name $SiteName -PhysicalPath "$InstallDir\web-app" -Port $IISPort -Force | Out-Null
     Write-Ok "Sitio creado en puerto $IISPort"
@@ -413,7 +433,8 @@ Start-Sleep -Seconds 3
 $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($service -and $service.Status -eq "Running") {
     Write-Ok "Servicio '$ServiceName' en ejecucion"
-} else {
+}
+else {
     Write-Warn "El servicio puede tardar unos segundos en iniciar. Verifique con: Get-Service $ServiceName"
 }
 
@@ -427,7 +448,8 @@ $httpRule = Get-NetFirewallRule -DisplayName "CalendarioPresupuesto HTTP" -Error
 if (-not $httpRule) {
     New-NetFirewallRule -DisplayName "CalendarioPresupuesto HTTP" -Direction Inbound -Protocol TCP -LocalPort $IISPort -Action Allow | Out-Null
     Write-Ok "Regla de firewall para puerto $IISPort creada"
-} else {
+}
+else {
     Write-Ok "Regla de firewall HTTP ya existe"
 }
 
@@ -450,7 +472,7 @@ if ($svcCheck) { Write-Ok "Servicio: $($svcCheck.Status)" } else { Write-Warn "S
 # Verificar puerto Node.js
 Start-Sleep -Seconds 2
 $portCheck = Get-NetTCPConnection -LocalPort $NodePort -ErrorAction SilentlyContinue
-if ($portCheck) { Write-Ok "Puerto $NodePort: ESCUCHANDO" } else { Write-Warn "Puerto $NodePort: No detectado (puede tardar unos segundos)" }
+if ($portCheck) { Write-Ok "Puerto ${NodePort}: ESCUCHANDO" } else { Write-Warn "Puerto ${NodePort}: No detectado (puede tardar unos segundos)" }
 
 # Verificar IIS
 $siteCheck = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
@@ -462,7 +484,8 @@ try {
     if ($apiTest.StatusCode -eq 200) {
         Write-Ok "API respondiendo correctamente en puerto $NodePort"
     }
-} catch {
+}
+catch {
     Write-Warn "API aun no responde (puede tardar al establecer conexion con BD)"
 }
 

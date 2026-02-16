@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFormatCurrency } from '../utils/formatters';
 import { getToken, API_BASE } from '../api';
 import { useUserPreferences } from '../context/UserPreferences';
 import { exportTendenciaExcel } from '../utils/excelExporter';
+import { TrendIndicator } from '../shared/components/TrendIndicator';
 
 interface TendenciaAlcanceProps {
     year: number;
@@ -30,6 +31,8 @@ interface ResumenData {
     totalAnterior: number;
     pctPresupuesto: number;
     pctAnterior: number;
+    trendPresupuesto?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number };
+    trendAnterior?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number };
 }
 
 interface CanalRecord {
@@ -54,14 +57,45 @@ interface CanalTotals {
 type SortColumn = 'local' | 'presupuesto' | 'presupuestoAcum' | 'real' | 'pctPresupuesto' | 'anterior' | 'pctAnterior';
 type SortDir = 'asc' | 'desc';
 
+// Memoized row component for better performance
+interface EvaluacionRowProps {
+    row: EvaluacionRecord;
+    kpi: string;
+    fc: (value: number, type: string) => string;
+    formatPct: (pct: number) => string;
+    getAlcanceBadge: (pct: number) => string;
+}
+
+const EvaluacionRow = React.memo(({ row, kpi, fc, formatPct, getAlcanceBadge }: EvaluacionRowProps) => (
+    <tr className="border-b border-gray-100 hover:bg-gray-50">
+        <td className="py-3 px-3 text-sm font-medium text-gray-800">{row.local}</td>
+        <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.presupuesto, kpi)}</td>
+        <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.presupuestoAcum, kpi)}</td>
+        <td className="py-3 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
+        <td className="py-3 px-3 text-right">
+            <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${getAlcanceBadge(row.pctPresupuesto)}`}>
+                {formatPct(row.pctPresupuesto)}
+            </span>
+        </td>
+        <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.anterior, kpi)}</td>
+        <td className="py-3 px-3 text-right">
+            <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${getAlcanceBadge(row.pctAnterior)}`}>
+                {formatPct(row.pctAnterior)}
+            </span>
+        </td>
+    </tr>
+));
+EvaluacionRow.displayName = 'EvaluacionRow';
+
 export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startDate, endDate, groups = [], individualStores = [], onExportExcel }) => {
     const fc = useFormatCurrency();
+    const { preferences } = useUserPreferences();
     const [activeTab, setActiveTab] = useState<'evaluacion' | 'resumenCanal' | 'top10'>('evaluacion');
     const [kpi, setKpi] = useState<string>('Ventas');
     const [channel, setChannel] = useState<string>('Total');
     const [selectedLocal, setSelectedLocal] = useState<string>('Corporativo');
     const [yearType, setYearType] = useState<string>('anterior');
-    const [data, setData] = useState<{ evaluacion: EvaluacionRecord[], resumen: ResumenData, resumenMultiKpi?: Record<string, { totalPresupuestoAcum: number, totalReal: number, totalAnterior: number, pctPresupuesto: number, pctAnterior: number }> } | null>(null);
+    const [data, setData] = useState<{ evaluacion: EvaluacionRecord[], resumen: ResumenData, resumenMultiKpi?: Record<string, { totalPresupuestoAcum: number, totalReal: number, totalAnterior: number, pctPresupuesto: number, pctAnterior: number, trendPresupuesto?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number }, trendAnterior?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number } }> } | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [sortCol, setSortCol] = useState<SortColumn>('pctPresupuesto');
@@ -79,6 +113,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
 
                 const params = new URLSearchParams({ startDate, endDate, kpi, channel, yearType });
                 if (selectedLocal) params.set('local', selectedLocal);
+                params.set('comparativePeriod', preferences.comparativePeriod);
 
                 const url = `${API_BASE}/tendencia?${params}`;
                 console.log('📡 Fetching tendencia:', url);
@@ -101,7 +136,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             }
         };
         fetchData();
-    }, [startDate, endDate, kpi, channel, selectedLocal, yearType]);
+    }, [startDate, endDate, kpi, channel, selectedLocal, yearType, preferences.comparativePeriod]);
 
     // Fetch canal breakdown data when resumenCanal tab is active
     useEffect(() => {
@@ -148,14 +183,14 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
         }
     }, [data, kpi, channel, year, startDate, endDate, onExportExcel]);
 
-    const handleSort = (col: SortColumn) => {
+    const handleSort = useCallback((col: SortColumn) => {
         if (sortCol === col) {
             setSortDir(d => d === 'asc' ? 'desc' : 'asc');
         } else {
             setSortCol(col);
             setSortDir(col === 'local' ? 'asc' : 'desc');
         }
-    };
+    }, [sortCol]);
 
     const sortedEvaluacion = useMemo(() => {
         if (!data?.evaluacion) return [];
@@ -171,22 +206,24 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
         return sorted;
     }, [data, sortCol, sortDir]);
 
-    const getAlcanceBadge = (pct: number) => {
+    const { formatPctValue } = useUserPreferences();
+
+    const getAlcanceBadge = useCallback((pct: number) => {
         if (pct >= 1.0) return 'bg-green-100 text-green-800';
         if (pct >= 0.9) return 'bg-yellow-100 text-yellow-800';
         return 'bg-red-100 text-red-800';
-    };
+    }, []);
 
-    const { formatPctValue } = useUserPreferences();
-    const formatPct = (pct: number) => formatPctValue(pct);
+    const formatPct = useCallback((pct: number) => formatPctValue(pct), [formatPctValue]);
 
     const yearTypeLabel = yearType === 'ajustado' ? 'Año Ant. Ajust.' : 'Año Anterior';
     const yearTypePctLabel = yearType === 'ajustado' ? '% Ajust.' : '% Ant.';
 
-    const SortIcon = ({ col }: { col: SortColumn }) => {
+    const SortIcon = React.memo(({ col }: { col: SortColumn }) => {
         if (sortCol !== col) return <span className="ml-1 text-gray-300">↕</span>;
         return <span className="ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
-    };
+    });
+    SortIcon.displayName = 'SortIcon';
 
     if (loading) {
         return (
@@ -273,78 +310,98 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                 </div>
             </div>
 
-            {/* TOTAL Summary Card */}
+            {/* TOTAL Summary Card - Compact Version */}
             {data?.resumen && (
-                <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-purple-50 rounded-3xl p-6 shadow-lg border border-indigo-100">
-                    <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Resumen Total</h2>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-purple-50 rounded-2xl p-4 shadow-lg border border-indigo-100">
+                    <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Resumen Total</h2>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                         <div>
-                            <p className="text-xs text-gray-500 font-semibold uppercase">Presupuesto</p>
-                            <p className="text-lg font-bold text-gray-900 font-mono">{fc(data.resumen.totalPresupuesto, kpi)}</p>
+                            <p className="text-[10px] text-gray-500 font-semibold uppercase">Presupuesto</p>
+                            <p className="text-sm font-bold text-gray-900 font-mono">{fc(data.resumen.totalPresupuesto, kpi)}</p>
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500 font-semibold uppercase">P. Acumulado</p>
-                            <p className="text-lg font-bold text-gray-900 font-mono">{fc(data.resumen.totalPresupuestoAcum, kpi)}</p>
+                            <p className="text-[10px] text-gray-500 font-semibold uppercase">P. Acumulado</p>
+                            <p className="text-sm font-bold text-gray-900 font-mono">{fc(data.resumen.totalPresupuestoAcum, kpi)}</p>
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500 font-semibold uppercase">Real</p>
-                            <p className="text-lg font-bold text-gray-900 font-mono">{fc(data.resumen.totalReal, kpi)}</p>
+                            <p className="text-[10px] text-gray-500 font-semibold uppercase">Real</p>
+                            <p className="text-sm font-bold text-gray-900 font-mono">{fc(data.resumen.totalReal, kpi)}</p>
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500 font-semibold uppercase">% Ppto</p>
-                            <p className={`text-xl font-extrabold ${data.resumen.pctPresupuesto >= 1.0 ? 'text-green-600' : data.resumen.pctPresupuesto >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                {formatPct(data.resumen.pctPresupuesto)}
-                            </p>
+                            <p className="text-[10px] text-gray-500 font-semibold uppercase">% Ppto</p>
+                            <div className="flex items-center justify-center gap-1.5">
+                                <p className={`text-lg font-extrabold ${data.resumen.pctPresupuesto >= 1.0 ? 'text-green-600' : data.resumen.pctPresupuesto >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                    {formatPct(data.resumen.pctPresupuesto)}
+                                </p>
+                                {data.resumen.trendPresupuesto && (
+                                    <TrendIndicator trend={data.resumen.trendPresupuesto} size="sm" />
+                                )}
+                            </div>
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500 font-semibold uppercase">{yearTypeLabel}</p>
-                            <p className="text-lg font-bold text-gray-900 font-mono">{fc(data.resumen.totalAnterior, kpi)}</p>
+                            <p className="text-[10px] text-gray-500 font-semibold uppercase">{yearTypeLabel}</p>
+                            <p className="text-sm font-bold text-gray-900 font-mono">{fc(data.resumen.totalAnterior, kpi)}</p>
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500 font-semibold uppercase">{yearTypePctLabel}</p>
-                            <p className={`text-xl font-extrabold ${data.resumen.pctAnterior >= 1.0 ? 'text-green-600' : data.resumen.pctAnterior >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                {formatPct(data.resumen.pctAnterior)}
-                            </p>
+                            <p className="text-[10px] text-gray-500 font-semibold uppercase">{yearTypePctLabel}</p>
+                            <div className="flex items-center justify-center gap-1.5">
+                                <p className={`text-lg font-extrabold ${data.resumen.pctAnterior >= 1.0 ? 'text-green-600' : data.resumen.pctAnterior >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                    {formatPct(data.resumen.pctAnterior)}
+                                </p>
+                                {data.resumen.trendAnterior && (
+                                    <TrendIndicator trend={data.resumen.trendAnterior} size="sm" />
+                                )}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Extra KPI rows: Transacciones & TQP — same grid layout as Ventas */}
+                    {/* Extra KPI rows: Transacciones & TQP */}
                     {data.resumenMultiKpi && (['Transacciones', 'TQP'] as const).map(tipo => {
                         const mkpi = data.resumenMultiKpi?.[tipo];
                         if (!mkpi) return null;
                         return (
-                            <div key={tipo} className="mt-4 pt-4 border-t border-indigo-200/50">
-                                <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">
+                            <div key={tipo} className="mt-3 pt-3 border-t border-indigo-200/50">
+                                <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
                                     {tipo === 'TQP' ? 'Tiquete Promedio' : tipo}
                                 </h2>
-                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                                     <div>
-                                        <p className="text-xs text-gray-500 font-semibold uppercase">Presupuesto</p>
-                                        <p className="text-lg font-bold text-gray-900 font-mono">{fc(mkpi.totalPresupuestoAcum, tipo)}</p>
+                                        <p className="text-[10px] text-gray-500 font-semibold uppercase">Presupuesto</p>
+                                        <p className="text-sm font-bold text-gray-900 font-mono">{fc(mkpi.totalPresupuestoAcum, tipo)}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-gray-500 font-semibold uppercase">P. Acumulado</p>
-                                        <p className="text-lg font-bold text-gray-900 font-mono">{fc(mkpi.totalPresupuestoAcum, tipo)}</p>
+                                        <p className="text-[10px] text-gray-500 font-semibold uppercase">P. Acumulado</p>
+                                        <p className="text-sm font-bold text-gray-900 font-mono">{fc(mkpi.totalPresupuestoAcum, tipo)}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-gray-500 font-semibold uppercase">Real</p>
-                                        <p className="text-lg font-bold text-gray-900 font-mono">{fc(mkpi.totalReal, tipo)}</p>
+                                        <p className="text-[10px] text-gray-500 font-semibold uppercase">Real</p>
+                                        <p className="text-sm font-bold text-gray-900 font-mono">{fc(mkpi.totalReal, tipo)}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-gray-500 font-semibold uppercase">% Ppto</p>
-                                        <p className={`text-xl font-extrabold ${mkpi.pctPresupuesto >= 1.0 ? 'text-green-600' : mkpi.pctPresupuesto >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                            {formatPct(mkpi.pctPresupuesto)}
-                                        </p>
+                                        <p className="text-[10px] text-gray-500 font-semibold uppercase">% Ppto</p>
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            <p className={`text-lg font-extrabold ${mkpi.pctPresupuesto >= 1.0 ? 'text-green-600' : mkpi.pctPresupuesto >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                {formatPct(mkpi.pctPresupuesto)}
+                                            </p>
+                                            {mkpi.trendPresupuesto && (
+                                                <TrendIndicator trend={mkpi.trendPresupuesto} size="sm" />
+                                            )}
+                                        </div>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-gray-500 font-semibold uppercase">{yearTypeLabel}</p>
-                                        <p className="text-lg font-bold text-gray-900 font-mono">{fc(mkpi.totalAnterior, tipo)}</p>
+                                        <p className="text-[10px] text-gray-500 font-semibold uppercase">{yearTypeLabel}</p>
+                                        <p className="text-sm font-bold text-gray-900 font-mono">{fc(mkpi.totalAnterior, tipo)}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-gray-500 font-semibold uppercase">{yearTypePctLabel}</p>
-                                        <p className={`text-xl font-extrabold ${mkpi.pctAnterior >= 1.0 ? 'text-green-600' : mkpi.pctAnterior >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                            {formatPct(mkpi.pctAnterior)}
-                                        </p>
+                                        <p className="text-[10px] text-gray-500 font-semibold uppercase">{yearTypePctLabel}</p>
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            <p className={`text-lg font-extrabold ${mkpi.pctAnterior >= 1.0 ? 'text-green-600' : mkpi.pctAnterior >= 0.9 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                {formatPct(mkpi.pctAnterior)}
+                                            </p>
+                                            {mkpi.trendAnterior && (
+                                                <TrendIndicator trend={mkpi.trendAnterior} size="sm" />
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -434,24 +491,15 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {sortedEvaluacion.map((row, idx) => (
-                                        <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                                            <td className="py-3 px-3 text-sm font-medium text-gray-800">{row.local}</td>
-                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.presupuesto, kpi)}</td>
-                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.presupuestoAcum, kpi)}</td>
-                                            <td className="py-3 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
-                                            <td className="py-3 px-3 text-right">
-                                                <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${getAlcanceBadge(row.pctPresupuesto)}`}>
-                                                    {formatPct(row.pctPresupuesto)}
-                                                </span>
-                                            </td>
-                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.anterior, kpi)}</td>
-                                            <td className="py-3 px-3 text-right">
-                                                <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${getAlcanceBadge(row.pctAnterior)}`}>
-                                                    {formatPct(row.pctAnterior)}
-                                                </span>
-                                            </td>
-                                        </tr>
+                                    {sortedEvaluacion.map((row) => (
+                                        <EvaluacionRow
+                                            key={row.local}
+                                            row={row}
+                                            kpi={kpi}
+                                            fc={fc}
+                                            formatPct={formatPct}
+                                            getAlcanceBadge={getAlcanceBadge}
+                                        />
                                     ))}
                                 </tbody>
                             </table>

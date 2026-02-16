@@ -11,6 +11,10 @@ export interface User {
     accesoTendencia: boolean;
     accesoTactica: boolean;
     accesoEventos: boolean;
+    accesoPresupuesto: boolean;
+    accesoTiempos: boolean;
+    accesoEvaluaciones: boolean;
+    accesoInventarios: boolean;
     esAdmin: boolean;
     esProtegido: boolean;
     allowedStores: string[];
@@ -141,12 +145,16 @@ export async function createAdminUser(
     accesoTendencia: boolean = false,
     accesoTactica: boolean = false,
     accesoEventos: boolean = false,
+    accesoPresupuesto: boolean = true,
+    accesoTiempos: boolean = false,
+    accesoEvaluaciones: boolean = false,
+    accesoInventarios: boolean = false,
     esAdmin: boolean = false
 ): Promise<{ success: boolean; userId: number; clave: string }> {
     const response = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin })
+        body: JSON.stringify({ email, nombre, clave, stores, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -165,12 +173,16 @@ export async function updateAdminUser(
     accesoTendencia: boolean,
     accesoTactica: boolean,
     accesoEventos: boolean,
+    accesoPresupuesto: boolean,
+    accesoTiempos: boolean,
+    accesoEvaluaciones: boolean,
+    accesoInventarios: boolean,
     esAdmin: boolean
 ): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin })
+        body: JSON.stringify({ email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -454,3 +466,40 @@ export async function saveConfig(key: string, valor: string): Promise<{ success:
     }
     return response.json();
 }
+
+// ==========================================
+// User Dashboard Config API
+// ==========================================
+
+export async function getDashboardConfig(): Promise<{ dashboardLocales: string[]; comparativePeriod: string }> {
+    const response = await fetch(`${API_BASE}/user/dashboard-config`, {
+        headers: authHeaders()
+    });
+
+    if (!response.ok) {
+        console.error('Error fetching dashboard config:', response.statusText);
+        return { dashboardLocales: [], comparativePeriod: 'Month' };
+    }
+
+    const result = await response.json();
+    return {
+        dashboardLocales: result.dashboardLocales || [],
+        comparativePeriod: result.comparativePeriod || 'Month'
+    };
+}
+
+export async function saveDashboardConfig(config: { dashboardLocales?: string[]; comparativePeriod?: string }): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/user/dashboard-config`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error saving dashboard config');
+    }
+
+    return response.json();
+}
+

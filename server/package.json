@@ -1,15 +1,20 @@
 {
-  "name": "server",
+  "name": "kpis-rosti-server",
   "version": "1.0.0",
+  "description": "KPIs Rosti - API Backend para análisis de métricas de restaurantes",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "keywords": [],
+  "keywords": [
+    "kpis",
+    "rosti",
+    "analytics",
+    "restaurant"
+  ],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "cors": "^2.8.6",

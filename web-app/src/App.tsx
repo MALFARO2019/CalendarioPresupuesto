@@ -3,12 +3,13 @@ import { FilterBar } from './components/FilterBar';
 import { CalendarGrid } from './components/CalendarGrid';
 import { LoginPage } from './components/LoginPage';
 import { AdminPage } from './components/AdminPage';
+import { Dashboard } from './views/Dashboard';
 import { generateMockData } from './mockData';
 import type { BudgetRecord } from './mockData';
 import { fetchBudgetData, fetchStores, fetchGroupStores, getToken, getUser, logout, verifyToken, API_BASE } from './api';
 import { addMonths, format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X, SlidersHorizontal } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X, SlidersHorizontal, Home } from 'lucide-react';
 
 import { formatCurrency } from './utils/formatters';
 import { useUserPreferences } from './context/UserPreferences';
@@ -24,12 +25,12 @@ import { SummaryCard } from './components/SummaryCard';
 import { GroupMembersCard } from './components/GroupMembersCard';
 
 type AppView = 'login' | 'dashboard' | 'admin';
-type DashboardTab = 'mensual' | 'anual' | 'tendencia';
+type DashboardTab = 'home' | 'mensual' | 'anual' | 'tendencia';
 
 function App() {
   const [view, setView] = useState<AppView>('login');
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('mensual');
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('home');
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [year, setYear] = useState(2026);
@@ -351,29 +352,29 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 font-inter text-gray-800 pb-20">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-md">
-        <div className="max-w-[1600px] mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src="/LogoRosti.png" alt="Rosti" className="h-14 w-auto rounded-xl" />
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-gray-900">Calendario de Presupuesto</h1>
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <img src="/LogoRosti.png" alt="Rosti" className="h-10 sm:h-14 w-auto rounded-xl" />
+            <div className="hidden sm:block">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900">KPIs Rosti</h1>
               <p className="text-xs text-gray-500 font-medium">Gestión y visualización de métricas diarias</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Data source indicator */}
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${useApi ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+          <div className="flex items-center gap-2 sm:gap-4">
+            {/* Data source indicator - hidden on mobile */}
+            <div className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${useApi ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
               <div className={`w-2 h-2 rounded-full ${useApi ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
               {useApi ? 'SQL Server' : 'Datos Mock'}
             </div>
 
-            {/* User info */}
+            {/* User info - compact on mobile */}
             {user && (
-              <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
-                <div className="w-7 h-7 bg-indigo-100 rounded-lg flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-100">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 bg-indigo-100 rounded-lg flex items-center justify-center">
                   <span className="text-xs font-bold text-indigo-600">{user.email?.charAt(0).toUpperCase()}</span>
                 </div>
-                <span className="text-xs font-medium text-gray-600 max-w-[120px] truncate">{user.email}</span>
+                <span className="hidden sm:inline text-xs font-medium text-gray-600 max-w-[120px] truncate">{user.email}</span>
               </div>
             )}
 
@@ -383,7 +384,7 @@ function App() {
             <div className="relative">
               <button
                 onClick={() => setShowReportMenu(!showReportMenu)}
-                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                className="touch-target p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                 title="Generar Reporte"
               >
                 <Download className="w-4 h-4" />
@@ -391,7 +392,7 @@ function App() {
               {showReportMenu && (
                 <>
                   <div className="fixed inset-0 z-20" onClick={() => setShowReportMenu(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
+                  <div className="absolute right-0 top-full mt-2 w-72 sm:w-56 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
                     <button
                       onClick={handlePrintPDF}
                       className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all"
@@ -444,7 +445,7 @@ function App() {
             <div className="relative">
               <button
                 onClick={() => setShowUserPrefs(!showUserPrefs)}
-                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                className="touch-target p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                 title="Preferencias"
               >
                 <SlidersHorizontal className="w-4 h-4" />
@@ -452,7 +453,7 @@ function App() {
               {showUserPrefs && (
                 <>
                   <div className="fixed inset-0 z-20" onClick={() => setShowUserPrefs(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
+                  <div className="absolute right-0 top-full mt-2 w-full max-w-[320px] sm:w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
                     <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
                       <h4 className="text-sm font-bold text-gray-700">⚙️ Preferencias</h4>
                     </div>
@@ -561,7 +562,7 @@ function App() {
             {(user?.esAdmin || user?.accesoEventos) && (
               <button
                 onClick={() => setView('admin')}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+                className="touch-target p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
                 title={user?.esAdmin ? "Configuración" : "Eventos"}
               >
                 <Settings className="w-4 h-4" />
@@ -571,80 +572,96 @@ function App() {
             {/* Logout */}
             <button
               onClick={handleLogout}
-              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+              className="touch-target p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
               title="Cerrar sesión"
             >
               <LogOut className="w-4 h-4" />
             </button>
 
-            {/* Tab selector */}
-            <div className="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-100 shadow-inner mr-3">
+            {/* Tab selector - hidden on very small screens, shown on larger */}
+            <div className="hidden sm:flex items-center bg-gray-50 rounded-xl p-1 border border-gray-100 shadow-inner mr-3">
               <button
-                onClick={() => setDashboardTab('mensual')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'mensual'
+                onClick={() => setDashboardTab('home')}
+                className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'home'
                   ? 'bg-white shadow-sm text-indigo-600'
                   : 'text-gray-400 hover:text-gray-600'
                   }`}
               >
-                <Calendar className="w-3.5 h-3.5" />
-                Mensual
+                <Home className="w-3.5 h-3.5" />
+                <span className="hidden lg:inline">Inicio</span>
               </button>
-              <button
-                onClick={() => setDashboardTab('anual')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'anual'
-                  ? 'bg-white shadow-sm text-indigo-600'
-                  : 'text-gray-400 hover:text-gray-600'
-                  }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                Anual
-              </button>
-              {user?.accesoTendencia && (
-                <button
-                  onClick={() => setDashboardTab('tendencia')}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'tendencia'
-                    ? 'bg-white shadow-sm text-indigo-600'
-                    : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                >
-                  <BarChart3 className="w-3.5 h-3.5" />
-                  Tendencia
-                </button>
+
+              {/* Only show presupuesto tabs when not in home */}
+              {dashboardTab !== 'home' && (
+                <>
+                  <button
+                    onClick={() => setDashboardTab('mensual')}
+                    className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'mensual'
+                      ? 'bg-white shadow-sm text-indigo-600'
+                      : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span className="hidden lg:inline">Mensual</span>
+                  </button>
+                  <button
+                    onClick={() => setDashboardTab('anual')}
+                    className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'anual'
+                      ? 'bg-white shadow-sm text-indigo-600'
+                      : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                  >
+                    <BarChart3 className="w-3.5 h-3.5" />
+                    <span className="hidden lg:inline">Anual</span>
+                  </button>
+                  {user?.accesoTendencia && (
+                    <button
+                      onClick={() => setDashboardTab('tendencia')}
+                      className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'tendencia'
+                        ? 'bg-white shadow-sm text-indigo-600'
+                        : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      <span className="hidden lg:inline">Tendencia</span>
+                    </button>
+                  )}
+                </>
               )}
             </div>
 
             {/* Month selector - only for mensual */}
             {dashboardTab === 'mensual' && (
-              <div className="flex items-center bg-gray-50 rounded-xl p-1.5 border border-gray-100 shadow-inner">
+              <div className="flex items-center bg-gray-50 rounded-xl p-1 sm:p-1.5 border border-gray-100 shadow-inner">
                 <button
                   onClick={handlePrevMonth}
-                  className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500 hover:text-indigo-600 disabled:opacity-30"
+                  className="touch-target p-1.5 sm:p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500 hover:text-indigo-600 disabled:opacity-30"
                   disabled={currentDate.getMonth() === 0}
                 >
-                  <ChevronLeft className="w-5 h-5" />
+                  <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
-                <div className="px-6 py-1 min-w-[180px] text-center">
-                  <span className="text-sm font-bold capitalize text-gray-800 block">
+                <div className="px-2 sm:px-6 py-1 min-w-[120px] sm:min-w-[180px] text-center">
+                  <span className="text-xs sm:text-sm font-bold capitalize text-gray-800 block">
                     {format(currentDate, 'MMMM', { locale: es })}
                   </span>
-                  <span className="text-xs text-gray-400 font-bold block">
+                  <span className="text-[10px] sm:text-xs text-gray-400 font-bold block">
                     {format(currentDate, 'yyyy')}
                   </span>
                 </div>
                 <button
                   onClick={handleNextMonth}
-                  className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500 hover:text-indigo-600 disabled:opacity-30"
+                  className="touch-target p-1.5 sm:p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500 hover:text-indigo-600 disabled:opacity-30"
                   disabled={currentDate.getMonth() === 11}
                 >
-                  <ChevronRight className="w-5 h-5" />
+                  <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </div>
             )}
 
             {/* Year display - only for anual and tendencia */}
             {(dashboardTab === 'anual' || dashboardTab === 'tendencia') && (
-              <div className="flex items-center bg-gray-50 rounded-xl px-5 py-2.5 border border-gray-100 shadow-inner">
-                <span className="text-sm font-bold text-gray-800">Año {year}</span>
+              <div className="flex items-center bg-gray-50 rounded-xl px-3 sm:px-5 py-2 sm:py-2.5 border border-gray-100 shadow-inner">
+                <span className="text-xs sm:text-sm font-bold text-gray-800">Año {year}</span>
               </div>
             )}
           </div>
@@ -667,11 +684,12 @@ function App() {
         </div>
       </div>
 
-      <main id="dashboard-content" className="max-w-[1600px] mx-auto px-6 py-8">
-        {dashboardTab !== 'tendencia' && (
+      <main id="dashboard-content" className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
+        {/* Filters - Only show when in Presupuesto module */}
+        {dashboardTab !== 'home' && (
           <FilterBar
             year={year}
-            setYear={setYear}
+            setYear={() => { }} // Year is read-only
             filterLocal={filterLocal}
             setFilterLocal={setFilterLocal}
             filterCanal={filterCanal}
@@ -680,15 +698,15 @@ function App() {
             setFilterKpi={setFilterKpi}
             filterType={filterType}
             setFilterType={setFilterType}
-            yearType={yearType}
-            setYearType={setYearType}
             groups={groups}
             individualStores={individualStores}
+            yearType={yearType}
+            setYearType={(type: 'Año Anterior' | 'Año Anterior Ajustado') => {
+              setYearType(type);
+              setDefaultYearType(type);
+            }}
           />
         )}
-
-
-
 
         {loading && (
           <div className="flex items-center justify-center py-20">
@@ -709,6 +727,17 @@ function App() {
           </div>
         )}
 
+        {!loading && dashboardTab === 'home' && (
+          <Dashboard
+            onNavigateToModule={(moduleId) => {
+              if (moduleId === 'presupuesto') {
+                setDashboardTab('mensual');
+              }
+              // Future modules will be handled here
+            }}
+          />
+        )}
+
         {!loading && dashboardTab === 'mensual' && (
           <>
             {/* Summary Card */}
@@ -725,7 +754,7 @@ function App() {
             </div>
 
             {/* Calendar Grid + Behavior Analysis in same row */}
-            <div className="flex flex-col lg:flex-row gap-8">
+            <div className="flex flex-col lg:flex-row gap-4 sm:gap-8">
               {/* Calendar Grid */}
               <div className="print-page lg:flex-[3]">
                 <div id="monthly-calendar-container">
@@ -741,12 +770,12 @@ function App() {
 
               {/* Behavior Analysis */}
               <div className="print-page lg:flex-[2]">
-                <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-lg h-full">
+                <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-gray-100 shadow-lg h-full">
                   <div className="mb-4">
-                    <h2 className="text-lg font-bold text-gray-800 mb-1">Análisis de Comportamiento</h2>
+                    <h2 className="text-base sm:text-lg font-bold text-gray-800 mb-1">Análisis de Comportamiento</h2>
                     <p className="text-xs text-gray-400">Desempeño semanal y por día</p>
                   </div>
-                  <div className="flex flex-col gap-6">
+                  <div className="flex flex-col gap-4 sm:gap-6">
                     <WeekDayBehavior data={currentMonthData} kpi={filterKpi} comparisonType={filterType} yearType={yearType} />
                     <div className="h-px bg-gray-200"></div>
                     <WeeklyBehavior data={currentMonthData} kpi={filterKpi} comparisonType={filterType} yearType={yearType} />
