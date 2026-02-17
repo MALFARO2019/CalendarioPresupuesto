@@ -5,9 +5,10 @@ import { useFormatCurrency } from '../utils/formatters';
 interface IncrementCardProps {
     data: BudgetRecord[];
     currentDate: Date;
+    dateRange?: { startDate: string; endDate: string };
 }
 
-export const IncrementCard: React.FC<IncrementCardProps> = ({ data, currentDate }) => {
+export const IncrementCard: React.FC<IncrementCardProps> = ({ data, currentDate, dateRange }) => {
     const fc = useFormatCurrency();
     const incrementsData = useMemo(() => {
         const today = new Date();
@@ -54,9 +55,24 @@ export const IncrementCard: React.FC<IncrementCardProps> = ({ data, currentDate 
     return (
         <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6">
             <div className="flex items-center justify-between mb-6">
-                <div>
+                <div className="flex-1">
                     <h3 className="text-lg font-bold text-gray-800">Saldo e Incrementos Necesarios</h3>
-                    <p className="text-xs text-gray-400 mt-1">Proyección para alcanzar el presupuesto</p>
+                    <p className="text-xs text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
+                        <span>Proyección para alcanzar el presupuesto</span>
+                        {dateRange && (
+                            <>
+                                <span className="text-gray-400">•</span>
+                                <span className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold">
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    {new Date(dateRange.startDate).toLocaleDateString('es-CR', { day: '2-digit', month: 'short' })}
+                                    <span>-</span>
+                                    {new Date(dateRange.endDate).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </span>
+                            </>
+                        )}
+                    </p>
                 </div>
                 <div className="bg-indigo-100 rounded-xl px-4 py-3">
                     <span className="text-xs text-indigo-600 font-bold uppercase tracking-wide">Días Restantes</span>

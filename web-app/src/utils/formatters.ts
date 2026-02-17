@@ -31,7 +31,27 @@ export function formatCurrencyCompact(value: number, kpi: string): string {
 export function useFormatCurrency() {
     const { preferences } = useUserPreferences();
     const decimals = preferences.valueDecimals;
+    const mode = preferences.valueDisplayMode || 'completo';
     return (value: number, kpi: string): string => {
-        return formatCurrency(value, kpi, decimals);
+        const isNumber = kpi === 'Transacciones' || kpi === 'TQP';
+        let displayValue = value;
+        let suffix = '';
+
+        if (mode === 'millones' && !isNumber) {
+            displayValue = value / 1000000;
+            suffix = 'M';
+        } else if (mode === 'miles' && !isNumber) {
+            displayValue = value / 1000;
+            suffix = 'K';
+        }
+
+        const displayDecimals = mode === 'completo' ? decimals : (mode === 'millones' ? Math.max(decimals, 1) : decimals);
+        const formatted = new Intl.NumberFormat('es-CR', {
+            style: 'decimal',
+            minimumFractionDigits: displayDecimals,
+            maximumFractionDigits: displayDecimals
+        }).format(displayValue);
+
+        return isNumber ? `${formatted}${suffix}` : `₡${formatted}${suffix}`;
     };
 }

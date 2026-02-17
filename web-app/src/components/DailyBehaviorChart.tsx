@@ -1,16 +1,17 @@
-import React, { useState } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import React, { useState, useMemo } from "react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush, LabelList } from "recharts";
 import { formatCurrencyCompact, useFormatCurrency } from '../utils/formatters';
 import { useUserPreferences } from '../context/UserPreferences';
 
 interface DailyBehaviorChartProps {
     data: any[];
     kpi: string;
+    dateRange?: { startDate: string; endDate: string };
 }
 
 const DAY_LETTERS = ['D', 'L', 'K', 'M', 'J', 'V', 'S'];
 
-export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi }) => {
+export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi, dateRange }) => {
     const fc = useFormatCurrency();
     const { formatPct100 } = useUserPreferences();
     // State for controlling which lines are visible
@@ -19,6 +20,14 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
         presupuesto: true,
         anterior: false,
         anteriorAjustado: false
+    });
+
+    // Label settings state
+    const [labelSettings, setLabelSettings] = useState({
+        showAllLabels: false,
+        showMaxPoint: false,
+        showMinPoint: false,
+        selectedKpis: ['Real'] as Array<'Real' | 'Presupuesto' | 'Año Anterior' | 'Año Anterior Ajustado'>
     });
 
     const toggleLine = (line: keyof typeof visibleLines) => {
@@ -62,6 +71,9 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                 Presupuesto: d.Monto,
                 'Año Anterior': d.MontoAnterior,
                 'Año Anterior Ajustado': d.MontoAnteriorAjustado,
+                year: d.Año,
+                month: d.Mes,
+                day: d.Dia,
             };
         });
 
@@ -129,10 +141,77 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
         return null;
     };
 
+
+    // Calculate max and min values for each KPI
+    const kpiMaxMin = useMemo(() => {
+        const result = new Map<string, { max: number | null; min: number | null }>();
+        const kpiNames: Array<'Real' | 'Presupuesto' | 'Año Anterior' | 'Año Anterior Ajustado'> = [
+            'Real', 'Presupuesto', 'Año Anterior', 'Año Anterior Ajustado'
+        ];
+
+        kpiNames.forEach(kpiName => {
+            const values = chartData.map(d => d[kpiName]).filter(v => v != null && v > 0);
+            result.set(kpiName, {
+                max: values.length > 0 ? Math.max(...values) : null,
+                min: values.length > 0 ? Math.min(...values) : null
+            });
+        });
+
+        return result;
+    }, [chartData]);
+
+    // Custom label component
+    const CustomLabel = (props: any) => {
+        const { x, y, value, index, dataKey } = props;
+        const dataPoint = chartData[index];
+
+        if (!dataPoint) return null;
+
+        // Only show labels for selected KPIs
+        if (!labelSettings.selectedKpis.includes(dataKey as any)) return null;
+
+        const kpiData = kpiMaxMin.get(dataKey);
+        if (!kpiData) return null;
+
+        const isMax = labelSettings.showMaxPoint && value === kpiData.max && kpiData.max !== null;
+        const isMin = labelSettings.showMinPoint && value === kpiData.min && kpiData.min !== null;
+        const showLabel = labelSettings.showAllLabels || isMax || isMin;
+
+        if (!showLabel) return null;
+
+        return (
+            <text
+                x={x}
+                y={y - 10}
+                fill={isMax ? '#10B981' : isMin ? '#EF4444' : '#6B7280'}
+                fontSize={10}
+                fontWeight={isMax || isMin ? 'bold' : 'normal'}
+                textAnchor="middle"
+            >
+                {formatCurrencyCompact(value || 0, kpi)}
+            </text>
+        );
+    };
+
     return (
         <div className="bg-white p-6 rounded-3xl shadow-lg border border-gray-100 w-full overflow-hidden">
             <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-gray-800 tracking-tight">Tendencia Diaria</h3>
+                <h3 className="text-lg font-bold text-gray-800 tracking-tight flex items-center gap-2 flex-wrap">
+                    <span>Tendencia Diaria</span>
+                    {dateRange && (
+                        <>
+                            <span className="text-gray-400 text-sm">•</span>
+                            <span className="flex items-center gap-1 text-xs text-gray-500 font-semibold">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                {new Date(dateRange.startDate).toLocaleDateString('es-CR', { day: '2-digit', month: 'short' })}
+                                <span>-</span>
+                                {new Date(dateRange.endDate).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </span>
+                        </>
+                    )}
+                </h3>
                 <div className="flex flex-wrap gap-2">
                     {/* Real Toggle */}
                     <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
@@ -181,10 +260,41 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                         <div className="w-2 h-2 rounded-full bg-pink-500"></div>
                         <span className={visibleLines.anteriorAjustado ? 'text-gray-700' : 'text-gray-400'}>Año Anterior Ajust.</span>
                     </label>
+
+                    {/* Label Controls Divider */}
+                    <div className="w-px h-8 bg-gray-300"></div>
+
+                    {/* Multi-KPI Selector for Labels */}
+                    <div className="flex items-center gap-1">
+                        <span className="text-xs font-semibold text-gray-600">Etiquetar:</span>
+                        {[
+                            { key: 'Real' as const, label: 'Real' },
+                            { key: 'Presupuesto' as const, label: 'Pres.' },
+                            { key: 'Año Anterior' as const, label: 'Ant.' },
+                            { key: 'Año Anterior Ajustado' as const, label: 'Ajust.' }
+                        ].map(({ key, label }) => (
+                            <label key={key} className="flex items-center gap-1 cursor-pointer px-2 py-1 bg-gray-50 hover:bg-gray-100 rounded transition-colors">
+                                <input
+                                    type="checkbox"
+                                    checked={labelSettings.selectedKpis.includes(key)}
+                                    onChange={() => {
+                                        setLabelSettings(prev => ({
+                                            ...prev,
+                                            selectedKpis: prev.selectedKpis.includes(key)
+                                                ? prev.selectedKpis.filter(k => k !== key)
+                                                : [...prev.selectedKpis, key]
+                                        }));
+                                    }}
+                                    className="w-3 h-3"
+                                />
+                                <span className="text-xs text-gray-600">{label}</span>
+                            </label>
+                        ))}
+                    </div>
                 </div>
             </div>
 
-            <div className="h-[350px] w-full">
+            <div className="h-[400px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 40 }}>
                         <defs>
@@ -234,7 +344,22 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                 strokeWidth={2}
                                 fillOpacity={1}
                                 fill="url(#colorAnteriorAjustado)"
-                            />
+                            >
+                                <LabelList
+                                    dataKey="Año Anterior Ajustado"
+                                    content={(props: any) => {
+                                        const { x, y, value, index } = props;
+                                        const dataKey = 'Año Anterior Ajustado';
+
+                                        if (!value || !chartData[index] || !labelSettings.selectedKpis.includes(dataKey as any)) return null;
+                                        const kpiData = kpiMaxMin.get(dataKey);
+                                        if (!kpiData) return null;
+                                        const isMax = value === kpiData.max && kpiData.max !== null;
+                                        const isMin = value === kpiData.min && kpiData.min !== null;
+                                        return <text x={x} y={y - 10} fill={isMax ? '#10B981' : isMin ? '#EF4444' : '#6B7280'} fontSize="10" fontWeight={isMax || isMin ? 'bold' : 'normal'} textAnchor="middle">{formatCurrencyCompact(value, kpi)}</text>;
+                                    }}
+                                />
+                            </Area>
                         )}
                         {visibleLines.anterior && (
                             <Area
@@ -244,7 +369,21 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                 strokeWidth={2}
                                 fillOpacity={1}
                                 fill="url(#colorAnterior)"
-                            />
+                            >
+                                <LabelList
+                                    dataKey="Año Anterior"
+                                    content={(props: any) => {
+                                        const { x, y, value, index } = props;
+                                        const dataKey = 'Año Anterior';
+                                        if (!value || !chartData[index] || !labelSettings.selectedKpis.includes(dataKey as any)) return null;
+                                        const kpiData = kpiMaxMin.get(dataKey);
+                                        if (!kpiData) return null;
+                                        const isMax = value === kpiData.max && kpiData.max !== null;
+                                        const isMin = value === kpiData.min && kpiData.min !== null;
+                                        return <text x={x} y={y - 10} fill={isMax ? '#10B981' : isMin ? '#EF4444' : '#6B7280'} fontSize="10" fontWeight={isMax || isMin ? 'bold' : 'normal'} textAnchor="middle">{formatCurrencyCompact(value, kpi)}</text>;
+                                    }}
+                                />
+                            </Area>
                         )}
                         {visibleLines.presupuesto && (
                             <Area
@@ -254,7 +393,21 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                 strokeWidth={2}
                                 fillOpacity={1}
                                 fill="url(#colorBudget)"
-                            />
+                            >
+                                <LabelList
+                                    dataKey="Presupuesto"
+                                    content={(props: any) => {
+                                        const { x, y, value, index } = props;
+                                        const dataKey = 'Presupuesto';
+                                        if (!value || !chartData[index] || !labelSettings.selectedKpis.includes(dataKey as any)) return null;
+                                        const kpiData = kpiMaxMin.get(dataKey);
+                                        if (!kpiData) return null;
+                                        const isMax = value === kpiData.max && kpiData.max !== null;
+                                        const isMin = value === kpiData.min && kpiData.min !== null;
+                                        return <text x={x} y={y - 10} fill={isMax ? '#10B981' : isMin ? '#EF4444' : '#6B7280'} fontSize="10" fontWeight={isMax || isMin ? 'bold' : 'normal'} textAnchor="middle">{formatCurrencyCompact(value, kpi)}</text>;
+                                    }}
+                                />
+                            </Area>
                         )}
                         {visibleLines.real && (
                             <Area
@@ -264,8 +417,31 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                 strokeWidth={3}
                                 fillOpacity={1}
                                 fill="url(#colorReal)"
-                            />
+                            >
+                                <LabelList
+                                    dataKey="Real"
+                                    content={(props: any) => {
+                                        const { x, y, value, index } = props;
+                                        const dataKey = 'Real';
+                                        if (!value || !chartData[index] || !labelSettings.selectedKpis.includes(dataKey as any)) return null;
+                                        const kpiData = kpiMaxMin.get(dataKey);
+                                        if (!kpiData) return null;
+                                        const isMax = value === kpiData.max && kpiData.max !== null;
+                                        const isMin = value === kpiData.min && kpiData.min !== null;
+                                        return <text x={x} y={y - 10} fill={isMax ? '#10B981' : isMin ? '#EF4444' : '#6B7280'} fontSize="10" fontWeight={isMax || isMin ? 'bold' : 'normal'} textAnchor="middle">{formatCurrencyCompact(value, kpi)}</text>;
+                                    }}
+                                />
+                            </Area>
                         )}
+
+                        {/* Interactive brush for date range selection */}
+                        <Brush
+                            dataKey="name"
+                            height={30}
+                            stroke="#6366F1"
+                            fill="#E0E7FF"
+                            travellerWidth={10}
+                        />
                     </AreaChart>
                 </ResponsiveContainer>
             </div>

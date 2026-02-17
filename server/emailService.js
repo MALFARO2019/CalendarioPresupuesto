@@ -11,7 +11,7 @@ async function sendPasswordEmail(email, clave, nombre = '') {
     try {
         const pool = await poolPromise;
 
-        const subject = 'Tu código de acceso - Calendario de Presupuesto';
+        const subject = 'Tu código de acceso - KPIs Rosti';
         const bodyHTML = `
 <!DOCTYPE html>
 <html>
@@ -36,7 +36,7 @@ async function sendPasswordEmail(email, clave, nombre = '') {
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔐 Calendario de Presupuesto</h1>
+            <h1>🔐 KPIs Rosti</h1>
         </div>
         
         <div class="content">
@@ -45,7 +45,7 @@ async function sendPasswordEmail(email, clave, nombre = '') {
             </div>
             
             <p style="color: #4b5563; line-height: 1.6;">
-                Has solicitado tu código de acceso para el <strong>Calendario de Presupuesto</strong> de Rosti Pollos.
+                Has solicitado tu código de acceso para <strong>KPIs Rosti</strong> de Rosti Pollos.
             </p>
             
             <div class="code-box">
@@ -190,7 +190,7 @@ async function sendReportEmail(recipientEmail, senderName, reportTitle, reportDa
         
         <div class="footer">
             <p>Rosti Pollos Costa Rica | alertas@rostipolloscr.com</p>
-            <p>Para ver el reporte completo, ingrese a la aplicación Calendario de Presupuesto</p>
+            <p>Para ver el reporte completo, ingrese a la aplicación KPIs Rosti</p>
         </div>
     </div>
 </body>

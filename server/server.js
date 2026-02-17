@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { sql, poolPromise } = require('./db');
+const { sql, poolPromise, dbManager } = require('./db');
 const {
     ensureSecurityTables,
     loginUser,
@@ -25,6 +25,7 @@ const {
     updateEventoFecha,
     deleteEventoFecha
 } = require('./eventos');
+const { ensureDBConfigTable } = require('./ensureDBConfig');
 
 const app = express();
 const port = 3000;
@@ -32,9 +33,10 @@ const port = 3000;
 app.use(cors());
 app.use(express.json());
 
-// Initialize security tables on startup
+// Initialize security tables and DB config table on startup
 (async () => {
     await ensureSecurityTables();
+    await ensureDBConfigTable();
 })();
 
 // TEST ENDPOINT
@@ -42,6 +44,16 @@ app.get('/api/test', (req, res) => {
     res.json({ message: 'Server is working!' });
 });
 
+
+// ==========================================
+// PUBLIC ENDPOINTS
+// ==========================================
+
+// GET /api/db-mode - Public endpoint to get current DB connection mode
+app.get('/api/db-mode', (req, res) => {
+    const { dbManager } = require('./dbConnectionManager');
+    res.json({ mode: dbManager.activeMode || 'primary' });
+});
 
 // ==========================================
 // AUTH ENDPOINTS (public)
@@ -93,13 +105,18 @@ app.post('/api/auth/send-password', async (req, res) => {
         const pool = await poolPromise;
         const result = await pool.request()
             .input('email', sql.NVarChar, email.trim().toLowerCase())
-            .query('SELECT Email, Nombre, Clave FROM APP_USUARIOS WHERE Email = @email AND Activo = 1');
+            .query('SELECT Email, Nombre, Clave, ISNULL(PermitirEnvioClave, 1) as PermitirEnvioClave FROM APP_USUARIOS WHERE Email = @email AND Activo = 1');
 
         if (result.recordset.length === 0) {
             return res.status(404).json({ error: 'Usuario no encontrado' });
         }
 
         const user = result.recordset[0];
+
+        // Check if user has permission to receive password by email
+        if (!user.PermitirEnvioClave) {
+            return res.status(403).json({ error: 'No tiene permiso para recibir clave por correo. Solicítela a TI mediante tiquete.' });
+        }
 
         // Send email
         const emailSent = await sendPasswordEmail(user.Email, user.Clave, user.Nombre);
@@ -149,8 +166,8 @@ app.post('/api/admin/users', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin } = req.body;
-        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin);
+        const { email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin } = req.body;
+        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin);
         res.json({ success: true, userId: result.userId, clave: result.clave });
     } catch (err) {
         console.error('Error creating user:', err);
@@ -168,8 +185,8 @@ app.put('/api/admin/users/:id', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin } = req.body;
-        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, esAdmin);
+        const { email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin, permitirEnvioClave } = req.body;
+        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin, permitirEnvioClave);
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating user:', err);
@@ -201,8 +218,14 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
         const pool = await poolPromise;
         const year = parseInt(req.query.year) || 2026;
         const local = req.query.local;
-        const canal = req.query.canal || 'Todos';
+        let canal = req.query.canal || 'Todos';
         const tipo = req.query.tipo || 'Ventas';
+
+        // For users with limited channels, "Todos" should sum only their allowed channels
+        const userAllowedCanales = req.user.allowedCanales || [];
+        const allCanales = ['Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp'];
+        const hasLimitedChannels = userAllowedCanales.length > 0 && userAllowedCanales.length < allCanales.length;
+        const useMultiChannel = canal === 'Todos' && hasLimitedChannels;
 
         if (!local) {
             return res.status(400).json({ error: 'El parámetro local es requerido' });
@@ -251,7 +274,7 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
                 memberCodes.forEach((code, i) => localsRequest.input(`mcode${i}`, sql.NVarChar, code));
                 const localsResult = await localsRequest.query(localsQuery);
                 memberLocals = localsResult.recordset.map(r => r.Local);
-                console.log(`🏪 Group "${local}" members (${memberLocals.length}):`, memberLocals);
+                console.log(`ðŸª Group "${local}" members (${memberLocals.length}):`, memberLocals);
             }
         }
 
@@ -267,6 +290,19 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
             localParams['local'] = local;
         }
 
+        // Build canal filter for the query
+        let canalFilter = '';
+        const canalParams = {};
+        if (useMultiChannel) {
+            // User has limited channels - sum individual channels instead of using 'Todos'
+            const canalPlaceholders = userAllowedCanales.map((_, i) => `@ch${i}`).join(', ');
+            canalFilter = `Canal IN (${canalPlaceholders})`;
+            userAllowedCanales.forEach((ch, i) => { canalParams[`ch${i}`] = ch; });
+        } else {
+            canalFilter = `Canal = @canal`;
+            canalParams['canal'] = canal;
+        }
+
         const query = `
             SELECT 
                 Fecha, 
@@ -274,7 +310,7 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
                 Mes, 
                 Dia, 
                 '${local}' as Local, 
-                Canal, 
+                '${useMultiChannel ? 'Todos' : canal}' as Canal, 
                 Tipo,
                 SUM(MontoReal) AS MontoReal, 
                 SUM(Monto) AS Monto, 
@@ -284,15 +320,19 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
                 SUM(MontoAnteriorAjustado) AS MontoAnteriorAjustado, 
                 SUM(MontoAnteriorAjustado_Acumulado) AS MontoAnteriorAjustado_Acumulado
             FROM RSM_ALCANCE_DIARIO 
-            WHERE Año = @year AND ${localFilter} AND Canal = @canal AND Tipo = @tipo
+            WHERE Año = @year AND ${localFilter} AND ${canalFilter} AND Tipo = @tipo
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-            GROUP BY Fecha, Año, Mes, Dia, Canal, Tipo
+            GROUP BY Fecha, Año, Mes, Dia, Tipo
             ORDER BY Mes, Dia
         `;
         const request = pool.request()
             .input('year', sql.Int, year)
-            .input('canal', sql.NVarChar, canal)
             .input('tipo', sql.NVarChar, tipo);
+
+        // Add canal filter params
+        Object.entries(canalParams).forEach(([key, val]) => {
+            request.input(key, sql.NVarChar, val);
+        });
 
         // Add local filter params
         Object.entries(localParams).forEach(([key, val]) => {
@@ -300,7 +340,7 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
         });
 
         const result = await request.query(query);
-        console.log(`📊 Budget data for ${local} (${canal}/${tipo}): ${result.recordset.length} records`);
+        console.log(`📊 Budget data for ${local} (${canal}/${tipo}): ${result.recordset.length} records${useMultiChannel ? ' [MULTI-CHANNEL: ' + userAllowedCanales.join(',') + ']' : ''}`);
         res.json(result.recordset);
     } catch (err) {
         console.error('Error in /api/budget:', err);
@@ -310,7 +350,7 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
 
 // GET /api/stores - Return stores and groups user has access to
 app.get('/api/stores', authMiddleware, async (req, res) => {
-    console.log('📍 /api/stores called by user:', req.user?.email);
+    console.log('ðŸ“ /api/stores called by user:', req.user?.email);
     try {
         const pool = await poolPromise;
         const userStores = req.user.allowedStores || [];
@@ -324,7 +364,7 @@ app.get('/api/stores', authMiddleware, async (req, res) => {
 
         const groupNamesResult = await pool.request().query(groupNamesQuery);
         const officialGroupNames = new Set(groupNamesResult.recordset.map(r => r.DESCRIPCION));
-        console.log('📋 Official group names from GRUPOSALMACENCAB:', Array.from(officialGroupNames));
+        console.log('ðŸ“‹ Official group names from GRUPOSALMACENCAB:', Array.from(officialGroupNames));
 
         // Then get all locals from budget data
         let localsQuery = 'SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026';
@@ -397,7 +437,7 @@ app.get('/api/test-stores', async (req, res) => {
 
 // NEW STORES endpoint with correct group detection
 app.get('/api/stores-v2', authMiddleware, async (req, res) => {
-    console.log('📍 /api/stores-v2 called by user:', req.user?.email);
+    console.log('ðŸ“ /api/stores-v2 called by user:', req.user?.email);
     try {
         const pool = await poolPromise;
         const userStores = req.user.allowedStores || [];
@@ -449,7 +489,7 @@ app.get('/api/stores-v2', authMiddleware, async (req, res) => {
             const groupSet = new Set(groups);
             const individuals = allLocals.filter(local => !groupSet.has(local));
 
-            console.log(`✅ Found ${groups.length} groups and ${individuals.length} individuals`);
+            console.log(`âœ… Found ${groups.length} groups and ${individuals.length} individuals`);
             res.json({ groups, individuals });
         } else {
             // User has access to all stores
@@ -467,11 +507,11 @@ app.get('/api/stores-v2', authMiddleware, async (req, res) => {
             const groupSet = new Set(groups);
             const individuals = allLocals.filter(local => !groupSet.has(local));
 
-            console.log(`✅ Found ${groups.length} groups and ${individuals.length} individuals (all access)`);
+            console.log(`âœ… Found ${groups.length} groups and ${individuals.length} individuals (all access)`);
             res.json({ groups, individuals });
         }
     } catch (err) {
-        console.error('❌ Error in /api/stores-v2:', err);
+        console.error('âŒ Error in /api/stores-v2:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -482,7 +522,7 @@ app.get('/api/group-stores/:groupName', authMiddleware, async (req, res) => {
         const pool = await poolPromise;
         const groupName = req.params.groupName;
 
-        console.log(`🔍 Looking up group members for: "${groupName}"`);
+        console.log(`ðŸ” Looking up group members for: "${groupName}"`);
 
         // Step 1: Find the IDGRUPO from GRUPOSALMACENCAB using the group name
         // The Local name in RSM_ALCANCE_DIARIO matches DESCRIPCION in GRUPOSALMACENCAB
@@ -497,10 +537,10 @@ app.get('/api/group-stores/:groupName', authMiddleware, async (req, res) => {
         idGrupoRequest.input('groupName', sql.NVarChar, groupName);
 
         const idGrupoResult = await idGrupoRequest.query(idGrupoQuery);
-        console.log(`📋 IDGRUPO results for "${groupName}":`, idGrupoResult.recordset);
+        console.log(`ðŸ“‹ IDGRUPO results for "${groupName}":`, idGrupoResult.recordset);
 
         if (idGrupoResult.recordset.length === 0) {
-            console.log(`⚠️ No IDGRUPO found for group name: "${groupName}"`);
+            console.log(`âš ï¸ No IDGRUPO found for group name: "${groupName}"`);
             return res.json({ stores: [] });
         }
 
@@ -521,7 +561,7 @@ app.get('/api/group-stores/:groupName', authMiddleware, async (req, res) => {
         const memberCodesResult = await memberCodesRequest.query(memberCodesQuery);
         const memberCodes = memberCodesResult.recordset.map(r => r.CODALMACEN);
 
-        console.log(`📋 Member CODALMACEN codes (${memberCodes.length}):`, memberCodes);
+        console.log(`ðŸ“‹ Member CODALMACEN codes (${memberCodes.length}):`, memberCodes);
 
         if (memberCodes.length === 0) {
             return res.json({ stores: [] });
@@ -544,10 +584,10 @@ app.get('/api/group-stores/:groupName', authMiddleware, async (req, res) => {
         const storesResult = await storesRequest.query(storesQuery);
         const stores = storesResult.recordset.map(r => r.Local);
 
-        console.log(`🏪 Group "${groupName}" has ${stores.length} individual stores:`, stores);
+        console.log(`ðŸª Group "${groupName}" has ${stores.length} individual stores:`, stores);
         res.json({ stores });
     } catch (err) {
-        console.error('❌ Error in /api/group-stores:', err);
+        console.error('âŒ Error in /api/group-stores:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -558,7 +598,7 @@ app.get('/api/all-stores', authMiddleware, async (req, res) => {
         // No permission check needed - all authenticated users can see stores
         const pool = await poolPromise;
         const result = await pool.request()
-            .query('SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE AÑO = 2026 ORDER BY Local');
+            .query('SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026 ORDER BY Local');
         const stores = result.recordset.map(r => r.Local);
         res.json(stores);
     } catch (err) {
@@ -572,7 +612,7 @@ app.get('/api/columns', async (req, res) => {
     try {
         const pool = await poolPromise;
         const result = await pool.request()
-            .query("SELECT TOP 1 * FROM RSM_ALCANCE_DIARIO WHERE AÑO = 2026");
+            .query("SELECT TOP 1 * FROM RSM_ALCANCE_DIARIO WHERE Año = 2026");
 
         if (result.recordset.length > 0) {
             res.json({
@@ -584,6 +624,52 @@ app.get('/api/columns', async (req, res) => {
         }
     } catch (err) {
         console.error('Error in /api/columns:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/available-canales - Return allowed canales for current user
+app.get('/api/available-canales', authMiddleware, async (req, res) => {
+    try {
+        const allowedCanales = req.user.allowedCanales || [];
+        const allCanales = ['Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp'];
+
+        // If user has no canal restrictions, return all canales
+        const canales = allowedCanales.length > 0 ? allowedCanales : allCanales;
+
+        res.json({ canales });
+    } catch (err) {
+        console.error('Error in /api/available-canales:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// ==========================================
+// FECHA LIMITE ENDPOINT
+// ==========================================
+
+// GET /api/fecha-limite?year=2026 - Returns the last date with real data (MontoReal > 0)
+// This date is used as the cutoff for all accumulated budget calculations
+app.get('/api/fecha-limite', authMiddleware, async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const year = parseInt(req.query.year) || 2026;
+
+        const result = await pool.request()
+            .input('year', sql.Int, year)
+            .query('SELECT MAX(Fecha) as FechaLimite FROM RSM_ALCANCE_DIARIO WHERE MontoReal > 0 AND Año = @year');
+
+        const fechaLimite = result.recordset[0]?.FechaLimite;
+        if (fechaLimite) {
+            // Format as YYYY-MM-DD
+            const d = new Date(fechaLimite);
+            const formatted = d.toISOString().split('T')[0];
+            console.log(`📅 Fecha limite for year ${year}: ${formatted}`);
+            res.json({ fechaLimite: formatted });
+        } else {
+            res.json({ fechaLimite: null });
+        }
+    } catch (err) {
+        console.error('Error in /api/fecha-limite:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -744,7 +830,7 @@ app.get('/api/dashboard/multi-kpi', authMiddleware, async (req, res) => {
             };
         }));
 
-        console.log('🎯 Dashboard multi-KPI results for', localesArray, ':');
+        console.log('ðŸŽ¯ Dashboard multi-KPI results for', localesArray, ':');
         results.forEach(r => {
             console.log(`  ${r.local}:`, {
                 Ventas_pctPpto: r.stats.Ventas?.pctPresupuesto,
@@ -972,7 +1058,7 @@ app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
                     INSERT (Clave, Valor, FechaModificacion, UsuarioModificacion) VALUES (@clave, @valor, GETDATE(), @usuario);
             `);
 
-        console.log(`✅ Config '${req.params.key}' updated by ${req.user.email}`);
+        console.log(`âœ… Config '${req.params.key}' updated by ${req.user.email}`);
         res.json({ success: true });
     } catch (err) {
         console.error('Error in PUT /api/admin/config:', err);
@@ -1051,7 +1137,7 @@ app.put('/api/user/dashboard-config', authMiddleware, async (req, res) => {
             await request.query(`UPDATE APP_USUARIOS SET ${updates.join(', ')} WHERE Id = @userId`);
         }
 
-        console.log(`✅ Dashboard config saved for user ${req.user.email}:`, { dashboardLocales, comparativePeriod });
+        console.log(`âœ… Dashboard config saved for user ${req.user.email}:`, { dashboardLocales, comparativePeriod });
         res.json({ success: true, dashboardLocales, comparativePeriod });
     } catch (err) {
         console.error('Error in PUT /api/user/dashboard-config:', err);
@@ -1067,7 +1153,7 @@ app.post('/api/tactica', authMiddleware, async (req, res) => {
         if (!data || !data.monthlyData || !data.annualTotals) {
             return res.status(400).json({ error: 'Datos mensuales y totales anuales son requeridos' });
         }
-        console.log(`🤖 Táctica requested for ${data.storeName} (${data.kpi}) by ${req.user?.email}`);
+        console.log(`ðŸ¤– Táctica requested for ${data.storeName} (${data.kpi}) by ${req.user?.email}`);
 
         // Read custom prompt from DB
         let customPrompt = null;
@@ -1080,7 +1166,7 @@ app.post('/api/tactica', authMiddleware, async (req, res) => {
                 customPrompt = configResult.recordset[0].Valor;
             }
         } catch (configErr) {
-            console.warn('⚠️ Could not read custom prompt, using default:', configErr.message);
+            console.warn('âš ï¸ Could not read custom prompt, using default:', configErr.message);
         }
 
         const analysis = await generateTacticaAnalysis(data, customPrompt);
@@ -1107,6 +1193,11 @@ app.get('/api/admin/db-config', authMiddleware, async (req, res) => {
 
         const config = await getDBConfig();
         const currentMode = getCurrentMode();
+
+        console.log('ðŸ“Š DB Config endpoint called:');
+        console.log('   Config:', config);
+        console.log('   CurrentMode:', currentMode);
+        console.log('   MODES:', MODES);
 
         res.json({
             config,
@@ -1169,8 +1260,20 @@ app.post('/api/admin/db-config', authMiddleware, async (req, res) => {
     }
 });
 
+// ==========================================
+// AUXILIARY DATABASE ROUTES (admin only)
+// ==========================================
+const dbAuxiliaryRoutes = require('./dbAuxiliaryRoutes');
+app.use('/api/admin', authMiddleware, (req, res, next) => {
+    if (!req.user.esAdmin) {
+        return res.status(403).json({ error: 'No tiene permisos de administrador' });
+    }
+    next();
+}, dbAuxiliaryRoutes);
+
 app.listen(port, () => {
-    console.log(`🚀 Server running at http://localhost:${port}`);
-    console.log(`📊 Database mode: ${getCurrentMode() || 'initializing...'}`);
+    console.log(`ðŸš€ Server running at http://localhost:${port}`);
+    const dbStatus = dbManager.getCurrentStatus();
+    console.log(`ðŸ“Š Database mode: ${dbStatus.activeMode}`);
 });
 

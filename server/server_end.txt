@@ -1,0 +1,21 @@
+});
+
+// ==========================================
+// AUXILIARY DATABASE ROUTES (admin only)
+// ==========================================
+const dbAuxiliaryRoutes = require('./dbAuxiliaryRoutes');
+app.use('/api/admin', authMiddleware, (req, res, next) => {
+    if (!req.user.esAdmin) {
+        return res.status(403).json({ error: 'No tiene permisos de administrador' });
+    }
+    next();
+}, dbAuxiliaryRoutes);
+
+// ==========================================
+// START SERVER
+// ==========================================
+app.listen(port, () => {
+    console.log(`🚀 Server running at http://localhost:${port}`);
+    const dbStatus = dbManager.getCurrentStatus();
+    console.log(`📊 Database mode: ${dbStatus.activeMode}`);
+});

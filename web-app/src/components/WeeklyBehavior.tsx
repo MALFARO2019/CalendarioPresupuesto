@@ -1,6 +1,6 @@
 import React from 'react';
 import type { BudgetRecord } from '../mockData';
-import { formatCurrencyCompact } from '../utils/formatters';
+import { useFormatCurrency } from '../utils/formatters';
 
 interface WeeklyBehaviorProps {
     data: BudgetRecord[];
@@ -10,6 +10,7 @@ interface WeeklyBehaviorProps {
 }
 
 export const WeeklyBehavior: React.FC<WeeklyBehaviorProps> = ({ data, kpi, comparisonType, yearType }) => {
+    const fc = useFormatCurrency();
     // Group data by week number
     // For simplicity, we can assume data is for a single month and group by week index 
     // or calculate ISO week. Given mock data, let's group by 7-day chunks or Week number if calculated.
@@ -83,8 +84,8 @@ export const WeeklyBehavior: React.FC<WeeklyBehaviorProps> = ({ data, kpi, compa
                     {weeklyData.map((week, idx) => (
                         <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                             <td className="py-3 font-bold text-gray-500">W{week.week}</td>
-                            <td className="py-3 text-right font-mono text-gray-600">{formatCurrencyCompact(week.budget, kpi)}</td>
-                            <td className="py-3 text-right font-mono font-bold text-gray-800">{formatCurrencyCompact(week.real, kpi)}</td>
+                            <td className="py-3 text-right font-mono text-gray-600">{fc(week.budget, kpi)}</td>
+                            <td className="py-3 text-right font-mono font-bold text-gray-800">{fc(week.real, kpi)}</td>
                             <td className="py-3 text-right">
                                 {week.hasData ? (() => {
                                     // Compliance = (Real / Budget) * 100

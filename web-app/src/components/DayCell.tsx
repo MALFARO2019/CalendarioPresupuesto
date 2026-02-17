@@ -1,6 +1,7 @@
 import React from 'react';
 import type { BudgetRecord } from '../mockData';
 import { useUserPreferences } from '../context/UserPreferences';
+import { useFormatCurrency } from '../utils/formatters';
 
 interface DayCellProps {
     day: number;
@@ -44,17 +45,7 @@ export const DayCell: React.FC<DayCellProps> = ({ day, data, isCurrentMonth, com
         barColor = 'bg-orange-400';
     }
 
-    const formatNumber = (val: number) => {
-        // Transacciones: no currency, just number
-        // Ventas and TQP (Tiquete Promedio): show ₡
-        const isTransaction = kpi === 'Transacciones';
-        const formatted = new Intl.NumberFormat('es-CR', {
-            style: 'decimal',
-            maximumFractionDigits: 0
-        }).format(val);
-
-        return isTransaction ? formatted : `₡${formatted}`;
-    };
+    const fc = useFormatCurrency();
 
     const { formatPct100 } = useUserPreferences();
 
@@ -70,13 +61,13 @@ export const DayCell: React.FC<DayCellProps> = ({ day, data, isCurrentMonth, com
                 <div className="flex items-baseline gap-1">
                     <span className="text-[10px] font-bold text-gray-500">P:</span>
                     <span className="text-xs font-semibold text-gray-700 font-mono">
-                        {formatNumber(target)}
+                        {fc(target, kpi)}
                     </span>
                 </div>
                 <div className="flex items-baseline gap-1">
                     <span className="text-[10px] font-bold text-gray-500">R:</span>
                     <span className="text-xs font-semibold text-gray-900 font-mono">
-                        {formatNumber(real)}
+                        {fc(real, kpi)}
                     </span>
                 </div>
             </div>

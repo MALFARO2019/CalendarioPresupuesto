@@ -32,20 +32,24 @@ interface MonthAgg {
     monthName: string;
     monthShort: string;
     presupuesto: number;
+    presupuestoConDatos: number;
     presupuestoAcumulado: number;
     presupuestoAcumuladoConDatos: number;
     real: number;
     realAcumulado: number;
     anterior: number;
+    anteriorConDatos: number;
     anteriorAcumulado: number;
     anteriorAjustado: number;
     anteriorAjustadoAcumulado: number;
+    alcanceMes: number;
+    alcanceAnteriorMes: number;
     alcanceAcumulado: number;
     hasData: boolean;
 }
 
 export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
-    data, year, kpi, storeName = '', tacticaOpen = false, onTacticaClose
+    data, year, kpi, yearType, storeName = '', tacticaOpen = false, onTacticaClose
 }) => {
     const [visibleBars, setVisibleBars] = useState({
         presupuesto: true,
@@ -87,10 +91,16 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
             const hasRealData = monthRecords.some(d => d.MontoReal > 0);
 
             const presupuesto = monthRecords.reduce((sum, d) => sum + d.Monto, 0);
-            const presupuestoConDatos = monthRecords.filter(d => d.MontoReal > 0).reduce((sum, d) => sum + d.Monto, 0);
+            const presupuestoConDatos = monthRecords.reduce((sum, d) => sum + (d.MontoAcumulado || 0), 0);
             const real = monthRecords.reduce((sum, d) => sum + d.MontoReal, 0);
             const anterior = monthRecords.reduce((sum, d) => sum + (d.MontoAnterior || 0), 0);
             const anteriorAjustado = monthRecords.reduce((sum, d) => sum + (d.MontoAnteriorAjustado || 0), 0);
+            const anteriorConDatos = monthRecords.reduce((sum, d) => {
+                if (yearType === 'Año Anterior Ajustado') {
+                    return sum + (d.MontoAnteriorAjustadoAcumulado || 0);
+                }
+                return sum + (d.MontoAnteriorAcumulado || 0);
+            }, 0);
 
             accPresupuesto += presupuesto;
             accPresupuestoConDatos += presupuestoConDatos;
@@ -98,6 +108,11 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
             accAnterior += anterior;
             accAnteriorAjustado += anteriorAjustado;
 
+            // Per-month alcance: Real vs Budget for days with data (for the month only)
+            const alcanceMes = presupuestoConDatos > 0 ? (real / presupuestoConDatos) * 100 : 0;
+            // Per-month alcance vs Año Anterior
+            const alcanceAnteriorMes = anteriorConDatos > 0 ? (real / anteriorConDatos) * 100 : 0;
+            // Accumulated alcance: YTD Real vs YTD Budget with data
             const alcanceAcumulado = accPresupuestoConDatos > 0 ? (accReal / accPresupuestoConDatos) * 100 : 0;
 
             return {
@@ -105,31 +120,35 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
                 monthName: name,
                 monthShort: MONTH_SHORT[i],
                 presupuesto,
+                presupuestoConDatos,
                 presupuestoAcumulado: accPresupuesto,
                 presupuestoAcumuladoConDatos: accPresupuestoConDatos,
                 real,
                 realAcumulado: accReal,
                 anterior,
+                anteriorConDatos,
                 anteriorAcumulado: accAnterior,
                 anteriorAjustado,
                 anteriorAjustadoAcumulado: accAnteriorAjustado,
+                alcanceMes,
+                alcanceAnteriorMes,
                 alcanceAcumulado,
                 hasData: hasRealData,
             };
         });
-    }, [data, year]);
+    }, [data, year, yearType]);
 
     const getAlcanceColor = (pct: number, hasData: boolean) => {
         if (!hasData) return 'bg-gray-100 text-gray-400';
         if (pct >= 100) return 'bg-green-500 text-white';
-        if (pct >= 90) return 'bg-orange-400 text-white';
+        if (pct >= 95) return 'bg-orange-400 text-white';
         return 'bg-red-500 text-white';
     };
 
     const getAlcanceBorder = (pct: number, hasData: boolean) => {
         if (!hasData) return 'border-gray-200';
         if (pct >= 100) return 'border-green-300';
-        if (pct >= 90) return 'border-orange-300';
+        if (pct >= 95) return 'border-orange-300';
         return 'border-red-300';
     };
 
@@ -379,7 +398,7 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
                 <h2 className="text-xl font-bold text-gray-800">Calendario Anual {year}</h2>
                 <p className="text-xs text-gray-400 mt-0.5">
                     KPI: <span className="font-semibold text-gray-500">{kpi}</span>
-                    {' · '} Alcance % calculado sobre acumulado vs presupuesto acumulado
+                    {' · '} Alcance % calculado sobre real vs presupuesto (días con datos)
                 </p>
             </div>
 
@@ -388,23 +407,34 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
                 {monthlyData.map((m) => (
                     <div
                         key={m.month}
-                        className={`rounded-2xl border-2 p-4 bg-white transition-all hover:shadow-lg ${getAlcanceBorder(m.alcanceAcumulado, m.hasData)}`}
+                        className={`rounded-2xl border-2 p-4 bg-white transition-all hover:shadow-lg ${getAlcanceBorder(m.alcanceMes, m.hasData)}`}
                     >
-                        {/* Month header */}
+                        {/* Month header with dual badges */}
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-sm font-bold text-gray-700">{m.monthName}</h3>
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getAlcanceColor(m.alcanceAcumulado, m.hasData)}`}>
-                                {m.hasData ? formatPct100(m.alcanceAcumulado) : '—'}
-                            </span>
+                            <div className="flex gap-1.5">
+                                <div className="text-center">
+                                    <span className="block text-[8px] text-gray-400 leading-none mb-0.5">Ppto</span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${getAlcanceColor(m.alcanceMes, m.hasData)}`}>
+                                        {m.hasData ? formatPct100(m.alcanceMes) : '—'}
+                                    </span>
+                                </div>
+                                <div className="text-center">
+                                    <span className="block text-[8px] text-gray-400 leading-none mb-0.5">Ant.</span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${getAlcanceColor(m.alcanceAnteriorMes, m.hasData)}`}>
+                                        {m.hasData ? formatPct100(m.alcanceAnteriorMes) : '—'}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Data rows */}
                         <div className="space-y-1.5">
-                            <Row label="Presup." value={formatCurrencyCompact(m.presupuesto, kpi)} color="text-gray-500" />
-                            <Row label="P. Acum." value={formatCurrencyCompact(m.presupuestoAcumulado, kpi)} color="text-indigo-600" bold />
-                            <Row label="Real" value={m.hasData ? formatCurrencyCompact(m.real, kpi) : '—'} color={m.hasData ? 'text-gray-800' : 'text-gray-400'} bold />
-                            <Row label="Año Ant." value={formatCurrencyCompact(m.anterior, kpi)} color="text-orange-500" />
-                            <Row label="Ant. Ajust." value={formatCurrencyCompact(m.anteriorAjustado, kpi)} color="text-amber-500" />
+                            <Row label="Presup." value={fc(m.presupuesto, kpi)} color="text-gray-500" />
+                            <Row label="P. Acum" value={m.hasData ? fc(m.presupuestoConDatos, kpi) : '—'} color="text-indigo-600" bold />
+                            <Row label="Real" value={m.hasData ? fc(m.real, kpi) : '—'} color={m.hasData ? 'text-gray-800' : 'text-gray-400'} bold />
+                            <Row label="Año Ant." value={fc(yearType === 'Año Anterior Ajustado' ? m.anteriorAjustado : m.anterior, kpi)} color="text-orange-500" />
+                            <Row label="Ant. Acum" value={m.hasData ? fc(m.anteriorConDatos, kpi) : '—'} color="text-amber-600" bold />
                         </div>
                     </div>
                 ))}

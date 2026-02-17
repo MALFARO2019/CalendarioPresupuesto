@@ -4,11 +4,13 @@ import type { ComparativePeriod } from '../shared/types/modules';
 
 export type PctDisplayMode = 'base100' | 'differential';
 export type YearType = 'Año Anterior' | 'Año Anterior Ajustado';
+export type ValueDisplayMode = 'completo' | 'miles' | 'millones';
 
 interface UserPreferences {
     pctDisplayMode: PctDisplayMode;
     pctDecimals: number;         // Decimals for percentages (0-3)
     valueDecimals: number;       // Decimals for currency/values (0-3)
+    valueDisplayMode: ValueDisplayMode; // How to display values: full, thousands, millions
     defaultYearType: YearType;   // Default year comparison type
     dashboardLocales?: string[]; // User-selected locales for dashboard KPIs (max 5)
     comparativePeriod: ComparativePeriod; // Comparative period for trend calculations
@@ -19,6 +21,7 @@ interface UserPreferencesContextType {
     setPctDisplayMode: (mode: PctDisplayMode) => void;
     setPctDecimals: (decimals: number) => void;
     setValueDecimals: (decimals: number) => void;
+    setValueDisplayMode: (mode: ValueDisplayMode) => void;
     setDefaultYearType: (yearType: YearType) => void;
     setDashboardLocales: (locales: string[]) => void;
     setComparativePeriod: (period: ComparativePeriod) => void;
@@ -36,6 +39,7 @@ const defaultPreferences: UserPreferences = {
     pctDisplayMode: 'base100',
     pctDecimals: 1,
     valueDecimals: 0,
+    valueDisplayMode: 'completo',
     defaultYearType: 'Año Anterior',
     comparativePeriod: 'Month',
 };
@@ -118,6 +122,10 @@ export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ chi
         setPreferences(prev => ({ ...prev, valueDecimals: Math.max(0, Math.min(3, decimals)) }));
     };
 
+    const setValueDisplayMode = (mode: ValueDisplayMode) => {
+        setPreferences(prev => ({ ...prev, valueDisplayMode: mode }));
+    };
+
     const setDefaultYearType = (yearType: YearType) => {
         setPreferences(prev => ({ ...prev, defaultYearType: yearType }));
     };
@@ -169,6 +177,7 @@ export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ chi
             setPctDisplayMode,
             setPctDecimals,
             setValueDecimals,
+            setValueDisplayMode,
             setDefaultYearType,
             setDashboardLocales,
             setComparativePeriod,

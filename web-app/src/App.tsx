@@ -6,7 +6,7 @@ import { AdminPage } from './components/AdminPage';
 import { Dashboard } from './views/Dashboard';
 import { generateMockData } from './mockData';
 import type { BudgetRecord } from './mockData';
-import { fetchBudgetData, fetchStores, fetchGroupStores, getToken, getUser, logout, verifyToken, API_BASE } from './api';
+import { fetchBudgetData, fetchFechaLimite, fetchStores, fetchGroupStores, fetchAvailableCanales, getToken, getUser, logout, verifyToken, API_BASE } from './api';
 import { addMonths, format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X, SlidersHorizontal, Home } from 'lucide-react';
@@ -38,7 +38,7 @@ function App() {
   const [filterCanal, setFilterCanal] = useState('Todos');
   const [filterKpi, setFilterKpi] = useState('Ventas');
   const [filterType, setFilterType] = useState('Presupuesto');
-  const { preferences, setPctDisplayMode, setPctDecimals, setValueDecimals, setDefaultYearType } = useUserPreferences();
+  const { preferences, setPctDisplayMode, setPctDecimals, setValueDecimals, setValueDisplayMode, setDefaultYearType } = useUserPreferences();
   const [yearType, setYearType] = useState<'Año Anterior' | 'Año Anterior Ajustado'>(preferences.defaultYearType);
 
   const [data, setData] = useState<BudgetRecord[]>([]);
@@ -52,6 +52,17 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [useApi, setUseApi] = useState(true);
+  const [availableCanales, setAvailableCanales] = useState<string[]>([]);
+  const [dbMode, setDbMode] = useState<string>('primary');
+  const [fechaLimite, setFechaLimite] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+
+  // Fetch DB mode on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/db-mode`)
+      .then(r => r.json())
+      .then(d => { if (d.mode) setDbMode(d.mode); })
+      .catch(() => { });
+  }, []);
 
   // Check if user is already logged in
   useEffect(() => {
@@ -70,7 +81,7 @@ function App() {
     checkAuth();
   }, []);
 
-  // Fetch stores when dashboard loads
+  // Fetch stores and fecha limite when dashboard loads
   useEffect(() => {
     if (view !== 'dashboard') return;
 
@@ -84,7 +95,25 @@ function App() {
         }
       })
       .catch(err => console.warn('Could not fetch stores:', err.message));
-  }, [view]);
+
+    // Fetch available canales for current user
+    fetchAvailableCanales()
+      .then(canales => {
+        setAvailableCanales(canales);
+        console.log('📡 Available canales loaded:', canales);
+      })
+      .catch(err => console.warn('Could not fetch canales:', err.message));
+
+    // Fetch the cutoff date from DB (MAX(Fecha) WHERE MontoReal > 0)
+    fetchFechaLimite(year)
+      .then(fecha => {
+        if (fecha) {
+          setFechaLimite(fecha);
+          console.log('📅 Fecha limite loaded from DB:', fecha);
+        }
+      })
+      .catch(err => console.warn('Could not fetch fecha limite:', err.message));
+  }, [view, year]);
 
   // Fetch budget data when filters change
   useEffect(() => {
@@ -352,20 +381,20 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 font-inter text-gray-800 pb-20">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-md">
-        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-4">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 h-16 sm:h-20 flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <img src="/LogoRosti.png" alt="Rosti" className="h-10 sm:h-14 w-auto rounded-xl" />
             <div className="hidden sm:block">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900">KPIs Rosti</h1>
-              <p className="text-xs text-gray-500 font-medium">Gestión y visualización de métricas diarias</p>
+              <h1 className="text-lg md:text-xl lg:text-2xl font-bold tracking-tight text-gray-900 whitespace-nowrap">KPIs Rosti</h1>
+              <p className="text-xs text-gray-500 font-medium hidden lg:block">Gestión y visualización de métricas</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-3 ml-auto flex-shrink-0">
             {/* Data source indicator - hidden on mobile */}
-            <div className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${useApi ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-              <div className={`w-2 h-2 rounded-full ${useApi ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-              {useApi ? 'SQL Server' : 'Datos Mock'}
+            <div className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${useApi ? (dbMode === 'auxiliary' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700') : 'bg-red-100 text-red-700'}`}>
+              <div className={`w-2 h-2 rounded-full ${useApi ? (dbMode === 'auxiliary' ? 'bg-yellow-500' : 'bg-green-500') : 'bg-red-500'}`}></div>
+              {useApi ? (dbMode === 'auxiliary' ? 'SQL S' : 'SQL P') : 'Mock'}
             </div>
 
             {/* User info - compact on mobile */}
@@ -521,6 +550,30 @@ function App() {
 
                       <div className="h-px bg-gray-100" />
 
+                      {/* Formato de Valores */}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Formato de Valores</label>
+                        <div className="flex gap-1">
+                          {(['completo', 'miles', 'millones'] as const).map(mode => (
+                            <button
+                              key={mode}
+                              onClick={() => setValueDisplayMode(mode)}
+                              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all border ${preferences.valueDisplayMode === mode
+                                  ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                                  : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                                }`}
+                            >
+                              {mode === 'completo' ? 'Completo' : mode === 'miles' ? 'Miles' : 'Millones'}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Ej: {preferences.valueDisplayMode === 'completo' ? '₡1 234 568' : preferences.valueDisplayMode === 'miles' ? '₡1 235K' : '₡1,2M'}
+                        </p>
+                      </div>
+
+                      <div className="h-px bg-gray-100" />
+
                       {/* Tipo Año Predeterminado */}
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Tipo Año Predeterminado</label>
@@ -630,31 +683,12 @@ function App() {
               )}
             </div>
 
-            {/* Month selector - only for mensual */}
+            {/* Month name display - only for mensual (read-only indicator) */}
             {dashboardTab === 'mensual' && (
-              <div className="flex items-center bg-gray-50 rounded-xl p-1 sm:p-1.5 border border-gray-100 shadow-inner">
-                <button
-                  onClick={handlePrevMonth}
-                  className="touch-target p-1.5 sm:p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500 hover:text-indigo-600 disabled:opacity-30"
-                  disabled={currentDate.getMonth() === 0}
-                >
-                  <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <div className="px-2 sm:px-6 py-1 min-w-[120px] sm:min-w-[180px] text-center">
-                  <span className="text-xs sm:text-sm font-bold capitalize text-gray-800 block">
-                    {format(currentDate, 'MMMM', { locale: es })}
-                  </span>
-                  <span className="text-[10px] sm:text-xs text-gray-400 font-bold block">
-                    {format(currentDate, 'yyyy')}
-                  </span>
-                </div>
-                <button
-                  onClick={handleNextMonth}
-                  className="touch-target p-1.5 sm:p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500 hover:text-indigo-600 disabled:opacity-30"
-                  disabled={currentDate.getMonth() === 11}
-                >
-                  <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
+              <div className="flex items-center bg-gray-50 rounded-xl px-3 sm:px-5 py-2 sm:py-2.5 border border-gray-100 shadow-inner">
+                <span className="text-xs sm:text-sm font-bold text-gray-800 capitalize">
+                  {format(currentDate, 'MMMM yyyy', { locale: es })}
+                </span>
               </div>
             )}
 
@@ -685,8 +719,8 @@ function App() {
       </div>
 
       <main id="dashboard-content" className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
-        {/* Filters - Only show when in Presupuesto module */}
-        {dashboardTab !== 'home' && (
+        {/* Filters - Only show when in Presupuesto module (not in tendencia) */}
+        {dashboardTab !== 'home' && dashboardTab !== 'tendencia' && (
           <FilterBar
             year={year}
             setYear={() => { }} // Year is read-only
@@ -704,6 +738,13 @@ function App() {
             setYearType={(type: 'Año Anterior' | 'Año Anterior Ajustado') => {
               setYearType(type);
               setDefaultYearType(type);
+            }}
+            availableCanales={availableCanales}
+            showMonthSelector={dashboardTab === 'mensual'}
+            currentMonth={currentDate.getMonth()}
+            onMonthChange={(month: number) => {
+              const newDate = new Date(currentDate.getFullYear(), month, 1);
+              setCurrentDate(newDate);
             }}
           />
         )}
@@ -750,6 +791,10 @@ function App() {
                 comparisonType={filterType}
                 yearType={yearType}
                 filterLocal={filterLocal}
+                dateRange={{
+                  startDate: `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`,
+                  endDate: fechaLimite
+                }}
               />
             </div>
 
@@ -787,7 +832,14 @@ function App() {
             {/* Page 4: Daily Chart */}
             <div className="print-page">
               <div className="mt-8">
-                <DailyBehaviorChart data={currentMonthData} kpi={filterKpi} />
+                <DailyBehaviorChart
+                  data={currentMonthData}
+                  kpi={filterKpi}
+                  dateRange={{
+                    startDate: `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`,
+                    endDate: fechaLimite
+                  }}
+                />
               </div>
             </div>
 
@@ -795,7 +847,14 @@ function App() {
             <div className="print-page">
               {currentDate.getMonth() >= new Date().getMonth() && currentDate.getFullYear() >= new Date().getFullYear() && (
                 <div className="mt-8">
-                  <IncrementCard data={currentMonthData} currentDate={currentDate} />
+                  <IncrementCard
+                    data={currentMonthData}
+                    currentDate={currentDate}
+                    dateRange={{
+                      startDate: `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`,
+                      endDate: fechaLimite
+                    }}
+                  />
                 </div>
               )}
 
@@ -824,6 +883,10 @@ function App() {
               yearType={yearType}
               filterLocal={filterLocal}
               isAnnual={true}
+              dateRange={{
+                startDate: `${currentDate.getFullYear()}-01-01`,
+                endDate: fechaLimite
+              }}
             />
 
             <div id="annual-calendar-container">
@@ -856,7 +919,7 @@ function App() {
             <TendenciaAlcance
               year={year}
               startDate={`${year}-01-01`}
-              endDate={format(new Date(), 'yyyy-MM-dd')}
+              endDate={fechaLimite}
               groups={groups}
               individualStores={individualStores}
               onExportExcel={(fn) => { tendenciaExportRef.current = fn; }}

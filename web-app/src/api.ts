@@ -18,6 +18,7 @@ export interface User {
     esAdmin: boolean;
     esProtegido: boolean;
     allowedStores: string[];
+    allowedCanales: string[];
 }
 
 
@@ -142,6 +143,7 @@ export async function createAdminUser(
     nombre: string,
     clave: string,
     stores: string[],
+    canales: string[],
     accesoTendencia: boolean = false,
     accesoTactica: boolean = false,
     accesoEventos: boolean = false,
@@ -154,7 +156,7 @@ export async function createAdminUser(
     const response = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, clave, stores, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin })
+        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -170,6 +172,7 @@ export async function updateAdminUser(
     activo: boolean,
     clave: string | null,
     stores: string[],
+    canales: string[],
     accesoTendencia: boolean,
     accesoTactica: boolean,
     accesoEventos: boolean,
@@ -177,12 +180,13 @@ export async function updateAdminUser(
     accesoTiempos: boolean,
     accesoEvaluaciones: boolean,
     accesoInventarios: boolean,
-    esAdmin: boolean
+    esAdmin: boolean,
+    permitirEnvioClave: boolean = true
 ): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin })
+        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin, permitirEnvioClave })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -218,9 +222,36 @@ export async function fetchAllStores(): Promise<string[]> {
     return response.json();
 }
 
+// GET /api/available-canales - Fetch canales allowed for current user
+export async function fetchAvailableCanales(): Promise<string[]> {
+    const response = await fetch(`${API_BASE}/available-canales`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        console.error('Error fetching available canales:', response.statusText);
+        return ['Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp'];
+    }
+    const data = await response.json();
+    return data.canales || [];
+}
+
 // ==========================================
 // Data API (authenticated)
 // ==========================================
+
+// GET /api/fecha-limite - Returns the last date with real data (MontoReal > 0)
+export async function fetchFechaLimite(year: number = 2026): Promise<string | null> {
+    try {
+        const response = await fetch(`${API_BASE}/fecha-limite?year=${year}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.fechaLimite || null;
+    } catch {
+        return null;
+    }
+}
 
 export async function fetchBudgetData(year: number = 2026, local?: string, canal: string = 'Todos', tipo: string = 'Ventas'): Promise<BudgetRecord[]> {
     const params = new URLSearchParams({ year: year.toString(), canal, tipo });
@@ -503,3 +534,105 @@ export async function saveDashboardConfig(config: { dashboardLocales?: string[];
     return response.json();
 }
 
+// ==========================================
+// AUXILIARY DATABASE API
+// ==========================================
+
+export interface AuxiliaryDBConfig {
+    server: string;
+    database: string;
+    username: string;
+    password?: string;
+}
+
+export interface DBStatus {
+    activeMode: 'primary' | 'auxiliary';
+    primaryHealthy: boolean;
+    auxiliaryConfigured: boolean;
+    lastHealthCheck: string | null;
+}
+
+export interface SyncStats {
+    RSM_ALCANCE_DIARIO?: number;
+    APP_USUARIOS?: number;
+    [key: string]: number | undefined;
+}
+
+export async function saveAuxiliaryDBConfig(config: AuxiliaryDBConfig): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/admin/db-config/auxiliary`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+        },
+        body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error al guardar configuración');
+    }
+
+    return response.json();
+}
+
+export async function getAuxiliaryDBConfig(): Promise<Partial<AuxiliaryDBConfig>> {
+    const response = await fetch(`${API_BASE}/admin/db-config/auxiliary`, {
+        headers: {
+            'Authorization': `Bearer ${getToken()}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Error al obtener configuración');
+    }
+
+    return response.json();
+}
+
+export async function testAuxiliaryDBConnection(config: AuxiliaryDBConfig): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/admin/db-config/test-auxiliary`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+        },
+        body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+        throw new Error('Error al probar conexión');
+    }
+
+    return response.json();
+}
+
+export async function getDBStatus(): Promise<DBStatus> {
+    const response = await fetch(`${API_BASE}/admin/db-status`, {
+        headers: {
+            'Authorization': `Bearer ${getToken()}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Error al obtener estado de BD');
+    }
+
+    return response.json();
+}
+
+export async function syncDatabases(): Promise<{ success: boolean; message: string; stats: SyncStats }> {
+    const response = await fetch(`${API_BASE}/admin/db-sync`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${getToken()}`
+        }
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error al sincronizar datos');
+    }
+
+    return response.json();
+}

@@ -12,9 +12,10 @@ interface SummaryCardProps {
     yearType: 'Año Anterior' | 'Año Anterior Ajustado';
     filterLocal: string;
     isAnnual?: boolean;
+    dateRange?: { startDate: string; endDate: string };
 }
 
-export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransacciones, dataTQP, currentMonth, comparisonType, yearType, filterLocal, isAnnual = false }) => {
+export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransacciones, dataTQP, currentMonth, comparisonType, yearType, filterLocal, isAnnual = false, dateRange }) => {
     const { formatPct100 } = useUserPreferences();
     const fc = useFormatCurrency();
     const summary = useMemo(() => {
@@ -22,13 +23,38 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
 
         const today = new Date();
 
-        // Filter data: full year for annual, single month for monthly
+        // Helper: filter data by dateRange (Fecha field) to match Tendencia's BETWEEN filter
+        const filterByDateRange = (records: any[]) => {
+            if (!dateRange) return records;
+            const rangeStart = dateRange.startDate; // "2026-01-01"
+            const rangeEnd = dateRange.endDate;     // "2026-02-16"
+            return records.filter((d: any) => {
+                if (!d.Fecha) return true; // keep records without Fecha
+                // Normalize Fecha to YYYY-MM-DD string for comparison
+                let fechaStr: string;
+                if (typeof d.Fecha === 'string') {
+                    fechaStr = d.Fecha.substring(0, 10);
+                } else if (d.Fecha instanceof Date) {
+                    fechaStr = d.Fecha.toISOString().substring(0, 10);
+                } else {
+                    return true;
+                }
+                return fechaStr >= rangeStart && fechaStr <= rangeEnd;
+            });
+        };
+
+        // Filter data: for annual view, keep both full year (for P. Año) and date-filtered (for P. Acum)
         const currentMonthIndex = currentMonth + 1;
-        const ventasMonth = isAnnual ? dataVentas : dataVentas.filter(d => d.Mes === currentMonthIndex);
-        const transaccionesMonth = isAnnual ? dataTransacciones : dataTransacciones.filter(d => d.Mes === currentMonthIndex);
+        // Date-filtered data (for P. Acum in annual, or full month for monthly)
+        const ventasMonth = isAnnual ? filterByDateRange(dataVentas) : dataVentas.filter(d => d.Mes === currentMonthIndex);
+        const transaccionesMonth = isAnnual ? filterByDateRange(dataTransacciones) : dataTransacciones.filter(d => d.Mes === currentMonthIndex);
+        // Full year data (for P. Año in annual view)
+        const ventasFullYear = isAnnual ? dataVentas : null;
+        const transaccionesFullYear = isAnnual ? dataTransacciones : null;
 
         // Helper to calculate metrics for a KPI dataset with specific comparison
-        const calculateKPI = (data: any[], compareType: 'Presupuesto' | 'Año Anterior' | 'Año Anterior Ajustado') => {
+        // fullYearData is the unfiltered dataset (only used in annual view for P. Año row)
+        const calculateKPI = (data: any[], compareType: 'Presupuesto' | 'Año Anterior' | 'Año Anterior Ajustado', fullYearData?: any[] | null) => {
             if (data.length === 0) return {
                 mes: 0,
                 acum: 0,
@@ -41,21 +67,23 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
             const totalActual = data.reduce((sum: number, d: any) => sum + (d.MontoReal || 0), 0);
 
             let totalMes, totalAcum;
+            // For P. Año/Mes: use full year data if available (annual view), otherwise use filtered data
+            const mesData = fullYearData || data;
 
             if (compareType === 'Presupuesto') {
-                // P. Mes/Año: sum all Monto
-                totalMes = data.reduce((sum: number, d: any) => sum + (d.Monto || 0), 0);
-                // P. Acum: for annual, sum Monto only for days with real data; for monthly, use MontoAcumulado
+                // P. Año: sum all Monto for the FULL year (not date-filtered)
+                totalMes = mesData.reduce((sum: number, d: any) => sum + (d.Monto || 0), 0);
+                // P. Acum: sum Monto only for days with real data within date range
                 totalAcum = isAnnual
                     ? data.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.Monto || 0), 0)
                     : data.reduce((sum: number, d: any) => sum + (d.MontoAcumulado || 0), 0);
             } else if (compareType === 'Año Anterior Ajustado') {
-                totalMes = data.reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustado || 0), 0);
+                totalMes = mesData.reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustado || 0), 0);
                 totalAcum = isAnnual
                     ? data.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustado || 0), 0)
                     : data.reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustadoAcumulado || 0), 0);
             } else {
-                totalMes = data.reduce((sum: number, d: any) => sum + (d.MontoAnterior || 0), 0);
+                totalMes = mesData.reduce((sum: number, d: any) => sum + (d.MontoAnterior || 0), 0);
                 totalAcum = isAnnual
                     ? data.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.MontoAnterior || 0), 0)
                     : data.reduce((sum: number, d: any) => sum + (d.MontoAnteriorAcumulado || 0), 0);
@@ -77,8 +105,8 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
 
         // Calculate for PRESUPUESTO (always)
         const presupuesto = {
-            Ventas: calculateKPI(ventasMonth, 'Presupuesto'),
-            Transacciones: calculateKPI(transaccionesMonth, 'Presupuesto'),
+            Ventas: calculateKPI(ventasMonth, 'Presupuesto', ventasFullYear),
+            Transacciones: calculateKPI(transaccionesMonth, 'Presupuesto', transaccionesFullYear),
             TQP: {
                 mes: 0,
                 acum: 0,
@@ -103,8 +131,8 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
 
         // Calculate for AÑO ANTERIOR (use yearType parameter)
         const anoAnterior = {
-            Ventas: calculateKPI(ventasMonth, yearType),
-            Transacciones: calculateKPI(transaccionesMonth, yearType),
+            Ventas: calculateKPI(ventasMonth, yearType, ventasFullYear),
+            Transacciones: calculateKPI(transaccionesMonth, yearType, transaccionesFullYear),
             TQP: {
                 mes: 0,
                 acum: 0,
@@ -164,7 +192,7 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
             incrementTransacciones,
             incrementTQP
         };
-    }, [dataVentas, dataTransacciones, dataTQP, currentMonth, comparisonType, isAnnual]);
+    }, [dataVentas, dataTransacciones, dataTQP, currentMonth, comparisonType, isAnnual, dateRange]);
 
     const monthNames = [
         "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -192,8 +220,21 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
                 <h2 className="text-2xl font-bold text-gray-800">
                     Alcance Canal Todos {filterLocal}
                 </h2>
-                <p className="text-sm text-gray-600">
-                    Año: {new Date().getFullYear()}{isAnnual ? '' : ` - Mes: ${monthNames[currentMonth]}`}
+                <p className="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
+                    <span>Año: {new Date().getFullYear()}{isAnnual ? '' : ` - Mes: ${monthNames[currentMonth]}`}</span>
+                    {dateRange && (
+                        <>
+                            <span className="text-gray-400">•</span>
+                            <span className="flex items-center gap-1 text-xs text-gray-500 font-semibold">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                {new Date(dateRange.startDate + 'T12:00:00').toLocaleDateString('es-CR', { day: '2-digit', month: 'short' })}
+                                <span>-</span>
+                                {new Date(dateRange.endDate + 'T12:00:00').toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </span>
+                        </>
+                    )}
                 </p>
             </div>
 

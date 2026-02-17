@@ -1,10 +1,11 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     fetchAdminUsers,
     createAdminUser,
     updateAdminUser,
     deleteAdminUser,
     fetchAllStores,
+    fetchAvailableCanales,
     fetchConfig,
     saveConfig,
     type User
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import { EventsManagement } from './EventsManagement';
 import { DatabaseConfigPanel } from './DatabaseConfigPanel';
+import { AuxiliaryDBAdminPanel } from './AuxiliaryDBAdminPanel';
 
 interface AdminPageProps {
     onBack: () => void;
@@ -62,7 +64,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
 
     // Auto-select tab based on permissions: if user has eventos but not admin, default to eventos
     const defaultTab = canAccessUsers ? 'users' : 'events';
-    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database'>(defaultTab);
+    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'auxiliarydb'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [allStores, setAllStores] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
@@ -73,6 +75,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [newNombre, setNewNombre] = useState('');
     const [newClave, setNewClave] = useState('');
     const [newStores, setNewStores] = useState<string[]>([]);
+    const [newCanales, setNewCanales] = useState<string[]>([]);
     const [newAccesoTendencia, setNewAccesoTendencia] = useState(false);
     const [newAccesoTactica, setNewAccesoTactica] = useState(false);
     const [newAccesoEventos, setNewAccesoEventos] = useState(false);
@@ -90,6 +93,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editNombre, setEditNombre] = useState('');
     const [editClave, setEditClave] = useState('');
     const [editStores, setEditStores] = useState<string[]>([]);
+    const [editCanales, setEditCanales] = useState<string[]>([]);
     const [editActivo, setEditActivo] = useState(true);
     const [editAccesoTendencia, setEditAccesoTendencia] = useState(false);
     const [editAccesoTactica, setEditAccesoTactica] = useState(false);
@@ -99,6 +103,30 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editAccesoEvaluaciones, setEditAccesoEvaluaciones] = useState(false);
     const [editAccesoInventarios, setEditAccesoInventarios] = useState(false);
     const [editEsAdmin, setEditEsAdmin] = useState(false);
+    const [editPermitirEnvioClave, setEditPermitirEnvioClave] = useState(true);
+
+    // Search functionality
+    const [searchTerm, setSearchTerm] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const usersPerPage = 10;
+
+    // Reset page when search changes
+    useEffect(() => { setCurrentPage(1); }, [searchTerm]);
+
+    // Filter users based on search term
+    const filteredUsers = users.filter(user => {
+        if (!searchTerm) return true;
+
+        const term = searchTerm.toLowerCase();
+        return (
+            user.email?.toLowerCase().includes(term) ||
+            user.nombre?.toLowerCase().includes(term)
+        );
+    });
+
+    const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+    const startIdx = (currentPage - 1) * usersPerPage;
+    const paginatedUsers = filteredUsers.slice(startIdx, startIdx + usersPerPage);
 
     const [serverError, setServerError] = useState('');
 
@@ -159,16 +187,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setLoading(true);
         setServerError('');
         try {
-            console.log('🔍 AdminPage: Loading users and stores...');
+            console.log('?? AdminPage: Loading users and stores...');
             const [userList, storeList] = await Promise.all([
                 fetchAdminUsers(),
                 fetchAllStores()
             ]);
-            console.log('✅ AdminPage: Data loaded successfully', { users: userList.length, stores: storeList.length });
+            console.log('? AdminPage: Data loaded successfully', { users: userList.length, stores: storeList.length });
             setUsers(userList);
             setAllStores(storeList);
         } catch (err: any) {
-            console.error('❌ AdminPage loadData error:', err);
+            console.error('? AdminPage loadData error:', err);
             console.error('Error details:', { message: err.message, stack: err.stack });
             setServerError(`No se pudo conectar al servidor. Error: ${err.message || 'Desconocido'}`);
         } finally {
@@ -186,12 +214,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             return;
         }
 
+        if (newCanales.length === 0) {
+            setFormError('Debe seleccionar al menos un canal');
+            return;
+        }
+
         try {
             const result = await createAdminUser(
                 newEmail,
                 newNombre,
                 newClave,
                 newStores,
+                newCanales,
                 newAccesoTendencia,
                 newAccesoTactica,
                 newAccesoEventos,
@@ -206,6 +240,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             setNewNombre('');
             setNewClave('');
             setNewStores([]);
+            setNewCanales(ALL_CANALES);
             setNewAccesoTendencia(false);
             setNewAccesoTactica(false);
             setNewAccesoEventos(false);
@@ -227,6 +262,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setEditNombre(user.nombre);
         setEditClave('');
         setEditStores(user.allowedStores || []);
+        setEditCanales(user.allowedCanales || ALL_CANALES);
         setEditActivo(user.activo);
         setEditAccesoTendencia(user.accesoTendencia);
         setEditAccesoTactica(user.accesoTactica);
@@ -236,6 +272,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setEditAccesoEvaluaciones(user.accesoEvaluaciones);
         setEditAccesoInventarios(user.accesoInventarios);
         setEditEsAdmin(user.esAdmin);
+        setEditPermitirEnvioClave(user.permitirEnvioClave !== undefined ? user.permitirEnvioClave : true);
     };
 
     const handleUpdateUser = async () => {
@@ -244,6 +281,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setFormSuccess('');
 
         try {
+            if (editCanales.length === 0) {
+                setFormError('Debe seleccionar al menos un canal');
+                return;
+            }
             await updateAdminUser(
                 editingUser.id,
                 editEmail,
@@ -251,6 +292,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 editActivo,
                 editClave || null,
                 editStores,
+                editCanales,
                 editAccesoTendencia,
                 editAccesoTactica,
                 editAccesoEventos,
@@ -258,7 +300,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 editAccesoTiempos,
                 editAccesoEvaluaciones,
                 editAccesoInventarios,
-                editEsAdmin
+                editEsAdmin,
+                editPermitirEnvioClave
             );
             setFormSuccess(`Usuario ${editEmail} actualizado exitosamente`);
             setEditingUser(null);
@@ -298,6 +341,30 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         const currentStores = isNew ? newStores : editStores;
         const setStores = isNew ? setNewStores : setEditStores;
         setStores(currentStores.length === allStores.length ? [] : [...allStores]);
+    };
+
+    const ALL_CANALES = ['Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp'];
+
+    const toggleCanal = (canal: string, isNew: boolean = true) => {
+        if (isNew) {
+            setNewCanales(prev =>
+                prev.includes(canal)
+                    ? prev.filter(c => c !== canal)
+                    : [...prev, canal]
+            );
+        } else {
+            setEditCanales(prev =>
+                prev.includes(canal)
+                    ? prev.filter(c => c !== canal)
+                    : [...prev, canal]
+            );
+        }
+    };
+
+    const selectAllCanales = (isNew: boolean = true) => {
+        const currentCanales = isNew ? newCanales : editCanales;
+        const setCanales = isNew ? setNewCanales : setEditCanales;
+        setCanales(currentCanales.length === ALL_CANALES.length ? [] : [...ALL_CANALES]);
     };
 
     // Admin Panel
@@ -369,6 +436,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                 Base de Datos
                             </button>
                         )}
+                        {canAccessUsers && (
+                            <button
+                                onClick={() => setActiveTab('auxiliarydb')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'auxiliarydb'
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                <Store className="w-4 h-4" />
+                                BD Auxiliar
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -378,7 +457,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                         {/* Add User Button */}
                         <div className="mb-6 flex justify-end">
                             <button
-                                onClick={() => setShowForm(!showForm)}
+                                onClick={() => { setShowForm(!showForm); if (!showForm) setNewCanales(ALL_CANALES); }}
                                 className="flex items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg transition-all text-sm"
                             >
                                 <UserPlus className="w-4 h-4" />
@@ -511,7 +590,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                     onChange={e => setNewAccesoPresupuesto(e.target.checked)}
                                                     className="w-4 h-4 text-orange-600 rounded"
                                                 />
-                                                <span className="text-sm font-medium text-gray-700">🔥 Presupuesto</span>
+                                                <span className="text-sm font-medium text-gray-700">Presupuesto</span>
                                             </label>
                                             <label className="flex items-center gap-2 cursor-pointer bg-blue-50 p-2 rounded-lg border border-blue-200">
                                                 <input
@@ -520,7 +599,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                     onChange={e => setNewAccesoTiempos(e.target.checked)}
                                                     className="w-4 h-4 text-blue-600 rounded"
                                                 />
-                                                <span className="text-sm font-medium text-gray-700">⏱️ Tiempos</span>
+                                                <span className="text-sm font-medium text-gray-700">Tiempos</span>
                                             </label>
                                             <label className="flex items-center gap-2 cursor-pointer bg-green-50 p-2 rounded-lg border border-green-200">
                                                 <input
@@ -529,7 +608,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                     onChange={e => setNewAccesoEvaluaciones(e.target.checked)}
                                                     className="w-4 h-4 text-green-600 rounded"
                                                 />
-                                                <span className="text-sm font-medium text-gray-700">✅ Evaluaciones</span>
+                                                <span className="text-sm font-medium text-gray-700">Evaluaciones</span>
                                             </label>
                                             <label className="flex items-center gap-2 cursor-pointer bg-purple-50 p-2 rounded-lg border border-purple-200">
                                                 <input
@@ -538,7 +617,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                     onChange={e => setNewAccesoInventarios(e.target.checked)}
                                                     className="w-4 h-4 text-purple-600 rounded"
                                                 />
-                                                <span className="text-sm font-medium text-gray-700">📦 Inventarios</span>
+                                                <span className="text-sm font-medium text-gray-700">Inventarios</span>
                                             </label>
                                         </div>
                                     </div>
@@ -589,6 +668,51 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                             <p className="text-xs text-gray-400 mt-1">Sin almacenes = acceso a todos</p>
                                         )}
                                     </div>
+                                    {/* Canal selection (required) */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1">
+                                                Canales con Acceso <span className="text-red-500">*</span>
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => selectAllCanales(true)}
+                                                className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                                            >
+                                                {newCanales.length === ALL_CANALES.length ? 'Quitar todos' : 'Seleccionar todos'}
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 border-2 border-gray-100 rounded-xl p-3">
+                                            {ALL_CANALES.map(canal => (
+                                                <label
+                                                    key={canal}
+                                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-all ${newCanales.includes(canal)
+                                                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                                        : 'bg-gray-50 text-gray-600 border border-transparent hover:bg-gray-100'
+                                                        }`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={newCanales.includes(canal)}
+                                                        onChange={() => toggleCanal(canal, true)}
+                                                        className="sr-only"
+                                                    />
+                                                    <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center ${newCanales.includes(canal) ? 'bg-emerald-600 border-emerald-600' : 'border-gray-300'
+                                                        }`}>
+                                                        {newCanales.includes(canal) && (
+                                                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                            </svg>
+                                                        )}
+                                                    </div>
+                                                    {canal}
+                                                </label>
+                                            ))}
+                                        </div>
+                                        {newCanales.length === 0 && (
+                                            <p className="text-xs text-red-500 mt-1 font-medium"> Debe seleccionar al menos un canal</p>
+                                        )}
+                                    </div>
 
                                     <div className="flex gap-3 justify-end">
                                         <button
@@ -616,90 +740,173 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                 <span className="ml-3 text-gray-500">Cargando usuarios...</span>
                             </div>
                         ) : (
-                            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-200">
-                                            <th className="text-left px-6 py-4 text-xs font-bold text-gray-500 uppercase">Email</th>
-                                            <th className="text-left px-6 py-4 text-xs font-bold text-gray-500 uppercase">Nombre</th>
-                                            <th className="text-left px-6 py-4 text-xs font-bold text-gray-500 uppercase">Clave</th>
-                                            <th className="text-left px-6 py-4 text-xs font-bold text-gray-500 uppercase">Permisos</th>
-                                            <th className="text-left px-6 py-4 text-xs font-bold text-gray-500 uppercase">Estado</th>
-                                            <th className="text-right px-6 py-4 text-xs font-bold text-gray-500 uppercase">Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {users.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={6} className="text-center py-12 text-gray-400">
-                                                    No hay usuarios registrados. Haga clic en "Agregar Usuario" para crear uno.
-                                                </td>
+                            <>
+                                <div className="mb-6">
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar por nombre o correo..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                        />
+                                        <svg
+                                            className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                        >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                        </svg>
+                                        {searchTerm && (
+                                            <button
+                                                onClick={() => setSearchTerm('')}
+                                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                title="Limpiar búsqueda"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                    {searchTerm && (
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            {filteredUsers.length} de {users.length} usuario{users.length !== 1 ? 's' : ''}
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className="bg-gray-50 border-b border-gray-200">
+                                                <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[22%]">Email</th>
+                                                <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[14%]">Nombre</th>
+                                                <th className="text-center px-2 py-3 text-xs font-bold text-gray-500 uppercase w-[8%]">Clave</th>
+                                                <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase">Permisos / Canales</th>
+                                                <th className="text-center px-2 py-3 text-xs font-bold text-gray-500 uppercase w-[8%]">Estado</th>
+                                                <th className="text-right px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[7%]"></th>
                                             </tr>
-                                        ) : (
-                                            users.map(user => (
-                                                <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-sm font-medium text-gray-800">{user.email}</span>
-                                                            {user.esProtegido && (
-                                                                <div title="Usuario protegido (no editable)">
-                                                                    <Shield className="w-4 h-4 text-amber-500" />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{user.nombre || '—'}</td>
-                                                    <td className="px-6 py-4">
-                                                        <span className="font-mono text-sm text-indigo-600 bg-indigo-50 px-2 py-1 rounded tracking-wider">{user.clave || '—'}</span>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {user.esAdmin && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">Admin</span>}
-                                                            {user.accesoTendencia && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Tendencia</span>}
-                                                            {user.accesoTactica && <span className="text-xs bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-full font-semibold">Táctica</span>}
-                                                            {user.accesoEventos && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Eventos</span>}
-                                                            {user.accesoPresupuesto && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">🔥 Presupuesto</span>}
-                                                            {user.accesoTiempos && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">⏱️ Tiempos</span>}
-                                                            {user.accesoEvaluaciones && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">✅ Evaluaciones</span>}
-                                                            {user.accesoInventarios && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">📦 Inventarios</span>}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${user.activo
-                                                            ? 'bg-green-100 text-green-700'
-                                                            : 'bg-red-100 text-red-700'
-                                                            }`}>
-                                                            {user.activo ? 'Activo' : 'Inactivo'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            {!user.esProtegido && (
-                                                                <>
-                                                                    <button
-                                                                        onClick={() => startEditUser(user)}
-                                                                        className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                                                                        title="Editar usuario"
-                                                                    >
-                                                                        <Edit2 className="w-4 h-4" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleDeleteUser(user.id, user.email)}
-                                                                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                                                        title="Eliminar usuario"
-                                                                    >
-                                                                        <Trash2 className="w-4 h-4" />
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                        </div>
+                                        </thead>
+                                        <tbody>
+                                            {filteredUsers.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={6} className="text-center py-12 text-gray-400">
+                                                        {searchTerm
+                                                            ? `No se encontraron usuarios que coincidan con "${searchTerm}"`
+                                                            : 'No hay usuarios registrados. Haga clic en "Agregar Usuario" para crear uno.'}
                                                     </td>
                                                 </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
+                                            ) : (
+                                                paginatedUsers.map(user => (
+                                                    <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                                        <td className="px-3 py-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs font-medium text-gray-800 truncate max-w-[200px]" title={user.email}>{user.email}</span>
+                                                                {user.esProtegido && (
+                                                                    <div title="Usuario protegido (no editable)">
+                                                                        <Shield className="w-4 h-4 text-amber-500" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-xs text-gray-600">{user.nombre || '—'}</td>
+                                                        <td className="px-3 py-2">
+                                                            <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded tracking-wider">{user.clave || '—'}</span>
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {user.esAdmin && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium">Admin</span>}
+                                                                {user.accesoTendencia && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">Tendencia</span>}
+                                                                {user.accesoTactica && <span className="text-[10px] bg-cyan-100 text-cyan-700 px-1.5 py-0.5 rounded-full font-medium">Táctica</span>}
+                                                                {user.accesoEventos && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">Eventos</span>}
+                                                                {user.accesoPresupuesto && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-medium">Presupuesto</span>}
+                                                                {user.accesoTiempos && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">Tiempos</span>}
+                                                                {user.accesoEvaluaciones && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">Evaluaciones</span>}
+                                                                {user.accesoInventarios && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium">Inventarios</span>}
+                                                            </div>
+                                                            {user.allowedCanales && user.allowedCanales.length > 0 && (
+                                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                                    {user.allowedCanales.map((canal: string) => (
+                                                                        <span key={canal} className="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded font-medium">{canal}</span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${user.activo
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : 'bg-red-100 text-red-700'
+                                                                }`}>
+                                                                {user.activo ? 'Activo' : 'Inactivo'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right">
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                {!user.esProtegido && (
+                                                                    <>
+                                                                        <button
+                                                                            onClick={() => startEditUser(user)}
+                                                                            className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                                            title="Editar usuario"
+                                                                        >
+                                                                            <Edit2 className="w-4 h-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleDeleteUser(user.id, user.email)}
+                                                                            className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                                            title="Eliminar usuario"
+                                                                        >
+                                                                            <Trash2 className="w-4 h-4" />
+                                                                        </button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                    {totalPages > 1 && (
+                                        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200">
+                                            <span className="text-xs text-gray-500">
+                                                {startIdx + 1}-{Math.min(startIdx + usersPerPage, filteredUsers.length)} de {filteredUsers.length}
+                                            </span>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                                    disabled={currentPage === 1}
+                                                    className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                                >
+                                                    Ant
+                                                </button>
+                                                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                                                    let page;
+                                                    if (totalPages <= 7) { page = i + 1; }
+                                                    else if (currentPage <= 4) { page = i + 1; }
+                                                    else if (currentPage >= totalPages - 3) { page = totalPages - 6 + i; }
+                                                    else { page = currentPage - 3 + i; }
+                                                    return (
+                                                        <button
+                                                            key={page}
+                                                            onClick={() => setCurrentPage(page)}
+                                                            className={"px-2.5 py-1 text-xs rounded-lg border transition-all " + (currentPage === page ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 hover:bg-white")}
+                                                        >
+                                                            {page}
+                                                        </button>
+                                                    );
+                                                })}
+                                                <button
+                                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                                    disabled={currentPage === totalPages}
+                                                    className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                                >
+                                                    Sig
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
                         )}
 
                         {/* Edit User Modal */}
@@ -804,6 +1011,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                         />
                                                         <span className="text-sm font-medium text-gray-700">Es Administrador</span>
                                                     </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editPermitirEnvioClave}
+                                                            onChange={e => setEditPermitirEnvioClave(e.target.checked)}
+                                                            className="w-4 h-4 text-indigo-600 rounded"
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">Permitir envío de clave</span>
+                                                    </label>
                                                 </div>
                                             </div>
 
@@ -818,7 +1034,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             onChange={e => setEditAccesoPresupuesto(e.target.checked)}
                                                             className="w-4 h-4 text-orange-600 rounded"
                                                         />
-                                                        <span className="text-sm font-medium text-gray-700">🔥 Presupuesto</span>
+                                                        <span className="text-sm font-medium text-gray-700">Presupuesto</span>
                                                     </label>
                                                     <label className="flex items-center gap-2 cursor-pointer bg-blue-50 p-2 rounded-lg border border-blue-200">
                                                         <input
@@ -827,7 +1043,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             onChange={e => setEditAccesoTiempos(e.target.checked)}
                                                             className="w-4 h-4 text-blue-600 rounded"
                                                         />
-                                                        <span className="text-sm font-medium text-gray-700">⏱️ Tiempos</span>
+                                                        <span className="text-sm font-medium text-gray-700">Tiempos</span>
                                                     </label>
                                                     <label className="flex items-center gap-2 cursor-pointer bg-green-50 p-2 rounded-lg border border-green-200">
                                                         <input
@@ -836,7 +1052,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             onChange={e => setEditAccesoEvaluaciones(e.target.checked)}
                                                             className="w-4 h-4 text-green-600 rounded"
                                                         />
-                                                        <span className="text-sm font-medium text-gray-700">✅ Evaluaciones</span>
+                                                        <span className="text-sm font-medium text-gray-700">Evaluaciones</span>
                                                     </label>
                                                     <label className="flex items-center gap-2 cursor-pointer bg-purple-50 p-2 rounded-lg border border-purple-200">
                                                         <input
@@ -845,7 +1061,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             onChange={e => setEditAccesoInventarios(e.target.checked)}
                                                             className="w-4 h-4 text-purple-600 rounded"
                                                         />
-                                                        <span className="text-sm font-medium text-gray-700">📦 Inventarios</span>
+                                                        <span className="text-sm font-medium text-gray-700">Inventarios</span>
                                                     </label>
                                                 </div>
                                             </div>
@@ -893,6 +1109,51 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                     ))}
                                                 </div>
                                             </div>
+                                            {/* Canal selection (required) */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1">
+                                                        Canales con Acceso <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => selectAllCanales(false)}
+                                                        className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                                                    >
+                                                        {editCanales.length === ALL_CANALES.length ? 'Quitar todos' : 'Seleccionar todos'}
+                                                    </button>
+                                                </div>
+                                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 border-2 border-gray-100 rounded-xl p-3">
+                                                    {ALL_CANALES.map(canal => (
+                                                        <label
+                                                            key={canal}
+                                                            className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-all ${editCanales.includes(canal)
+                                                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                                                : 'bg-gray-50 text-gray-600 border border-transparent hover:bg-gray-100'
+                                                                }`}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={editCanales.includes(canal)}
+                                                                onChange={() => toggleCanal(canal, false)}
+                                                                className="sr-only"
+                                                            />
+                                                            <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center ${editCanales.includes(canal) ? 'bg-emerald-600 border-emerald-600' : 'border-gray-300'
+                                                                }`}>
+                                                                {editCanales.includes(canal) && (
+                                                                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                                    </svg>
+                                                                )}
+                                                            </div>
+                                                            {canal}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                {editCanales.length === 0 && (
+                                                    <p className="text-xs text-red-500 mt-1 font-medium"> Debe seleccionar al menos un canal</p>
+                                                )}
+                                            </div>
 
                                             <div className="flex gap-3 justify-end pt-4">
                                                 <button
@@ -921,6 +1182,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                     <EventsManagement />
                 ) : activeTab === 'database' ? (
                     <DatabaseConfigPanel />
+                ) : activeTab === 'auxiliarydb' ? (
+                    <AuxiliaryDBAdminPanel />
                 ) : (
                     /* IA Táctica Tab */
                     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">

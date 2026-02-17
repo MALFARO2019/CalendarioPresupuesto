@@ -12,6 +12,7 @@ interface TendenciaAlcanceProps {
     groups?: string[];
     individualStores?: string[];
     onExportExcel?: (exportFn: () => void) => void;
+    availableCanales?: string[];
 }
 
 interface EvaluacionRecord {
@@ -87,7 +88,7 @@ const EvaluacionRow = React.memo(({ row, kpi, fc, formatPct, getAlcanceBadge }: 
 ));
 EvaluacionRow.displayName = 'EvaluacionRow';
 
-export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startDate, endDate, groups = [], individualStores = [], onExportExcel }) => {
+export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startDate, endDate, groups = [], individualStores = [], onExportExcel, availableCanales }) => {
     const fc = useFormatCurrency();
     const { preferences } = useUserPreferences();
     const [activeTab, setActiveTab] = useState<'evaluacion' | 'resumenCanal' | 'top10'>('evaluacion');
@@ -95,7 +96,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
     const [channel, setChannel] = useState<string>('Total');
     const [selectedLocal, setSelectedLocal] = useState<string>('Corporativo');
     const [yearType, setYearType] = useState<string>('anterior');
-    const [data, setData] = useState<{ evaluacion: EvaluacionRecord[], resumen: ResumenData, resumenMultiKpi?: Record<string, { totalPresupuestoAcum: number, totalReal: number, totalAnterior: number, pctPresupuesto: number, pctAnterior: number, trendPresupuesto?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number }, trendAnterior?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number } }> } | null>(null);
+    const [data, setData] = useState<{ evaluacion: EvaluacionRecord[], resumen: ResumenData, resumenMultiKpi?: Record<string, { totalPresupuesto: number, totalPresupuestoAcum: number, totalReal: number, totalAnterior: number, pctPresupuesto: number, pctAnterior: number, trendPresupuesto?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number }, trendAnterior?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number } }> } | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [sortCol, setSortCol] = useState<SortColumn>('pctPresupuesto');
@@ -264,27 +265,19 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                 </div>
 
                 <div className="flex flex-wrap gap-4">
+                    {/* Year Filter */}
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">KPI</label>
-                        <select value={kpi} onChange={(e) => setKpi(e.target.value)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                            <option value="Ventas">Ventas</option>
-                            <option value="Transacciones">Transacciones</option>
-                            <option value="TQP">TQP</option>
-                        </select>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Año</label>
+                        <input
+                            type="number"
+                            value={year}
+                            readOnly
+                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-gray-50 text-gray-700 cursor-not-allowed w-24"
+                        />
                     </div>
+                    {/* Local/Group Filter */}
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Canal</label>
-                        <select value={channel} onChange={(e) => setChannel(e.target.value)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                            <option value="Total">Total</option>
-                            <option value="Salón">Salón</option>
-                            <option value="Llevar">Llevar</option>
-                            <option value="UberEats">UberEats</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Grupo / Local</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Local</label>
                         <select value={selectedLocal} onChange={(e) => setSelectedLocal(e.target.value)}
                             className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[180px]">
                             {groups.length > 0 && (
@@ -299,6 +292,35 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                             )}
                         </select>
                     </div>
+                    {/* KPI Filter */}
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">KPI</label>
+                        <select value={kpi} onChange={(e) => setKpi(e.target.value)}
+                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="Ventas">Ventas</option>
+                            <option value="Transacciones">Transacciones</option>
+                            <option value="TQP">TQP</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Canal</label>
+                        <select value={channel} onChange={(e) => setChannel(e.target.value)}
+                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="Total">Total</option>
+                            {(availableCanales || ['Salón', 'Llevar', 'UberEats']).map(c => (
+                                <option key={c} value={c}>{c}</option>
+                            ))}
+                        </select>
+                    </div>
+                    {/* COMPARAR CON Filter */}
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Comparar Con</label>
+                        <select value="presupuesto" disabled
+                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-gray-50 text-gray-700 cursor-not-allowed">
+                            <option value="presupuesto">Presupuesto</option>
+                        </select>
+                    </div>
+                    {/* TIPO AÑO Filter */}
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tipo Año</label>
                         <select value={yearType} onChange={(e) => setYearType(e.target.value)}
@@ -313,7 +335,19 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             {/* TOTAL Summary Card - Compact Version */}
             {data?.resumen && (
                 <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-purple-50 rounded-2xl p-4 shadow-lg border border-indigo-100">
-                    <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Resumen Total</h2>
+                    <div className="flex items-center justify-between mb-3">
+                        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Resumen Total</h2>
+                        <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-semibold">
+                            <span className="flex items-center gap-0.5">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                {new Date(startDate + 'T12:00:00').toLocaleDateString('es-CR', { day: '2-digit', month: 'short' })}
+                            </span>
+                            <span>-</span>
+                            <span>{new Date(endDate + 'T12:00:00').toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                        </div>
+                    </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                         <div>
                             <p className="text-[10px] text-gray-500 font-semibold uppercase">Presupuesto</p>
@@ -367,7 +401,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                                     <div>
                                         <p className="text-[10px] text-gray-500 font-semibold uppercase">Presupuesto</p>
-                                        <p className="text-sm font-bold text-gray-900 font-mono">{fc(mkpi.totalPresupuestoAcum, tipo)}</p>
+                                        <p className="text-sm font-bold text-gray-900 font-mono">{fc(mkpi.totalPresupuesto, tipo)}</p>
                                     </div>
                                     <div>
                                         <p className="text-[10px] text-gray-500 font-semibold uppercase">P. Acumulado</p>
@@ -417,7 +451,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                         <button key={tab} onClick={() => setActiveTab(tab)}
                             className={`px-6 py-3 font-semibold text-sm rounded-t-xl transition-colors ${activeTab === tab
                                 ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                            {tab === 'evaluacion' ? 'Evaluación' : tab === 'resumenCanal' ? 'Resumen Canal' : 'Top 10'}
+                            {tab === 'evaluacion' ? 'Evaluación' : tab === 'resumenCanal' ? 'Resumen Canal' : 'Top 5'}
                         </button>
                     ))}
                 </div>
@@ -502,6 +536,27 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                         />
                                     ))}
                                 </tbody>
+                                {data?.resumen && sortedEvaluacion.length > 0 && (
+                                    <tfoot>
+                                        <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                                            <td className="py-3 px-3 text-sm text-gray-900">TOTAL</td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-900">{fc(data.resumen.totalPresupuesto, kpi)}</td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-900">{fc(data.resumen.totalPresupuestoAcum, kpi)}</td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-900">{fc(data.resumen.totalReal, kpi)}</td>
+                                            <td className="py-3 px-3 text-right">
+                                                <span className={`inline-block px-2 py-1 rounded-md text-xs font-bold ${getAlcanceBadge(data.resumen.pctPresupuesto)}`}>
+                                                    {formatPct(data.resumen.pctPresupuesto)}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 px-3 text-sm text-right font-mono text-gray-900">{fc(data.resumen.totalAnterior, kpi)}</td>
+                                            <td className="py-3 px-3 text-right">
+                                                <span className={`inline-block px-2 py-1 rounded-md text-xs font-bold ${getAlcanceBadge(data.resumen.pctAnterior)}`}>
+                                                    {formatPct(data.resumen.pctAnterior)}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                )}
                             </table>
                         </div>
                     </div>
@@ -589,7 +644,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
 
                 {activeTab === 'top10' && (
                     <div>
-                        <h2 className="text-lg font-bold text-gray-800 mb-6">Top 10 Restaurantes</h2>
+                        <h2 className="text-lg font-bold text-gray-800 mb-6">Top 5 Restaurantes</h2>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             <div>
                                 <h3 className="text-md font-semibold text-green-700 mb-3">🏆 Top 5 Mejores (% Ppto)</h3>

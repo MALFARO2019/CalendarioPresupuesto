@@ -1,6 +1,6 @@
 import React from 'react';
 import type { BudgetRecord } from '../mockData';
-import { formatCurrencyCompact } from '../utils/formatters';
+import { useFormatCurrency } from '../utils/formatters';
 
 interface WeekDayBehaviorProps {
     data: BudgetRecord[];
@@ -10,6 +10,7 @@ interface WeekDayBehaviorProps {
 }
 
 export const WeekDayBehavior: React.FC<WeekDayBehaviorProps> = ({ data, kpi, comparisonType, yearType }) => {
+    const fc = useFormatCurrency();
     // Days mapping: JS getDay() returns 0=Sun, we want Mon-Sun order
     const dayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
     const displayOrder = [1, 2, 3, 4, 5, 6, 0]; // Mon=1 ... Sun=0 in JS getDay
@@ -66,8 +67,8 @@ export const WeekDayBehavior: React.FC<WeekDayBehaviorProps> = ({ data, kpi, com
                     {stats.map((stat, idx) => (
                         <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                             <td className="py-3 font-bold text-gray-500">{stat.dayName}</td>
-                            <td className="py-3 text-right font-mono text-gray-600">{formatCurrencyCompact(stat.budget, kpi)}</td>
-                            <td className="py-3 text-right font-mono font-bold text-gray-800">{formatCurrencyCompact(stat.real, kpi)}</td>
+                            <td className="py-3 text-right font-mono text-gray-600">{fc(stat.budget, kpi)}</td>
+                            <td className="py-3 text-right font-mono font-bold text-gray-800">{fc(stat.real, kpi)}</td>
                             <td className="py-3 text-right">
                                 {(() => {
                                     let badgeColor = 'bg-green-100 text-green-700';

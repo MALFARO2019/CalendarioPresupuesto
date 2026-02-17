@@ -7,6 +7,7 @@ interface ModuleCardProps {
     stats?: ModuleStats[] | GroupedModuleStats[];
     isLoading?: boolean;
     onClick?: () => void;
+    dateRange?: { startDate: string; endDate: string };
 }
 
 // Type guard to check if stats are grouped
@@ -14,7 +15,7 @@ function isGroupedStats(stats: ModuleStats[] | GroupedModuleStats[]): stats is G
     return stats.length > 0 && 'groupName' in stats[0];
 }
 
-export function ModuleCard({ module, stats = [], isLoading = false, onClick }: ModuleCardProps) {
+export function ModuleCard({ module, stats = [], isLoading = false, onClick, dateRange }: ModuleCardProps) {
     const isGrouped = isGroupedStats(stats);
 
     const getColorClass = (color?: 'green' | 'red' | 'yellow') => {
@@ -63,6 +64,18 @@ export function ModuleCard({ module, stats = [], isLoading = false, onClick }: M
                     <p className="text-xs text-gray-500 font-medium">
                         {module.description}
                     </p>
+                    {dateRange && (
+                        <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gray-400 font-semibold">
+                            <span className="flex items-center gap-0.5">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                {new Date(dateRange.startDate + 'T12:00:00').toLocaleDateString('es-CR', { day: '2-digit', month: 'short' })}
+                            </span>
+                            <span>-</span>
+                            <span>{new Date(dateRange.endDate + 'T12:00:00').toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

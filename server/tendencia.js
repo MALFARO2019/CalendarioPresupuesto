@@ -27,6 +27,12 @@ async function getTendenciaData(req, res) {
         // Use DAILY fields (not accumulated) since we SUM them ourselves
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 
+        // For users with limited channels, "Todos" should sum only their allowed channels
+        const userAllowedCanales = req.user?.allowedCanales || [];
+        const allCanales = ['Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp'];
+        const hasLimitedChannels = userAllowedCanales.length > 0 && userAllowedCanales.length < allCanales.length;
+        const useMultiChannel = dbCanal === 'Todos' && hasLimitedChannels;
+
         // If a group is selected, find member stores
         let memberLocals = null;
         if (local) {
@@ -91,64 +97,107 @@ async function getTendenciaData(req, res) {
             localFilter = 'AND Local = @local';
             localParams['local'] = local;
         }
+        // Build canal filter
+        let canalFilter = '';
+        let canalSubFilter = '';
+        const canalParams = {};
+        if (useMultiChannel) {
+            const canalPlaceholders = userAllowedCanales.map((_, i) => `@ch${i}`).join(', ');
+            canalFilter = `Canal IN (${canalPlaceholders})`;
+            canalSubFilter = `Canal IN (${userAllowedCanales.map((_, i) => `@ch${i}`).join(', ')})`;
+            userAllowedCanales.forEach((ch, i) => { canalParams[`ch${i}`] = ch; });
+        } else {
+            canalFilter = `Canal = @canal`;
+            canalSubFilter = `Canal = @canal`;
+            canalParams['canal'] = dbCanal;
+        }
 
+        // EMERGENCY SIMPLIFIED QUERY - No CTEs, direct aggregation
         const query = `
-            -- Annual budget total (SUM of Monto for all days in year)
-            WITH AnnualBudget AS (
-                SELECT Local, SUM(Monto) as PresupuestoAnual
-                FROM RSM_ALCANCE_DIARIO
-                WHERE Año = YEAR(@endDate) AND Tipo = @kpi AND Canal = @canal
-                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-                    ${localFilter}
-                GROUP BY Local
-            ),
-            -- First, aggregate by date to get daily totals (like /api/budget returns)
-            DailyAggregates AS (
-                SELECT 
-                    Fecha,
-                    SUM(MontoReal) as DayReal,
-                    SUM(Monto) as DayMonto,
-                    SUM(${anteriorField}) as DayAnterior
-                FROM RSM_ALCANCE_DIARIO
-                WHERE Fecha BETWEEN @startDate AND @endDate
-                    AND Año = YEAR(@endDate) AND Tipo = @kpi AND Canal = @canal
-                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-                    ${localFilter}
-                GROUP BY Fecha
-            ),
-            -- Then filter days with sales and sum (like frontend does)
-            PeriodData AS (
-                SELECT 
-                    SUM(CASE WHEN DayReal > 0 THEN DayMonto ELSE 0 END) as PresupuestoAcum,
-                    SUM(DayReal) as RealAcum,
-                    SUM(CASE WHEN DayReal > 0 THEN DayAnterior ELSE 0 END) as AnteriorAcum
-                FROM DailyAggregates
-            )
             SELECT 
-                ab.Local,
-                ab.PresupuestoAnual,
-                pd.PresupuestoAcum,
-                pd.RealAcum,
-                pd.AnteriorAcum
-            FROM AnnualBudget ab
-            CROSS JOIN PeriodData pd
-            ORDER BY ab.Local
+                r.Local,
+                -- Annual budget (sum of ALL days in year for this Local)
+                (SELECT SUM(Monto) 
+                 FROM RSM_ALCANCE_DIARIO 
+                 WHERE Local = r.Local 
+                   AND Año = YEAR(@endDate) 
+                   AND Tipo = @kpi 
+                   AND ${canalSubFilter}
+                   AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                ) as PresupuestoAnual,
+                -- Period budget (sum of days WITH sales only)
+                SUM(CASE WHEN r.MontoReal > 0 THEN r.Monto ELSE 0 END) as PresupuestoAcum,
+                -- Period real (sum of actual sales)
+                SUM(r.MontoReal) as RealAcum,
+                -- Period anterior (sum of previous year for days WITH sales)
+                SUM(CASE WHEN r.MontoReal > 0 THEN r.${anteriorField} ELSE 0 END) as AnteriorAcum
+            FROM RSM_ALCANCE_DIARIO r
+            WHERE r.Fecha BETWEEN @startDate AND @endDate
+                AND r.Año = YEAR(@endDate)
+                AND r.Tipo = @kpi
+                AND r.${canalFilter}
+                AND SUBSTRING(r.CODALMACEN, 1, 1) != 'G'
+                ${localFilter}
+            GROUP BY r.Local
+            ORDER BY r.Local
         `;
 
         const request = pool.request();
         request.input('startDate', sql.Date, startDate);
         request.input('endDate', sql.Date, endDate);
         request.input('kpi', sql.VarChar, kpi);
-        request.input('canal', sql.VarChar, dbCanal);
+        Object.entries(canalParams).forEach(([key, value]) => {
+            request.input(key, sql.NVarChar, value);
+        });
         Object.entries(localParams).forEach(([key, value]) => {
             request.input(key, sql.NVarChar, value);
         });
 
+        // 🚨 CRITICAL DEBUG: Print EVERYTHING
+        console.log('\n🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+        console.log('🚨 EXECUTING TENDENCIA QUERY - SIMPLIFIED V3');
+        console.log('🚨 Parameters:');
+        console.log(`   startDate: ${startDate}`);
+        console.log(`   endDate: ${endDate}`);
+        console.log(`   kpi: ${kpi}`);
+        console.log(`   canal: ${dbCanal}`);
+        console.log(`   local: ${local}`);
+        console.log(`   localFilter: ${localFilter}`);
+        if (memberLocals && memberLocals.length > 0) {
+            console.log(`   memberLocals count: ${memberLocals.length}`);
+            console.log(`   First 5 members: ${memberLocals.slice(0, 5).join(', ')}`);
+        }
+        console.log('\n🚨 QUERY:');
+        console.log(query);
+        console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨\n');
+
         const result = await request.query(query);
         console.log(`📊 Tendencia returned ${result.recordset.length} records`);
+
+        // DETAILED DEBUG: Log first 5 results to see what's happening
+        console.log('\n🔍🔍🔍 DEBUGGING PER-RESTAURANT VALUES 🔍🔍🔍');
+        console.log(`   Total records returned: ${result.recordset.length}`);
         if (result.recordset.length > 0) {
-            console.log('   Sample:', JSON.stringify(result.recordset[0]));
+            console.log('   First 5 restaurants:');
+            result.recordset.slice(0, 5).forEach((r, i) => {
+                console.log(`   ${i + 1}. ${r.Local}:`);
+                console.log(`      PresupuestoAnual: ${r.PresupuestoAnual}`);
+                console.log(`      PresupuestoAcum: ${r.PresupuestoAcum}`);
+                console.log(`      RealAcum: ${r.RealAcum}`);
+                console.log(`      AnteriorAcum: ${r.AnteriorAcum}`);
+            });
+
+            // Check if all values are the same
+            const firstReal = result.recordset[0].RealAcum;
+            const allSameReal = result.recordset.every(r => r.RealAcum === firstReal);
+            if (allSameReal) {
+                console.log('   ⚠️⚠️⚠️ WARNING: ALL RESTAURANTS HAVE SAME RealAcum VALUE! ⚠️⚠️⚠️');
+                console.log(`   This suggests the query is NOT grouping by Local correctly`);
+            } else {
+                console.log('   ✅ Values vary by restaurant (good!)');
+            }
         }
+        console.log('🔍🔍🔍\n');
 
         const evaluacion = [];
         const resumen = { totalPresupuesto: 0, totalPresupuestoAcum: 0, totalReal: 0, totalAnterior: 0 };
@@ -198,24 +247,58 @@ async function getTendenciaData(req, res) {
 
         resumen.pctPresupuesto = resumen.totalPresupuestoAcum > 0 ? (resumen.totalReal / resumen.totalPresupuestoAcum) : 0;
         resumen.pctAnterior = resumen.totalAnterior > 0 ? (resumen.totalReal / resumen.totalAnterior) : 0;
-        // Multi-KPI summary: get totals for all three KPIs (Ventas, Transacciones, TQP)
+
+        console.log('\n✅ Returning data with VERSION_QUERY_SIMPLIFIED_V3');
+        console.log(`   Evaluacion records: ${evaluacion.length}`);
+        console.log(`   Resumen total real: ${resumen.totalReal}\n`);
+
+        // Build canal filter for secondary queries
+        let canalFilter2 = '';
+        if (useMultiChannel) {
+            canalFilter2 = `Canal IN (${userAllowedCanales.map((_, i) => `@ch2_${i}`).join(', ')})`;
+        } else {
+            canalFilter2 = `Canal = @canal2`;
+        }
+
         const multiKpiQuery = `
+            WITH AnnualBudgetByTipo AS (
+                SELECT Tipo, SUM(Monto) as PresupuestoAnual
+                FROM RSM_ALCANCE_DIARIO
+                WHERE Año = YEAR(@endDate2) AND ${canalFilter2}
+                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                    ${localFilter.replace(/@ml/g, '@ml2_').replace(/@local/g, '@local2')}
+                GROUP BY Tipo
+            ),
+            PeriodByTipo AS (
+                SELECT 
+                    Tipo,
+                    SUM(Monto) as PresupuestoAcum,
+                    SUM(MontoReal) as RealAcum,
+                    SUM(${anteriorField}) as AnteriorAcum
+                FROM RSM_ALCANCE_DIARIO
+                WHERE Fecha BETWEEN @startDate2 AND @endDate2
+                    AND Año = YEAR(@endDate2) AND ${canalFilter2}
+                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                    ${localFilter.replace(/@ml/g, '@ml2_').replace(/@local/g, '@local2')}
+                GROUP BY Tipo
+            )
             SELECT 
-                Tipo,
-                SUM(Monto) as PresupuestoAcum,
-                SUM(MontoReal) as RealAcum,
-                SUM(${anteriorField}) as AnteriorAcum
-            FROM RSM_ALCANCE_DIARIO
-            WHERE Fecha BETWEEN @startDate2 AND @endDate2
-                AND Año = YEAR(@endDate2) AND Canal = @canal2
-                AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-                ${localFilter.replace(/@ml/g, '@ml2_').replace(/@local/g, '@local2')}
-            GROUP BY Tipo
+                COALESCE(ab.Tipo, pt.Tipo) as Tipo,
+                ISNULL(ab.PresupuestoAnual, 0) as PresupuestoAnual,
+                ISNULL(pt.PresupuestoAcum, 0) as PresupuestoAcum,
+                ISNULL(pt.RealAcum, 0) as RealAcum,
+                ISNULL(pt.AnteriorAcum, 0) as AnteriorAcum
+            FROM AnnualBudgetByTipo ab
+            FULL OUTER JOIN PeriodByTipo pt ON ab.Tipo = pt.Tipo
         `;
         const multiReq = pool.request();
         multiReq.input('startDate2', sql.Date, startDate);
         multiReq.input('endDate2', sql.Date, endDate);
-        multiReq.input('canal2', sql.VarChar, dbCanal);
+        if (useMultiChannel) {
+            userAllowedCanales.forEach((ch, i) => multiReq.input(`ch2_${i}`, sql.NVarChar, ch));
+        } else {
+            multiReq.input('canal2', sql.VarChar, dbCanal);
+        }
         // Re-bind local params with different names
         if (memberLocals && memberLocals.length > 0) {
             memberLocals.forEach((name, i) => multiReq.input(`ml2_${i}`, sql.NVarChar, name));
@@ -224,13 +307,20 @@ async function getTendenciaData(req, res) {
         }
         const multiResult = await multiReq.query(multiKpiQuery);
 
+        console.log(`\n💫 MultiKPI Query returned ${multiResult.recordset.length} KPI types`);
+        multiResult.recordset.forEach(r => {
+            console.log(`   ${r.Tipo}: PresupuestoAnual=${r.PresupuestoAnual}, RealAcum=${r.RealAcum}`);
+        });
+
         const resumenMultiKpi = {};
         multiResult.recordset.forEach(row => {
+            const pAnual = row.PresupuestoAnual || 0;
             const pAcum = row.PresupuestoAcum || 0;
             const real = row.RealAcum || 0;
             const ant = row.AnteriorAcum || 0;
             const pctPpto = pAcum > 0 ? (real / pAcum) : 0;
             resumenMultiKpi[row.Tipo] = {
+                totalPresupuesto: pAnual,
                 totalPresupuestoAcum: pAcum,
                 totalReal: real,
                 totalAnterior: ant,
@@ -284,6 +374,14 @@ async function getTendenciaData(req, res) {
         const prevStartDate = formatDate(prevStart);
         const prevEndDate = formatDate(prevEnd);
 
+        // Build canal filter for previous period query
+        let canalFilter3 = '';
+        if (useMultiChannel) {
+            canalFilter3 = `Canal IN (${userAllowedCanales.map((_, i) => `@ch3_${i}`).join(', ')})`;
+        } else {
+            canalFilter3 = `Canal = @canal3`;
+        }
+
         // Fetch previous period multi-KPI data
         const prevMultiKpiQuery = `
             SELECT 
@@ -293,7 +391,7 @@ async function getTendenciaData(req, res) {
                 SUM(${anteriorField}) as AnteriorAcum
             FROM RSM_ALCANCE_DIARIO
             WHERE Fecha BETWEEN @prevStartDate AND @prevEndDate
-                AND Año = YEAR(@prevEndDate) AND Canal = @canal3
+                AND Año = YEAR(@prevEndDate) AND ${canalFilter3}
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
                 ${localFilter.replace(/@ml/g, '@ml3_').replace(/@local/g, '@local3')}
             GROUP BY Tipo
@@ -301,7 +399,11 @@ async function getTendenciaData(req, res) {
         const prevMultiReq = pool.request();
         prevMultiReq.input('prevStartDate', sql.Date, prevStartDate);
         prevMultiReq.input('prevEndDate', sql.Date, prevEndDate);
-        prevMultiReq.input('canal3', sql.VarChar, dbCanal);
+        if (useMultiChannel) {
+            userAllowedCanales.forEach((ch, i) => prevMultiReq.input(`ch3_${i}`, sql.NVarChar, ch));
+        } else {
+            prevMultiReq.input('canal3', sql.VarChar, dbCanal);
+        }
         if (memberLocals && memberLocals.length > 0) {
             memberLocals.forEach((name, i) => prevMultiReq.input(`ml3_${i}`, sql.NVarChar, name));
         } else if (local) {
@@ -379,6 +481,14 @@ async function getTendenciaData(req, res) {
                 previousValue: prevPctAnt
             };
         }
+
+        console.log('\n🎯 FINAL DATA BEING SENT TO FRONTEND:');
+        console.log(`   Total evaluacion records: ${evaluacion.length}`);
+        console.log('   First 3 records:');
+        evaluacion.slice(0, 3).forEach((e, i) => {
+            console.log(`   ${i + 1}. ${e.local}: real=${e.real}, presupuestoAcum=${e.presupuestoAcum}`);
+        });
+        console.log('🎯\n');
 
         res.json({
             evaluacion: evaluacion.sort((a, b) => a.local.localeCompare(b.local)),

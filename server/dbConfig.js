@@ -1,4 +1,4 @@
-const { sql, getPool } = require('./dbConnectionManager');
+const { sql, getActivePool } = require('./dbConnectionManager');
 const crypto = require('crypto');
 
 // Encryption settings
@@ -69,7 +69,7 @@ function decryptPassword(encrypted) {
  */
 async function getDBConfig() {
     try {
-        const pool = await getPool('read');
+        const pool = await getActivePool();
         const result = await pool.request().query(`
             SELECT TOP 1 
                 Id,
@@ -106,7 +106,7 @@ async function getDBConfig() {
  */
 async function saveDBConfig(config, username = 'admin') {
     try {
-        const pool = await getPool('write');
+        const pool = await getActivePool();
 
         // Encrypt passwords if provided
         const directPassword = config.directPassword ? encryptPassword(config.directPassword) : null;

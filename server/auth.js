@@ -121,6 +121,14 @@ async function ensureSecurityTables() {
             END
         `);
 
+        // Add PermitirEnvioClave column (controls if user can receive password by email)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'PermitirEnvioClave')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD PermitirEnvioClave BIT NOT NULL DEFAULT 1;
+            END
+        `);
+
         // TODO:  Create performance indexes on RSM_ALCANCE_DIARIO if they don't exist
         // Temporarily commented out - KPI column doesn't exist in RSM_ALCANCE_DIARIO
         /*
@@ -157,6 +165,42 @@ async function ensureSecurityTables() {
                 );
             END
         `);
+
+        // Create APP_USUARIO_CANAL table
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_USUARIO_CANAL' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_USUARIO_CANAL (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    UsuarioId INT NOT NULL,
+                    Canal NVARCHAR(50) NOT NULL,
+                    CONSTRAINT FK_UsuarioCanal_Usuario FOREIGN KEY (UsuarioId) 
+                        REFERENCES APP_USUARIOS(Id) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IX_UsuarioCanal_UsuarioId ON APP_USUARIO_CANAL(UsuarioId);
+            END
+        `);
+
+        // Migrate existing users: assign all canales to users who don't have any
+        await pool.request().query(`
+            DECLARE @AllCanales TABLE (Canal NVARCHAR(50));
+            INSERT INTO @AllCanales VALUES 
+                ('Salón'),
+                ('Llevar'),
+                ('Express'),
+                ('AutoPollo'),
+                ('UberEats'),
+                ('ECommerce'),
+                ('WhatsApp');
+
+            INSERT INTO APP_USUARIO_CANAL (UsuarioId, Canal)
+            SELECT u.Id, c.Canal
+            FROM APP_USUARIOS u
+            CROSS JOIN @AllCanales c
+            WHERE NOT EXISTS (SELECT 1 FROM APP_USUARIO_CANAL uc WHERE uc.UsuarioId = u.Id);
+        `);
+
 
         // Create or update superadmin user
         const superAdminResult = await pool.request().query(`
@@ -298,6 +342,13 @@ async function loginUser(email, clave) {
 
     const allowedStores = storesResult.recordset.map(r => r.Local);
 
+    // Get user's allowed canales
+    const canalesResult = await pool.request()
+        .input('userId', sql.Int, user.Id)
+        .query('SELECT Canal FROM APP_USUARIO_CANAL WHERE UsuarioId = @userId');
+
+    const allowedCanales = canalesResult.recordset.map(r => r.Canal);
+
     // Generate long-lived JWT (365 days - session persists until admin changes PIN)
     const token = jwt.sign(
         {
@@ -305,6 +356,7 @@ async function loginUser(email, clave) {
             email: user.Email,
             nombre: user.Nombre,
             allowedStores: allowedStores,
+            allowedCanales: allowedCanales,
             claveHash: clave, // Store PIN in token to detect changes
             accesoTendencia: user.AccesoTendencia,
             accesoTactica: user.AccesoTactica,
@@ -336,7 +388,8 @@ async function loginUser(email, clave) {
             accesoInventarios: user.AccesoInventarios,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido,
-            allowedStores
+            allowedStores,
+            allowedCanales
         }
     };
 }
@@ -347,7 +400,10 @@ async function loginUser(email, clave) {
 function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization;
 
+    console.log(`🔐 Auth middleware for: ${req.method} ${req.path}`);
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.log('   ❌ No auth header or invalid format');
         return res.status(401).json({ error: 'Token no proporcionado' });
     }
 
@@ -356,8 +412,10 @@ function authMiddleware(req, res, next) {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         req.user = decoded;
+        console.log(`   ✅ User authenticated: ${decoded.email} (admin: ${decoded.esAdmin})`);
         next();
     } catch (err) {
+        console.log(`   ❌ Token verification failed: ${err.message}`);
         return res.status(401).json({ error: 'Token inválido o expirado' });
     }
 }
@@ -397,10 +455,10 @@ async function getAllUsers() {
     const pool = await poolPromise;
     const result = await pool.request().query(`
         SELECT u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.AccesoPresupuesto, u.AccesoTiempos, u.AccesoEvaluaciones, u.AccesoInventarios, u.EsAdmin, u.EsProtegido, u.FechaCreacion,
-               STRING_AGG(ua.Local, ', ') AS Almacenes
+               ISNULL(u.PermitirEnvioClave, 1) as PermitirEnvioClave,
+               (SELECT STRING_AGG(a2.Local, ', ') FROM APP_USUARIO_ALMACEN a2 WHERE a2.UsuarioId = u.Id) AS Almacenes,
+               (SELECT STRING_AGG(c2.Canal, ', ') FROM APP_USUARIO_CANAL c2 WHERE c2.UsuarioId = u.Id) AS Canales
         FROM APP_USUARIOS u
-        LEFT JOIN APP_USUARIO_ALMACEN ua ON u.Id = ua.UsuarioId
-        GROUP BY u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.AccesoPresupuesto, u.AccesoTiempos, u.AccesoEvaluaciones, u.AccesoInventarios, u.EsAdmin, u.EsProtegido, u.FechaCreacion
         ORDER BY u.Email
     `);
 
@@ -420,20 +478,27 @@ async function getAllUsers() {
         accesoInventarios: user.AccesoInventarios,
         esAdmin: user.EsAdmin,
         esProtegido: user.EsProtegido,
+        permitirEnvioClave: user.PermitirEnvioClave,
         fechaCreacion: user.FechaCreacion,
-        allowedStores: user.Almacenes ? user.Almacenes.split(', ') : []
+        allowedStores: user.Almacenes ? user.Almacenes.split(', ') : [],
+        allowedCanales: user.Canales ? user.Canales.split(', ') : []
     }));
 }
 
 /**
  * Create a new user with store access and PIN
  */
-async function createUser(email, nombre, clave, stores, accesoTendencia = false, accesoTactica = false, accesoEventos = false, accesoPresupuesto = true, accesoTiempos = false, accesoEvaluaciones = false, accesoInventarios = false, esAdmin = false) {
+async function createUser(email, nombre, clave, stores, canales, accesoTendencia = false, accesoTactica = false, accesoEventos = false, accesoPresupuesto = true, accesoTiempos = false, accesoEvaluaciones = false, accesoInventarios = false, esAdmin = false) {
     const pool = await poolPromise;
 
     // Validate: at least one module permission must be active (unless admin)
     if (!esAdmin && !accesoPresupuesto && !accesoTiempos && !accesoEvaluaciones && !accesoInventarios) {
         throw new Error('Al menos un módulo debe estar activo');
+    }
+
+    // Validate: at least one canal must be selected
+    if (!canales || canales.length === 0) {
+        throw new Error('Debe seleccionar al menos un canal');
     }
 
     const pin = clave || Math.floor(100000 + Math.random() * 900000).toString();
@@ -470,13 +535,21 @@ async function createUser(email, nombre, clave, stores, accesoTendencia = false,
         }
     }
 
+    // Insert canal access
+    for (const canal of canales) {
+        await pool.request()
+            .input('userId', sql.Int, userId)
+            .input('canal', sql.NVarChar, canal)
+            .query('INSERT INTO APP_USUARIO_CANAL (UsuarioId, Canal) VALUES (@userId, @canal)');
+    }
+
     return { userId, clave: generatedPin };
 }
 
 /**
  * Update user (including PIN change)
  */
-async function updateUser(userId, email, nombre, activo, clave, stores, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin) {
+async function updateUser(userId, email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin, permitirEnvioClave) {
     const pool = await poolPromise;
 
     // Protect superadmin user
@@ -493,12 +566,17 @@ async function updateUser(userId, email, nombre, activo, clave, stores, accesoTe
         throw new Error('Al menos un módulo debe estar activo para usuarios activos');
     }
 
+    // Validate: at least one canal must be selected
+    if (!canales || canales.length === 0) {
+        throw new Error('Debe seleccionar al menos un canal');
+    }
+
     let updateQuery = `
         UPDATE APP_USUARIOS 
         SET Email = @email, Nombre = @nombre, Activo = @activo, 
             AccesoTendencia = @accesoTendencia, AccesoTactica = @accesoTactica, AccesoEventos = @accesoEventos,
             AccesoPresupuesto = @accesoPresupuesto, AccesoTiempos = @accesoTiempos, AccesoEvaluaciones = @accesoEvaluaciones, AccesoInventarios = @accesoInventarios,
-            EsAdmin = @esAdmin,
+            EsAdmin = @esAdmin, PermitirEnvioClave = @permitirEnvioClave,
             FechaModificacion = GETDATE()
     `;
     const request = pool.request()
@@ -513,7 +591,8 @@ async function updateUser(userId, email, nombre, activo, clave, stores, accesoTe
         .input('accesoTiempos', sql.Bit, accesoTiempos)
         .input('accesoEvaluaciones', sql.Bit, accesoEvaluaciones)
         .input('accesoInventarios', sql.Bit, accesoInventarios)
-        .input('esAdmin', sql.Bit, esAdmin);
+        .input('esAdmin', sql.Bit, esAdmin)
+        .input('permitirEnvioClave', sql.Bit, permitirEnvioClave !== undefined ? permitirEnvioClave : true);
 
     if (clave) {
         updateQuery += ', Clave = @clave';
@@ -535,6 +614,18 @@ async function updateUser(userId, email, nombre, activo, clave, stores, accesoTe
                 .input('local', sql.NVarChar, store)
                 .query('INSERT INTO APP_USUARIO_ALMACEN (UsuarioId, Local) VALUES (@userId, @local)');
         }
+    }
+
+    // Replace canales
+    await pool.request()
+        .input('userId', sql.Int, userId)
+        .query('DELETE FROM APP_USUARIO_CANAL WHERE UsuarioId = @userId');
+
+    for (const canal of canales) {
+        await pool.request()
+            .input('userId', sql.Int, userId)
+            .input('canal', sql.NVarChar, canal)
+            .query('INSERT INTO APP_USUARIO_CANAL (UsuarioId, Canal) VALUES (@userId, @canal)');
     }
 }
 

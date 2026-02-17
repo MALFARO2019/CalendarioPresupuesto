@@ -3,6 +3,7 @@ import type { BudgetRecord } from '../mockData';
 import { DayCell } from './DayCell';
 import { getDaysInMonth, startOfMonth, getDay } from 'date-fns';
 import { useUserPreferences } from '../context/UserPreferences';
+import { useFormatCurrency } from '../utils/formatters';
 
 interface CalendarGridProps {
     data: BudgetRecord[];
@@ -17,6 +18,7 @@ const DAYS_OF_WEEK = ['L', 'K', 'M', 'J', 'V', 'S', 'D'];
 
 export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, comparisonType, kpi }) => {
     const { formatPct100 } = useUserPreferences();
+    const fc = useFormatCurrency();
     // Data is already filtered for the month by parent component
     const monthData = data;
     const totalDays = getDaysInMonth(new Date(year, month));
@@ -97,14 +99,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
         return { totalP, totalR, totalPA, pct };
     });
 
-    const formatNumber = (val: number) => {
-        const isTransaction = kpi === 'Transacciones';
-        const formatted = val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` :
-            val >= 1000 ? `${(val / 1000).toFixed(0)}k` :
-                val.toLocaleString('es-CR');
 
-        return isTransaction ? formatted : `₡${formatted}`;
-    };
 
     const getPercentColor = (pct: number) => {
         if (pct === 0) return 'bg-gray-200 text-gray-500'; // No data - neutral color
@@ -139,7 +134,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                     {columnTotals.map((col, idx) => (
                         <div key={idx} className="px-2 py-1 text-center">
                             <span className="text-[10px] font-bold text-gray-400">P </span>
-                            <span className="text-xs font-semibold text-gray-600 font-mono">{formatNumber(col.totalP)}</span>
+                            <span className="text-xs font-semibold text-gray-600 font-mono">{fc(col.totalP, kpi)}</span>
                         </div>
                     ))}
                 </div>
@@ -148,7 +143,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                     {columnTotals.map((col, idx) => (
                         <div key={idx} className="px-2 py-1 text-center">
                             <span className="text-[10px] font-bold text-gray-400">R </span>
-                            <span className="text-xs font-bold text-gray-800 font-mono">{formatNumber(col.totalR)}</span>
+                            <span className="text-xs font-bold text-gray-800 font-mono">{fc(col.totalR, kpi)}</span>
                         </div>
                     ))}
                 </div>
@@ -157,7 +152,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                     {columnTotals.map((col, idx) => (
                         <div key={idx} className="px-2 py-1 text-center">
                             <span className="text-[10px] font-bold text-gray-400">PA </span>
-                            <span className="text-xs font-semibold text-gray-500 font-mono">{formatNumber(col.totalPA)}</span>
+                            <span className="text-xs font-semibold text-gray-500 font-mono">{fc(col.totalPA, kpi)}</span>
                         </div>
                     ))}
                 </div>

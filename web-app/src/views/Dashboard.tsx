@@ -3,7 +3,7 @@ import { Settings } from 'lucide-react';
 import { MODULES } from '../shared/config/modules';
 import { ModuleCard } from '../shared/components/ModuleCard';
 import type { GroupedModuleStats } from '../shared/types/modules';
-import { getToken, API_BASE, getUser } from '../api';
+import { getToken, API_BASE, getUser, fetchFechaLimite } from '../api';
 import { useUserPreferences } from '../context/UserPreferences';
 import { DashboardConfigModal } from '../components/dashboard/DashboardConfigModal';
 
@@ -16,6 +16,7 @@ export function Dashboard({ onNavigateToModule }: DashboardProps) {
     const [presupuestoStats, setPresupuestoStats] = useState<GroupedModuleStats[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showConfigModal, setShowConfigModal] = useState(false);
+    const [dateRange, setDateRange] = useState<{ startDate: string; endDate: string } | null>(null);
 
     // Get default locales for soporte user
     const getDefaultLocales = (): string[] => {
@@ -43,7 +44,12 @@ export function Dashboard({ onNavigateToModule }: DashboardProps) {
 
                 const year = new Date().getFullYear();
                 const startDate = `${year}-01-01`;
-                const endDate = new Date().toISOString().split('T')[0];
+                // Use DB-driven fecha limite (MAX(Fecha) WHERE MontoReal > 0)
+                const fechaLimiteFromDB = await fetchFechaLimite(year);
+                const endDate = fechaLimiteFromDB || new Date().toISOString().split('T')[0];
+
+                // Store date range for display
+                setDateRange({ startDate, endDate });
 
                 // Fetch data for each locale using /api/tendencia (same endpoint as Anual view)
                 const results = await Promise.all(dashboardLocales.map(async (local) => {
@@ -218,6 +224,7 @@ export function Dashboard({ onNavigateToModule }: DashboardProps) {
                                     stats={module.id === 'presupuesto' ? presupuestoStats : []}
                                     isLoading={module.id === 'presupuesto' ? isLoading : false}
                                     onClick={() => handleModuleClick(module.id)}
+                                    dateRange={module.id === 'presupuesto' && dateRange ? dateRange : undefined}
                                 />
                             ));
                         } else {

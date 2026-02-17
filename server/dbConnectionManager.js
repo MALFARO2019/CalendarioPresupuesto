@@ -1,298 +1,282 @@
 const sql = require('mssql');
 require('dotenv').config();
 
-// Database connection modes
-const MODES = {
-    DIRECT: 'direct',
-    HYBRID: 'hybrid'
-};
-
-// Connection pools
-let readPool = null;
-let writePool = null;
-let directPool = null;
-let currentMode = null;
-
 /**
- * Get database configuration from APP_DB_CONFIG table
- * Returns null if table doesn't exist or no config found
+ * Database Connection Manager with Automatic Failover
+ * Manages connections to primary and auxiliary databases with health checks
  */
-async function getConfigFromDatabase() {
-    try {
-        // Try to connect with env vars to read config
-        const tempConfig = {
+
+class DatabaseConnectionManager {
+    constructor() {
+        this.primaryConfig = {
             user: process.env.DB_USER,
             password: process.env.DB_PASSWORD,
             server: process.env.DB_SERVER,
             database: process.env.DB_DATABASE,
             options: {
                 encrypt: false,
-                trustServerCertificate: true
+                trustServerCertificate: true,
+                enableArithAbort: true
+            },
+            pool: {
+                max: 10,
+                min: 0,
+                idleTimeoutMillis: 30000
             }
         };
 
-        const tempPool = await new sql.ConnectionPool(tempConfig).connect();
-
-        // Check if APP_DB_CONFIG table exists
-        const tableCheck = await tempPool.request().query(`
-            SELECT COUNT(*) as count 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_NAME = 'APP_DB_CONFIG'
-        `);
-
-        if (tableCheck.recordset[0].count === 0) {
-            await tempPool.close();
-            return null;
-        }
-
-        // Get latest config
-        const result = await tempPool.request().query(`
-            SELECT TOP 1 * FROM APP_DB_CONFIG 
-            ORDER BY FechaModificacion DESC
-        `);
-
-        await tempPool.close();
-
-        if (result.recordset.length === 0) {
-            return null;
-        }
-
-        return result.recordset[0];
-    } catch (err) {
-        console.warn('⚠️ Could not read config from database:', err.message);
-        return null;
-    }
-}
-
-/**
- * Decrypt password (basic implementation - replace with crypto for production)
- */
-function decryptPassword(encrypted) {
-    if (!encrypted) return '';
-    // For now, just return as-is. In production, implement proper decryption
-    // TODO: Implement actual encryption/decryption using crypto module
-    return encrypted;
-}
-
-/**
- * Create connection pool for Direct SQL mode
- */
-async function createDirectPool() {
-    const config = {
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        server: process.env.DB_SERVER,
-        database: process.env.DB_DATABASE,
-        options: {
-            encrypt: false,
-            trustServerCertificate: true
-        },
-        pool: {
-            max: 10,
-            min: 0,
-            idleTimeoutMillis: 30000
-        },
-        requestTimeout: 30000
-    };
-
-    directPool = await new sql.ConnectionPool(config).connect();
-    console.log('✅ Database Mode: DIRECT');
-    console.log('   Connected to:', process.env.DB_SERVER);
-    console.log('   Database:', process.env.DB_DATABASE);
-    return directPool;
-}
-
-/**
- * Create connection pools for Azure Hybrid mode
- */
-async function createHybridPools(dbConfig = null) {
-    // Get config from env vars or database
-    let readServer, readDatabase, readUser, readPassword;
-    let writeServer, writeDatabase, writeUser, writePassword;
-
-    if (dbConfig) {
-        // From database config
-        readServer = dbConfig.ReadServer;
-        readDatabase = dbConfig.ReadDatabase;
-        readUser = dbConfig.ReadUser;
-        readPassword = decryptPassword(dbConfig.ReadPassword);
-
-        writeServer = dbConfig.WriteServer;
-        writeDatabase = dbConfig.WriteDatabase;
-        writeUser = dbConfig.WriteUser;
-        writePassword = decryptPassword(dbConfig.WritePassword);
-    } else {
-        // From env vars
-        readServer = process.env.DB_READ_SERVER;
-        readDatabase = process.env.DB_READ_DATABASE;
-        readUser = process.env.DB_READ_USER;
-        readPassword = process.env.DB_READ_PASSWORD;
-
-        writeServer = process.env.DB_WRITE_SERVER;
-        writeDatabase = process.env.DB_WRITE_DATABASE;
-        writeUser = process.env.DB_WRITE_USER;
-        writePassword = process.env.DB_WRITE_PASSWORD;
+        this.auxiliaryConfig = null;
+        this.primaryPool = null;
+        this.auxiliaryPool = null;
+        this.activeMode = 'primary'; // 'primary' or 'auxiliary'
+        this.primaryHealthy = true;
+        this.lastHealthCheck = null;
+        this.reconnectInterval = null;
     }
 
-    // Validate config
-    if (!readServer || !writeServer) {
-        throw new Error('Hybrid mode requires READ and WRITE server configuration');
-    }
-
-    // Create READ pool (Azure SQL)
-    const readConfig = {
-        user: readUser,
-        password: readPassword,
-        server: readServer,
-        database: readDatabase,
-        options: {
-            encrypt: true, // Azure SQL requires encryption
-            trustServerCertificate: false
-        },
-        pool: {
-            max: 10,
-            min: 0,
-            idleTimeoutMillis: 30000
-        },
-        requestTimeout: 30000
-    };
-
-    // Create WRITE pool (On-premise via Hybrid Connection)
-    const writeConfig = {
-        user: writeUser,
-        password: writePassword,
-        server: writeServer,
-        database: writeDatabase,
-        options: {
-            encrypt: false,
-            trustServerCertificate: true
-        },
-        pool: {
-            max: 5,
-            min: 0,
-            idleTimeoutMillis: 30000
-        },
-        requestTimeout: 30000
-    };
-
-    readPool = await new sql.ConnectionPool(readConfig).connect();
-    writePool = await new sql.ConnectionPool(writeConfig).connect();
-
-    console.log('✅ Database Mode: HYBRID');
-    console.log('   READ Pool (Azure SQL):', readServer);
-    console.log('   WRITE Pool (On-premise):', writeServer);
-
-    return { readPool, writePool };
-}
-
-/**
- * Initialize database connections based on mode
- */
-async function initializeConnections() {
-    try {
-        // Determine mode: env var > database config > default to direct
-        let mode = process.env.DB_MODE?.toLowerCase();
-
-        if (!mode) {
-            // Try to get mode from database
-            const dbConfig = await getConfigFromDatabase();
-            if (dbConfig) {
-                mode = dbConfig.Modo?.toLowerCase();
-
-                if (mode === MODES.HYBRID) {
-                    await createHybridPools(dbConfig);
-                    currentMode = MODES.HYBRID;
-                    return;
-                }
+    /**
+     * Initialize primary database connection
+     */
+    async initializePrimary() {
+        try {
+            if (this.primaryPool) {
+                await this.primaryPool.close();
             }
+
+            this.primaryPool = await new sql.ConnectionPool(this.primaryConfig).connect();
+            this.activeMode = 'primary';
+            this.primaryHealthy = true;
+            this.lastHealthCheck = new Date();
+
+            console.log('✅ Connected to SQL Server:', this.primaryConfig.server);
+            console.log('   Database:', this.primaryConfig.database);
+            console.log('✅ Database Mode: PRIMARY');
+
+            // Stop reconnect attempts if we were on auxiliary
+            this.stopReconnectAttempts();
+
+            return true;
+        } catch (err) {
+            console.error('❌ Failed to connect to primary database:', err.message);
+            this.primaryHealthy = false;
+
+            // Try to failover to auxiliary
+            await this.tryFailoverToAuxiliary();
+            return false;
+        }
+    }
+
+    /**
+     * Load auxiliary database configuration from APP_CONFIGURACION table
+     */
+    async loadAuxiliaryConfig() {
+        try {
+            // We must use primary pool to read config
+            if (!this.primaryPool) {
+                return null;
+            }
+
+            const result = await this.primaryPool.request()
+                .query(`
+                    SELECT Clave, Valor 
+                    FROM APP_CONFIGURACION 
+                    WHERE Clave IN ('DB_AUX_SERVER', 'DB_AUX_DATABASE', 'DB_AUX_USERNAME', 'DB_AUX_PASSWORD')
+                `);
+
+            const configMap = {};
+            result.recordset.forEach(row => {
+                configMap[row.Clave] = row.Valor;
+            });
+
+            if (!configMap.DB_AUX_SERVER || !configMap.DB_AUX_DATABASE) {
+                return null;
+            }
+
+            this.auxiliaryConfig = {
+                user: configMap.DB_AUX_USERNAME || 'sa',
+                password: configMap.DB_AUX_PASSWORD || '',
+                server: configMap.DB_AUX_SERVER,
+                database: configMap.DB_AUX_DATABASE,
+                options: {
+                    encrypt: false,
+                    trustServerCertificate: true,
+                    enableArithAbort: true
+                },
+                pool: {
+                    max: 10,
+                    min: 0,
+                    idleTimeoutMillis: 30000
+                }
+            };
+
+            console.log('📋 Loaded auxiliary DB config:', configMap.DB_AUX_SERVER, '/', configMap.DB_AUX_DATABASE);
+            return this.auxiliaryConfig;
+        } catch (err) {
+            console.error('⚠️ Failed to load auxiliary config:', err.message);
+            return null;
+        }
+    }
+
+    /**
+     * Try to failover to auxiliary database
+     */
+    async tryFailoverToAuxiliary() {
+        console.log('🔄 Attempting failover to auxiliary database...');
+
+        // Load config if not already loaded
+        if (!this.auxiliaryConfig) {
+            await this.loadAuxiliaryConfig();
         }
 
-        // If mode is explicitly hybrid from env
-        if (mode === MODES.HYBRID) {
-            await createHybridPools();
-            currentMode = MODES.HYBRID;
-            return;
+        if (!this.auxiliaryConfig) {
+            console.error('❌ No auxiliary database configured. Cannot failover.');
+            throw new Error('Primary database unavailable and no auxiliary configured');
         }
 
-        // Default to direct mode
-        await createDirectPool();
-        currentMode = MODES.DIRECT;
+        try {
+            if (this.auxiliaryPool) {
+                await this.auxiliaryPool.close();
+            }
 
-    } catch (err) {
-        console.error('❌ Database Connection Failed!');
-        console.error('   Error:', err.message);
-        throw err;
+            this.auxiliaryPool = await new sql.ConnectionPool(this.auxiliaryConfig).connect();
+            this.activeMode = 'auxiliary';
+            this.primaryHealthy = false;
+
+            console.log('⚠️ FAILOVER SUCCESSFUL - Now using AUXILIARY database');
+            console.log('   Server:', this.auxiliaryConfig.server);
+            console.log('   Database:', this.auxiliaryConfig.database);
+
+            // Start attempting to reconnect to primary
+            this.startReconnectAttempts();
+
+            return true;
+        } catch (err) {
+            console.error('❌ Failed to connect to auxiliary database:', err.message);
+            throw new Error('Both primary and auxiliary databases are unavailable');
+        }
+    }
+
+    /**
+     * Start periodic attempts to reconnect to primary database
+     */
+    startReconnectAttempts() {
+        if (this.reconnectInterval) {
+            return; // Already attempting
+        }
+
+        console.log('🔁 Starting periodic reconnection attempts to primary database...');
+
+        this.reconnectInterval = setInterval(async () => {
+            console.log('🔄 Attempting to reconnect to primary database...');
+            try {
+                const testPool = await new sql.ConnectionPool(this.primaryConfig).connect();
+                await testPool.close();
+
+                // Success! Switch back to primary
+                console.log('✅ Primary database is back online. Switching back...');
+                await this.initializePrimary();
+            } catch (err) {
+                console.log('⏳ Primary database still unavailable. Will retry in 30 seconds.');
+            }
+        }, 30000); // Every 30 seconds
+    }
+
+    /**
+     * Stop reconnection attempts
+     */
+    stopReconnectAttempts() {
+        if (this.reconnectInterval) {
+            clearInterval(this.reconnectInterval);
+            this.reconnectInterval = null;
+            console.log('⏸️ Stopped reconnection attempts');
+        }
+    }
+
+    /**
+     * Get the active connection pool (primary or auxiliary)
+     */
+    getActivePool() {
+        if (this.activeMode === 'primary') {
+            return this.primaryPool;
+        } else {
+            return this.auxiliaryPool;
+        }
+    }
+
+    /**
+     * Test connection to a specific configuration
+     */
+    async testConnection(config) {
+        try {
+            const testPool = await new sql.ConnectionPool(config).connect();
+            await testPool.close();
+            return { success: true, message: 'Connection successful' };
+        } catch (err) {
+            return { success: false, message: err.message };
+        }
+    }
+
+    /**
+     * Get current database status
+     */
+    getCurrentStatus() {
+        return {
+            activeMode: this.activeMode,
+            primaryHealthy: this.primaryHealthy,
+            auxiliaryConfigured: this.auxiliaryConfig !== null,
+            lastHealthCheck: this.lastHealthCheck
+        };
+    }
+
+    /**
+     * Perform health check on primary database
+     */
+    async checkPrimaryHealth() {
+        try {
+            if (!this.primaryPool) {
+                this.primaryHealthy = false;
+                return false;
+            }
+
+            await this.primaryPool.request().query('SELECT 1');
+            this.primaryHealthy = true;
+            this.lastHealthCheck = new Date();
+            return true;
+        } catch (err) {
+            this.primaryHealthy = false;
+            console.error('⚠️ Primary database health check failed:', err.message);
+
+            // If we're currently on primary and it failed, try to failover
+            if (this.activeMode === 'primary') {
+                await this.tryFailoverToAuxiliary();
+            }
+
+            return false;
+        }
     }
 }
 
-/**
- * Get appropriate pool for the query type
- * @param {string} queryType - 'read' or 'write'
- * @returns {Promise<sql.ConnectionPool>}
- */
-async function getPool(queryType = 'read') {
-    // Ensure connections are initialized
-    if (!directPool && !readPool && !writePool) {
-        await initializeConnections();
-    }
+// Create singleton instance
+const dbManager = new DatabaseConnectionManager();
 
-    // In direct mode, use the same pool for everything
-    if (currentMode === MODES.DIRECT) {
-        return directPool;
-    }
-
-    // In hybrid mode, route based on query type
-    if (currentMode === MODES.HYBRID) {
-        if (queryType === 'write') {
-            return writePool;
-        }
-        return readPool;
-    }
-
-    throw new Error('Database not initialized');
-}
-
-/**
- * Get connection pool promise for backward compatibility
- */
-const poolPromise = (async () => {
-    await initializeConnections();
-    return directPool || readPool; // Return primary pool
+// Initialize on module load
+(async () => {
+    await dbManager.initializePrimary();
+    await dbManager.loadAuxiliaryConfig();
 })();
-
-/**
- * Close all connections
- */
-async function closeAllConnections() {
-    const promises = [];
-
-    if (directPool) promises.push(directPool.close());
-    if (readPool) promises.push(readPool.close());
-    if (writePool) promises.push(writePool.close());
-
-    await Promise.all(promises);
-
-    directPool = null;
-    readPool = null;
-    writePool = null;
-    currentMode = null;
-
-    console.log('✅ All database connections closed');
-}
-
-/**
- * Get current mode
- */
-function getCurrentMode() {
-    return currentMode;
-}
 
 module.exports = {
     sql,
-    poolPromise,
-    getPool,
-    initializeConnections,
-    closeAllConnections,
-    getCurrentMode,
-    MODES
+    getActivePool: () => dbManager.getActivePool(),
+    dbManager,
+    // Legacy support
+    poolPromise: new Promise((resolve) => {
+        const interval = setInterval(() => {
+            const pool = dbManager.getActivePool();
+            if (pool) {
+                clearInterval(interval);
+                resolve(pool);
+            }
+        }, 100);
+    })
 };
