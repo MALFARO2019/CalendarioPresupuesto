@@ -19,6 +19,7 @@ export interface User {
     esProtegido: boolean;
     allowedStores: string[];
     allowedCanales: string[];
+    permitirEnvioClave?: boolean;
 }
 
 

@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { BudgetRecord } from '../mockData';
 import { formatCurrencyCompact, useFormatCurrency } from '../utils/formatters';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 import { useUserPreferences } from '../context/UserPreferences';
 import { fetchTactica } from '../api';
 import jsPDF from 'jspdf';
@@ -62,6 +62,12 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
     const toggleBar = (bar: keyof typeof visibleBars) => {
         setVisibleBars(prev => ({ ...prev, [bar]: !prev[bar] }));
     };
+
+    // Label visibility state
+    const [showRealLabel, setShowRealLabel] = useState(false);
+    const [showPresLabel, setShowPresLabel] = useState(false);
+    const [showAntLabel, setShowAntLabel] = useState(false);
+    const [showAntAjustLabel, setShowAntAjustLabel] = useState(false);
     const { formatPct100 } = useUserPreferences();
     const fc = useFormatCurrency();
 
@@ -514,13 +520,61 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
 
             {/* Monthly comparison chart */}
             <div className="mt-8 bg-white p-6 rounded-3xl shadow-lg border border-gray-100">
-                <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-bold text-gray-800 tracking-tight">Comparativo Mensual</h3>
-                    <div className="flex flex-wrap gap-2">
+                <div className="mb-6">
+                    <h3 className="text-lg font-bold text-gray-800 tracking-tight mb-4">Comparativo Mensual</h3>
+
+                    {/* Series visibility controls */}
+                    <div className="flex flex-wrap items-center gap-3 text-sm">
+                        {/* Series toggles */}
                         <ToggleBtn label="Presupuesto" color="bg-blue-500" checked={visibleBars.presupuesto} onChange={() => toggleBar('presupuesto')} />
                         <ToggleBtn label="Real" color="bg-green-500" checked={visibleBars.real} onChange={() => toggleBar('real')} />
                         <ToggleBtn label="Año Anterior" color="bg-orange-400" checked={visibleBars.anterior} onChange={() => toggleBar('anterior')} />
                         <ToggleBtn label="Ant. Ajustado" color="bg-indigo-500" checked={visibleBars.anteriorAjustado} onChange={() => toggleBar('anteriorAjustado')} />
+
+                        {/* Label toggles */}
+                        <div className="flex items-center gap-2 pl-3 border-l border-gray-300">
+                            <span className="text-xs font-semibold text-gray-600">Etiquetar:</span>
+                            <label className="flex items-center gap-1 cursor-pointer touch-target">
+                                <input
+                                    type="checkbox"
+                                    checked={showRealLabel}
+                                    onChange={(e) => setShowRealLabel(e.target.checked)}
+                                    disabled={!visibleBars.real}
+                                    className="w-3.5 h-3.5 text-green-600 rounded focus:ring-1 focus:ring-green-300 disabled:opacity-50"
+                                />
+                                <span className="text-xs text-gray-700">Real</span>
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer touch-target">
+                                <input
+                                    type="checkbox"
+                                    checked={showPresLabel}
+                                    onChange={(e) => setShowPresLabel(e.target.checked)}
+                                    disabled={!visibleBars.presupuesto}
+                                    className="w-3.5 h-3.5 text-blue-600 rounded focus:ring-1 focus:ring-blue-300 disabled:opacity-50"
+                                />
+                                <span className="text-xs text-gray-700">Pres.</span>
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer touch-target">
+                                <input
+                                    type="checkbox"
+                                    checked={showAntLabel}
+                                    onChange={(e) => setShowAntLabel(e.target.checked)}
+                                    disabled={!visibleBars.anterior}
+                                    className="w-3.5 h-3.5 text-orange-600 rounded focus:ring-1 focus:ring-orange-300 disabled:opacity-50"
+                                />
+                                <span className="text-xs text-gray-700">Ant.</span>
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer touch-target">
+                                <input
+                                    type="checkbox"
+                                    checked={showAntAjustLabel}
+                                    onChange={(e) => setShowAntAjustLabel(e.target.checked)}
+                                    disabled={!visibleBars.anteriorAjustado}
+                                    className="w-3.5 h-3.5 text-indigo-600 rounded focus:ring-1 focus:ring-indigo-300 disabled:opacity-50"
+                                />
+                                <span className="text-xs text-gray-700">Ajust.</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -560,16 +614,24 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
                             />
                             <Tooltip content={<CustomTooltip />} />
                             {visibleBars.anteriorAjustado && (
-                                <Area type="monotone" dataKey="Año Ant. Ajust." stroke="#6366F1" strokeWidth={2} fillOpacity={1} fill="url(#colorAntAjAnual)" />
+                                <Area type="monotone" dataKey="Año Ant. Ajust." stroke="#6366F1" strokeWidth={2} fillOpacity={1} fill="url(#colorAntAjAnual)">
+                                    {showAntAjustLabel && <LabelList dataKey="Año Ant. Ajust." position="top" formatter={(value: number) => formatCurrencyCompact(value, kpi)} style={{ fontSize: '10px', fill: '#6366F1', fontWeight: 'bold' }} />}
+                                </Area>
                             )}
                             {visibleBars.anterior && (
-                                <Area type="monotone" dataKey="Año Anterior" stroke="#FB923C" strokeWidth={2} fillOpacity={1} fill="url(#colorAntAnual)" />
+                                <Area type="monotone" dataKey="Año Anterior" stroke="#FB923C" strokeWidth={2} fillOpacity={1} fill="url(#colorAntAnual)">
+                                    {showAntLabel && <LabelList dataKey="Año Anterior" position="top" formatter={(value: number) => formatCurrencyCompact(value, kpi)} style={{ fontSize: '10px', fill: '#FB923C', fontWeight: 'bold' }} />}
+                                </Area>
                             )}
                             {visibleBars.presupuesto && (
-                                <Area type="monotone" dataKey="Presupuesto" stroke="#3B82F6" strokeWidth={2} fillOpacity={1} fill="url(#colorPresup)" />
+                                <Area type="monotone" dataKey="Presupuesto" stroke="#3B82F6" strokeWidth={2} fillOpacity={1} fill="url(#colorPresup)">
+                                    {showPresLabel && <LabelList dataKey="Presupuesto" position="top" formatter={(value: number) => formatCurrencyCompact(value, kpi)} style={{ fontSize: '10px', fill: '#3B82F6', fontWeight: 'bold' }} />}
+                                </Area>
                             )}
                             {visibleBars.real && (
-                                <Area type="monotone" dataKey="Real" stroke="#10B981" strokeWidth={3} fillOpacity={1} fill="url(#colorRealAnual)" />
+                                <Area type="monotone" dataKey="Real" stroke="#10B981" strokeWidth={3} fillOpacity={1} fill="url(#colorRealAnual)">
+                                    {showRealLabel && <LabelList dataKey="Real" position="top" formatter={(value: number) => formatCurrencyCompact(value, kpi)} style={{ fontSize: '10px', fill: '#10B981', fontWeight: 'bold' }} />}
+                                </Area>
                             )}
                         </AreaChart>
                     </ResponsiveContainer>
@@ -699,10 +761,15 @@ function TotalCell({ label, value, bold }: { label: string; value: string; bold?
 
 function ToggleBtn({ label, color, checked, onChange }: { label: string; color: string; checked: boolean; onChange: () => void }) {
     return (
-        <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-            <input type="checkbox" checked={checked} onChange={onChange} className="w-3 h-3" />
-            <div className={`w-2 h-2 rounded-full ${color}`}></div>
-            <span className={checked ? 'text-gray-700' : 'text-gray-400'}>{label}</span>
+        <label className="flex items-center gap-1.5 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded touch-target">
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={onChange}
+                className="w-4 h-4 rounded focus:ring-2 focus:ring-offset-0"
+            />
+            <span className={`w-3 h-3 rounded-full ${color}`}></span>
+            <span className={`font-medium text-sm ${checked ? 'text-gray-700' : 'text-gray-400'}`}>{label}</span>
         </label>
     );
 }

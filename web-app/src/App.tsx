@@ -23,9 +23,10 @@ import { InfoCard } from './components/InfoCard';
 import { IncrementCard } from './components/IncrementCard';
 import { SummaryCard } from './components/SummaryCard';
 import { GroupMembersCard } from './components/GroupMembersCard';
+import { RangosView } from './components/RangosView';
 
 type AppView = 'login' | 'dashboard' | 'admin';
-type DashboardTab = 'home' | 'mensual' | 'anual' | 'tendencia';
+type DashboardTab = 'home' | 'mensual' | 'anual' | 'tendencia' | 'rangos';
 
 function App() {
   const [view, setView] = useState<AppView>('login');
@@ -683,6 +684,16 @@ function App() {
                       <span className="hidden lg:inline">Tendencia</span>
                     </button>
                   )}
+                  <button
+                    onClick={() => setDashboardTab('rangos')}
+                    className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'rangos'
+                      ? 'bg-white shadow-sm text-indigo-600'
+                      : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span className="hidden lg:inline">Rangos</span>
+                  </button>
                 </>
               )}
             </div>
@@ -711,8 +722,8 @@ function App() {
       </div>
 
       <main id="dashboard-content" className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
-        {/* Filters - Only show when in Presupuesto module (not in tendencia) */}
-        {dashboardTab !== 'home' && dashboardTab !== 'tendencia' && (
+        {/* Filters - Only show when in Presupuesto module (not in tendencia or rangos) */}
+        {dashboardTab !== 'home' && dashboardTab !== 'tendencia' && dashboardTab !== 'rangos' && (
           <FilterBar
             year={year}
             setYear={() => { }} // Year is read-only
@@ -733,6 +744,36 @@ function App() {
             }}
             availableCanales={availableCanales}
             showMonthSelector={dashboardTab === 'mensual'}
+            currentMonth={currentDate.getMonth()}
+            onMonthChange={(month: number) => {
+              const newDate = new Date(currentDate.getFullYear(), month, 1);
+              setCurrentDate(newDate);
+            }}
+          />
+        )}
+
+        {/* Filters for Rangos - without month selector */}
+        {dashboardTab === 'rangos' && (
+          <FilterBar
+            year={year}
+            setYear={() => { }} // Year is read-only
+            filterLocal={filterLocal}
+            setFilterLocal={setFilterLocal}
+            filterCanal={filterCanal}
+            setFilterCanal={setFilterCanal}
+            filterKpi={filterKpi}
+            setFilterKpi={setFilterKpi}
+            filterType={filterType}
+            setFilterType={setFilterType}
+            groups={groups}
+            individualStores={individualStores}
+            yearType={yearType}
+            setYearType={(type: 'Año Anterior' | 'Año Anterior Ajustado') => {
+              setYearType(type);
+              setDefaultYearType(type);
+            }}
+            availableCanales={availableCanales}
+            showMonthSelector={false}
             currentMonth={currentDate.getMonth()}
             onMonthChange={(month: number) => {
               const newDate = new Date(currentDate.getFullYear(), month, 1);
@@ -914,6 +955,16 @@ function App() {
               onExportExcel={(fn) => { tendenciaExportRef.current = fn; }}
             />
           </div>
+        )}
+
+        {!loading && dashboardTab === 'rangos' && (
+          <RangosView
+            year={year}
+            filterLocal={filterLocal}
+            filterCanal={filterCanal}
+            filterKpi={filterKpi}
+            yearType={yearType}
+          />
         )}
       </main>
 

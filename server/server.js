@@ -14,6 +14,7 @@ const {
 } = require('./auth');
 const { sendPasswordEmail, sendReportEmail, verifyEmailService } = require('./emailService');
 const { getTendenciaData, getResumenCanal } = require('./tendencia');
+const { getRangosData, getRangosResumenCanal } = require('./rangos');
 const { generateTacticaAnalysis } = require('./tacticaAI');
 const {
     getAllEventos,
@@ -697,6 +698,13 @@ app.get('/api/fecha-limite', authMiddleware, async (req, res) => {
 
 app.get('/api/tendencia', authMiddleware, getTendenciaData);
 app.get('/api/tendencia/resumen-canal', authMiddleware, getResumenCanal);
+
+// ==========================================
+// RANGOS ENDPOINT
+// ==========================================
+
+app.get('/api/rangos', authMiddleware, getRangosData);
+app.get('/api/rangos/resumen-canal', authMiddleware, getRangosResumenCanal);
 
 // ==========================================
 // DASHBOARD MULTI-KPI BATCH ENDPOINT (optimized with trends)
