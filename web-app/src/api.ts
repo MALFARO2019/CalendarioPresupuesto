@@ -253,10 +253,21 @@ export async function fetchFechaLimite(year: number = 2026): Promise<string | nu
     }
 }
 
-export async function fetchBudgetData(year: number = 2026, local?: string, canal: string = 'Todos', tipo: string = 'Ventas'): Promise<BudgetRecord[]> {
+export async function fetchBudgetData(
+    year: number = 2026,
+    local?: string,
+    canal: string = 'Todos',
+    tipo: string = 'Ventas',
+    startDate?: string,
+    endDate?: string
+): Promise<BudgetRecord[]> {
     const params = new URLSearchParams({ year: year.toString(), canal, tipo });
     if (local) {
         params.set('local', local);
+    }
+    if (startDate && endDate) {
+        params.set('startDate', startDate);
+        params.set('endDate', endDate);
     }
 
     const response = await fetch(`${API_BASE}/budget?${params}`, {

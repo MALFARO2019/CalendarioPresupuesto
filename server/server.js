@@ -220,6 +220,10 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
         const local = req.query.local;
         let canal = req.query.canal || 'Todos';
         const tipo = req.query.tipo || 'Ventas';
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+
+        console.log(`🔍 /api/budget called with: year=${year}, local=${local}, canal=${canal}, tipo=${tipo}, startDate=${startDate}, endDate=${endDate}`);
 
         // For users with limited channels, "Todos" should sum only their allowed channels
         const userAllowedCanales = req.user.allowedCanales || [];
@@ -303,6 +307,12 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
             canalParams['canal'] = canal;
         }
 
+        // Date filter (optional - for consistency with /api/tendencia)
+        let dateFilter = '';
+        if (startDate && endDate) {
+            dateFilter = 'AND Fecha BETWEEN @startDate AND @endDate';
+        }
+
         const query = `
             SELECT 
                 Fecha, 
@@ -322,12 +332,19 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
             FROM RSM_ALCANCE_DIARIO 
             WHERE Año = @year AND ${localFilter} AND ${canalFilter} AND Tipo = @tipo
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                ${dateFilter}
             GROUP BY Fecha, Año, Mes, Dia, Tipo
             ORDER BY Mes, Dia
         `;
         const request = pool.request()
             .input('year', sql.Int, year)
             .input('tipo', sql.NVarChar, tipo);
+
+        // Add date params if provided
+        if (startDate && endDate) {
+            request.input('startDate', sql.Date, startDate);
+            request.input('endDate', sql.Date, endDate);
+        }
 
         // Add canal filter params
         Object.entries(canalParams).forEach(([key, val]) => {

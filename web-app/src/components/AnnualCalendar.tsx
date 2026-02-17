@@ -15,6 +15,7 @@ interface AnnualCalendarProps {
     storeName?: string;
     tacticaOpen?: boolean;
     onTacticaClose?: () => void;
+    fechaLimite?: string; // YYYY-MM-DD format
 }
 
 const MONTH_NAMES = [
@@ -49,7 +50,7 @@ interface MonthAgg {
 }
 
 export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
-    data, year, kpi, yearType, storeName = '', tacticaOpen = false, onTacticaClose
+    data, year, kpi, yearType, storeName = '', tacticaOpen = false, onTacticaClose, fechaLimite
 }) => {
     const [visibleBars, setVisibleBars] = useState({
         presupuesto: true,
@@ -65,6 +66,11 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
     const fc = useFormatCurrency();
 
     // Táctica state
+    const [activePreview, setActivePreview] = useState<{ label: string; value: number, color: string } | null>(null);
+    const [isLegendTooltipVisible, setIsLegendTooltipVisible] = useState(false);
+    const [activeMonth, setActiveMonth] = useState<number | null>(null);
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [modalContent, setModalContent] = useState<{ title: string; analysis: string } | null>(null);
     const [showTacticaModal, setShowTacticaModal] = useState(false);
     const [tacticaLoading, setTacticaLoading] = useState(false);
     const [tacticaAnalysis, setTacticaAnalysis] = useState<string | null>(null);
@@ -79,6 +85,9 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
     }, [tacticaOpen]);
 
     const monthlyData: MonthAgg[] = useMemo(() => {
+        console.log(`🔍 AnnualCalendar - Total data records received: ${data.length}`);
+        console.log(`🔍 First 3 records:`, data.slice(0, 3).map(d => ({ Fecha: d.Fecha, Monto: d.Monto, MontoReal: d.MontoReal })));
+
         let accPresupuesto = 0;
         let accPresupuestoConDatos = 0;
         let accReal = 0;
@@ -87,20 +96,41 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
 
         return MONTH_NAMES.map((name, i) => {
             const monthNum = i + 1;
-            const monthRecords = data.filter(d => d.Mes === monthNum && d.Año === year);
-            const hasRealData = monthRecords.some(d => d.MontoReal > 0);
+            // Get ALL records for the month (for PRESUP calculation - includes future budgeted days)
+            const allMonthRecords = data.filter(d => d.Mes === monthNum && d.Año === year);
 
-            const presupuesto = monthRecords.reduce((sum, d) => sum + d.Monto, 0);
-            const presupuestoConDatos = monthRecords.reduce((sum, d) => sum + (d.MontoAcumulado || 0), 0);
-            const real = monthRecords.reduce((sum, d) => sum + d.MontoReal, 0);
-            const anterior = monthRecords.reduce((sum, d) => sum + (d.MontoAnterior || 0), 0);
-            const anteriorAjustado = monthRecords.reduce((sum, d) => sum + (d.MontoAnteriorAjustado || 0), 0);
-            const anteriorConDatos = monthRecords.reduce((sum, d) => {
-                if (yearType === 'Año Anterior Ajustado') {
-                    return sum + (d.MontoAnteriorAjustadoAcumulado || 0);
-                }
-                return sum + (d.MontoAnteriorAcumulado || 0);
-            }, 0);
+            // Get records filtered by fechaLimite (for P. ACUM and Real calculation)
+            let monthRecordsWithData = allMonthRecords;
+            if (fechaLimite) {
+                monthRecordsWithData = allMonthRecords.filter(d => d.Fecha <= fechaLimite);
+            }
+
+            const hasRealData = monthRecordsWithData.some(d => d.MontoReal > 0);
+
+            // PRESUP: sum ALL Monto for the full month (includes all budgeted days)
+            const presupuesto = allMonthRecords.reduce((sum, d) => sum + d.Monto, 0);
+
+            // P. Acum: sum Monto ONLY for days with MontoReal > 0 (from filtered records)
+            const presupuestoConDatos = monthRecordsWithData
+                .filter(d => d.MontoReal > 0)
+                .reduce((sum, d) => sum + (d.Monto || 0), 0);
+
+            // Real: sum MontoReal (from filtered records)
+            const real = monthRecordsWithData.reduce((sum, d) => sum + d.MontoReal, 0);
+
+            // Año Anterior: sum from ALL month records (not filtered by fechaLimite)
+            const anterior = allMonthRecords.reduce((sum, d) => sum + (d.MontoAnterior || 0), 0);
+            const anteriorAjustado = allMonthRecords.reduce((sum, d) => sum + (d.MontoAnteriorAjustado || 0), 0);
+
+            // Ant. Acum: Calculate anteriorConDatos by filtering days with MontoReal > 0
+            const anteriorConDatos = monthRecordsWithData
+                .filter(d => d.MontoReal > 0)
+                .reduce((sum, d) => {
+                    if (yearType === 'Año Anterior Ajustado') {
+                        return sum + (d.MontoAnteriorAjustado || 0);
+                    }
+                    return sum + (d.MontoAnterior || 0);
+                }, 0);
 
             accPresupuesto += presupuesto;
             accPresupuestoConDatos += presupuestoConDatos;
@@ -108,12 +138,35 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
             accAnterior += anterior;
             accAnteriorAjustado += anteriorAjustado;
 
+            // DEBUG LOG for February (month 2)
+            if (monthNum === 2) {
+                console.log(`🔍 AnnualCalendar DEBUG - February (month ${monthNum}):`);
+                console.log(`   All month records: ${allMonthRecords.length}`);
+                console.log(`   Records with data (filtered): ${monthRecordsWithData.length}`);
+                console.log(`   Records with MontoReal > 0: ${monthRecordsWithData.filter(d => d.MontoReal > 0).length}`);
+                console.log(`   presupuesto (FULL MONTH): ₡${presupuesto.toLocaleString()}`);
+                console.log(`   presupuestoConDatos (P. ACUM): ₡${presupuestoConDatos.toLocaleString()}`);
+                console.log(`   accPresupuestoConDatos (YTD): ₡${accPresupuestoConDatos.toLocaleString()}`);
+                console.log(`   fechaLimite: ${fechaLimite}`);
+            }
+
             // Per-month alcance: Real vs Budget for days with data (for the month only)
             const alcanceMes = presupuestoConDatos > 0 ? (real / presupuestoConDatos) * 100 : 0;
             // Per-month alcance vs Año Anterior
             const alcanceAnteriorMes = anteriorConDatos > 0 ? (real / anteriorConDatos) * 100 : 0;
             // Accumulated alcance: YTD Real vs YTD Budget with data
             const alcanceAcumulado = accPresupuestoConDatos > 0 ? (accReal / accPresupuestoConDatos) * 100 : 0;
+
+            // DEBUG LOG for last month with data to compare with SummaryCard
+            if (hasRealData && monthNum === 2) {
+                console.log(`\n🔍🔍🔍 ANNUAL CALENDAR - ALCANCE CALCULATION (February) 🔍🔍🔍`);
+                console.log(`   accReal (YTD Real): ₡${accReal.toLocaleString()}`);
+                console.log(`   accPresupuestoConDatos (YTD P.Acum): ₡${accPresupuestoConDatos.toLocaleString()}`);
+                console.log(`   Calculation: ${accReal} / ${accPresupuestoConDatos}`);
+                console.log(`   alcanceAcumulado: ${alcanceAcumulado.toFixed(2)}%`);
+                console.log(`   Expected from SummaryCard: Check console for comparison`);
+                console.log(`🔍🔍🔍\n`);
+            }
 
             return {
                 month: monthNum,

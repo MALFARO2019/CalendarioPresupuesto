@@ -43,19 +43,31 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
             });
         };
 
-        // Filter data: for annual view, keep both full year (for P. Año) and date-filtered (for P. Acum)
+        // Filter data: maintain two datasets
+        // 1. Full month/year data (for P. Mes/Año calculation - includes all budgeted days)
+        // 2. Date-filtered data (for P. Acum and Real calculation - only days up to fechaLimite)
+
         const currentMonthIndex = currentMonth + 1;
-        // Date-filtered data (for P. Acum in annual, or full month for monthly)
-        const ventasMonth = isAnnual ? filterByDateRange(dataVentas) : dataVentas.filter(d => d.Mes === currentMonthIndex);
-        const transaccionesMonth = isAnnual ? filterByDateRange(dataTransacciones) : dataTransacciones.filter(d => d.Mes === currentMonthIndex);
-        // Full year data (for P. Año in annual view)
-        const ventasFullYear = isAnnual ? dataVentas : null;
-        const transaccionesFullYear = isAnnual ? dataTransacciones : null;
+
+        // Full month/year data (for P. Mes/Año):
+        const ventasFullMonth = isAnnual ? dataVentas : dataVentas.filter(d => d.Mes === currentMonthIndex);
+        const transaccionesFullMonth = isAnnual ? dataTransacciones : dataTransacciones.filter(d => d.Mes === currentMonthIndex);
+
+        // Date-filtered data (for P. Acum and Real):
+        // In monthly view: filter by month AND dateRange
+        // In annual view: filter by dateRange only
+        const ventasFiltered = dateRange ? filterByDateRange(dataVentas) : (isAnnual ? dataVentas : dataVentas.filter(d => d.Mes === currentMonthIndex));
+        const transaccionesFiltered = dateRange ? filterByDateRange(dataTransacciones) : (isAnnual ? dataTransacciones : dataTransacciones.filter(d => d.Mes === currentMonthIndex));
 
         // Helper to calculate metrics for a KPI dataset with specific comparison
-        // fullYearData is the unfiltered dataset (only used in annual view for P. Año row)
-        const calculateKPI = (data: any[], compareType: 'Presupuesto' | 'Año Anterior' | 'Año Anterior Ajustado', fullYearData?: any[] | null) => {
-            if (data.length === 0) return {
+        // fullMonthData: dataset with ALL days of the month/year (for P. Mes/Año)
+        // filteredData: dataset filtered by dateRange (for P. Acum and Real)
+        const calculateKPI = (
+            filteredData: any[],
+            compareType: 'Presupuesto' | 'Año Anterior' | 'Año Anterior Ajustado',
+            fullMonthData: any[]
+        ) => {
+            if (filteredData.length === 0) return {
                 mes: 0,
                 acum: 0,
                 real: 0,
@@ -64,34 +76,38 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
                 saldo: 0
             };
 
-            const totalActual = data.reduce((sum: number, d: any) => sum + (d.MontoReal || 0), 0);
+            // Real: sum from filtered data (only days with data)
+            const totalActual = filteredData.reduce((sum: number, d: any) => sum + (d.MontoReal || 0), 0);
 
             let totalMes, totalAcum;
-            // For P. Año/Mes: use full year data if available (annual view), otherwise use filtered data
-            const mesData = fullYearData || data;
 
             if (compareType === 'Presupuesto') {
-                // P. Año: sum all Monto for the FULL year (not date-filtered)
-                totalMes = mesData.reduce((sum: number, d: any) => sum + (d.Monto || 0), 0);
-                // P. Acum: sum Monto only for days with real data within date range
-                totalAcum = isAnnual
-                    ? data.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.Monto || 0), 0)
-                    : data.reduce((sum: number, d: any) => sum + (d.MontoAcumulado || 0), 0);
+                // P. Mes/Año: sum ALL Monto from full month/year data (includes future budgeted days)
+                totalMes = fullMonthData.reduce((sum: number, d: any) => sum + (d.Monto || 0), 0);
+
+                // P. Acum: sum Monto only for days with real data (from filtered dataset)
+                totalAcum = filteredData.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.Monto || 0), 0);
             } else if (compareType === 'Año Anterior Ajustado') {
-                totalMes = mesData.reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustado || 0), 0);
-                totalAcum = isAnnual
-                    ? data.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustado || 0), 0)
-                    : data.reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustadoAcumulado || 0), 0);
+                totalMes = fullMonthData.reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustado || 0), 0);
+                totalAcum = filteredData.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustado || 0), 0);
             } else {
-                totalMes = mesData.reduce((sum: number, d: any) => sum + (d.MontoAnterior || 0), 0);
-                totalAcum = isAnnual
-                    ? data.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.MontoAnterior || 0), 0)
-                    : data.reduce((sum: number, d: any) => sum + (d.MontoAnteriorAcumulado || 0), 0);
+                totalMes = fullMonthData.reduce((sum: number, d: any) => sum + (d.MontoAnterior || 0), 0);
+                totalAcum = filteredData.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.MontoAnterior || 0), 0);
             }
 
             const difAcum = totalActual - totalAcum;
             const alcance = totalAcum > 0 ? (totalActual / totalAcum) * 100 : 0;
             const saldo = totalAcum - totalActual;
+
+            // DEBUG LOG for Presupuesto comparison with AnnualCalendar
+            if (compareType === 'Presupuesto') {
+                console.log(`\n📊📊📊 SUMMARY CARD - ALCANCE CALCULATION 📊📊📊`);
+                console.log(`   totalActual (Real): ₡${totalActual.toLocaleString()}`);
+                console.log(`   totalAcum (P.Acum): ₡${totalAcum.toLocaleString()}`);
+                console.log(`   Calculation: ${totalActual} / ${totalAcum}`);
+                console.log(`   alcance: ${alcance.toFixed(2)}%`);
+                console.log(`📊📊📊\n`);
+            }
 
             return {
                 mes: totalMes,
@@ -105,8 +121,8 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
 
         // Calculate for PRESUPUESTO (always)
         const presupuesto = {
-            Ventas: calculateKPI(ventasMonth, 'Presupuesto', ventasFullYear),
-            Transacciones: calculateKPI(transaccionesMonth, 'Presupuesto', transaccionesFullYear),
+            Ventas: calculateKPI(ventasFiltered, 'Presupuesto', ventasFullMonth),
+            Transacciones: calculateKPI(transaccionesFiltered, 'Presupuesto', transaccionesFullMonth),
             TQP: {
                 mes: 0,
                 acum: 0,
@@ -131,8 +147,8 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
 
         // Calculate for AÑO ANTERIOR (use yearType parameter)
         const anoAnterior = {
-            Ventas: calculateKPI(ventasMonth, yearType, ventasFullYear),
-            Transacciones: calculateKPI(transaccionesMonth, yearType, transaccionesFullYear),
+            Ventas: calculateKPI(ventasFiltered, yearType, ventasFullMonth),
+            Transacciones: calculateKPI(transaccionesFiltered, yearType, transaccionesFullMonth),
             TQP: {
                 mes: 0,
                 acum: 0,
@@ -172,7 +188,7 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
             remainingDaysCount = daysInMonth;
         } else {
             // Current month or past: count only days after today with no data
-            remainingDaysCount = ventasMonth.filter(d => {
+            remainingDaysCount = ventasFiltered.filter(d => {
                 const dayDate = new Date(d.Año, d.Mes - 1, d.Dia);
                 return dayDate > today && d.MontoReal === 0;
             }).length;
@@ -182,6 +198,13 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
         const incrementVentas = remainingDaysCount > 0 ? presupuesto.Ventas.saldo / remainingDaysCount : 0;
         const incrementTransacciones = remainingDaysCount > 0 ? presupuesto.Transacciones.saldo / remainingDaysCount : 0;
         const incrementTQP = remainingDaysCount > 0 ? presupuesto.TQP.saldo / remainingDaysCount : 0;
+
+
+        console.log(`\n🎯🎯🎯 SUMMARY OBJECT (FINAL - BEFORE RENDER) 🎯🎯🎯`);
+        console.log(`   presupuesto.Ventas.acum: ₡${presupuesto.Ventas.acum.toLocaleString()}`);
+        console.log(`   presupuesto.Ventas.real: ₡${presupuesto.Ventas.real.toLocaleString()}`);
+        console.log(`   presupuesto.Ventas.alcance: ${presupuesto.Ventas.alcance.toFixed(2)}%`);
+        console.log(`🎯🎯🎯\n`);
 
         return {
             presupuesto,

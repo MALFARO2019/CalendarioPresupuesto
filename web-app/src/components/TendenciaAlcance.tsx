@@ -93,7 +93,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
     const { preferences } = useUserPreferences();
     const [activeTab, setActiveTab] = useState<'evaluacion' | 'resumenCanal' | 'top10'>('evaluacion');
     const [kpi, setKpi] = useState<string>('Ventas');
-    const [channel, setChannel] = useState<string>('Total');
+    const [channel, setChannel] = useState<string>('Todos'); // Changed from 'Total' to 'Todos'
     const [selectedLocal, setSelectedLocal] = useState<string>('Corporativo');
     const [yearType, setYearType] = useState<string>('anterior');
     const [data, setData] = useState<{ evaluacion: EvaluacionRecord[], resumen: ResumenData, resumenMultiKpi?: Record<string, { totalPresupuesto: number, totalPresupuestoAcum: number, totalReal: number, totalAnterior: number, pctPresupuesto: number, pctAnterior: number, trendPresupuesto?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number }, trendAnterior?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number } }> } | null>(null);
@@ -306,8 +306,8 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Canal</label>
                         <select value={channel} onChange={(e) => setChannel(e.target.value)}
                             className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                            <option value="Total">Total</option>
-                            {(availableCanales || ['Salón', 'Llevar', 'UberEats']).map(c => (
+                            <option value="Todos">Todos</option>
+                            {(availableCanales || ['Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp']).map(c => (
                                 <option key={c} value={c}>{c}</option>
                             ))}
                         </select>

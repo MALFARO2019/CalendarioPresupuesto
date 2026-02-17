@@ -134,6 +134,7 @@ function App() {
     setError(null);
 
     // Fetch data for current selected KPI (for calendar and charts)
+    // NOTE: Do NOT pass date range - let AnnualCalendar filter internally for correct PRESUP vs P.ACUM calculation
     fetchBudgetData(year, filterLocal, filterCanal, filterKpi)
       .then(records => {
         console.log('✅ Budget data loaded:', records.length, 'records');
@@ -400,10 +401,13 @@ function App() {
             {/* User info - compact on mobile */}
             {user && (
               <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-100">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 bg-indigo-100 rounded-lg flex items-center justify-center">
-                  <span className="text-xs font-bold text-indigo-600">{user.email?.charAt(0).toUpperCase()}</span>
+                <div className="w-6 h-6 sm:w-7 sm:h-7 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-bold text-indigo-600">{user.nombre?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}</span>
                 </div>
-                <span className="hidden sm:inline text-xs font-medium text-gray-600 max-w-[120px] truncate">{user.email}</span>
+                <div className="hidden sm:flex flex-col max-w-[150px]">
+                  <span className="text-xs font-semibold text-gray-800 truncate">{user.nombre || user.email}</span>
+                  <span className="text-[10px] font-medium text-gray-500 truncate">{user.email}</span>
+                </div>
               </div>
             )}
 
@@ -559,8 +563,8 @@ function App() {
                               key={mode}
                               onClick={() => setValueDisplayMode(mode)}
                               className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all border ${preferences.valueDisplayMode === mode
-                                  ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                                  : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                                 }`}
                             >
                               {mode === 'completo' ? 'Completo' : mode === 'miles' ? 'Miles' : 'Millones'}
@@ -683,21 +687,9 @@ function App() {
               )}
             </div>
 
-            {/* Month name display - only for mensual (read-only indicator) */}
-            {dashboardTab === 'mensual' && (
-              <div className="flex items-center bg-gray-50 rounded-xl px-3 sm:px-5 py-2 sm:py-2.5 border border-gray-100 shadow-inner">
-                <span className="text-xs sm:text-sm font-bold text-gray-800 capitalize">
-                  {format(currentDate, 'MMMM yyyy', { locale: es })}
-                </span>
-              </div>
-            )}
 
-            {/* Year display - only for anual and tendencia */}
-            {(dashboardTab === 'anual' || dashboardTab === 'tendencia') && (
-              <div className="flex items-center bg-gray-50 rounded-xl px-3 sm:px-5 py-2 sm:py-2.5 border border-gray-100 shadow-inner">
-                <span className="text-xs sm:text-sm font-bold text-gray-800">Año {year}</span>
-              </div>
-            )}
+
+
           </div>
         </div>
       </header>
@@ -791,10 +783,6 @@ function App() {
                 comparisonType={filterType}
                 yearType={yearType}
                 filterLocal={filterLocal}
-                dateRange={{
-                  startDate: `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`,
-                  endDate: fechaLimite
-                }}
               />
             </div>
 
@@ -899,6 +887,7 @@ function App() {
                 storeName={filterLocal}
                 tacticaOpen={tacticaOpen}
                 onTacticaClose={() => setTacticaOpen(false)}
+                fechaLimite={fechaLimite}
               />
             </div>
 
