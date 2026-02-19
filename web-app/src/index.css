@@ -1,0 +1,303 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  }
+
+  * {
+    scroll-behavior: smooth;
+  }
+
+  /* Mobile optimization */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  body {
+    /* Safe area insets for iPhone notch and home indicator */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+
+    /* Smooth scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent text selection on interactive elements */
+  button,
+  a,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Allow text selection in inputs and content areas */
+  input,
+  textarea,
+  [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #c0c0c0;
+    border-radius: 10px;
+    transition: background 0.2s;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #a0a0a0;
+  }
+}
+
+@layer utilities {
+  .transition-smooth {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Touch-friendly minimum sizes */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Mobile-specific utilities */
+  @media (max-width: 768px) {
+    .mobile-hide {
+      display: none !important;
+    }
+
+    .mobile-full {
+      width: 100% !important;
+    }
+
+    .mobile-stack {
+      flex-direction: column !important;
+    }
+
+    .mobile-text-sm {
+      font-size: 0.875rem !important;
+    }
+
+    .mobile-text-xs {
+      font-size: 0.75rem !important;
+    }
+
+    .mobile-p-2 {
+      padding: 0.5rem !important;
+    }
+
+    .mobile-p-3 {
+      padding: 0.75rem !important;
+    }
+  }
+
+  /* Hide scrollbar but keep scrollability (for tab bars on mobile) */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ===================================
+   Print-only header (hidden on screen)
+   =================================== */
+.print-header {
+  display: none !important;
+}
+
+/* ===================================
+   Print styles for PDF export
+   =================================== */
+@media print {
+  @page {
+    size: landscape;
+    margin: 8mm;
+  }
+
+  /* ---- Print header (page 1) ---- */
+  .print-header {
+    display: flex !important;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    border-bottom: 3px solid #dc2626;
+    margin-bottom: 12px;
+    background: white;
+  }
+
+  .print-header img {
+    height: 50px;
+    width: auto;
+  }
+
+  .print-header .print-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1f2937;
+    text-transform: capitalize;
+  }
+
+  .print-header .print-subtitle {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 2px;
+  }
+
+  .print-header .print-meta {
+    margin-left: auto;
+    text-align: right;
+    font-size: 10px;
+    color: #9ca3af;
+    line-height: 1.5;
+  }
+
+  /* ---- Hide screen-only elements ---- */
+  header,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Force print colors */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .min-h-screen {
+    background: white !important;
+    min-height: auto !important;
+  }
+
+  .pb-20 {
+    padding-bottom: 0 !important;
+  }
+
+  /* Full-width content */
+  main {
+    max-width: 100% !important;
+    padding: 0 8px !important;
+    margin: 0 !important;
+  }
+
+  /* Remove shadows in print */
+  [class*="shadow"] {
+    box-shadow: none !important;
+  }
+
+  /* Sticky → static */
+  .sticky {
+    position: static !important;
+  }
+
+  /* ============================================
+     PAGE BREAK CONTROL: Each .print-page starts 
+     on a new page
+     ============================================ */
+  .print-page {
+    page-break-before: always !important;
+    break-before: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* First print-page should NOT have a page break before it 
+     (it follows the filter/header on page 1, but since filter 
+     already has a page-break-after, the first print-page 
+     naturally starts on page 2) */
+
+  /* ---- Page 1: Filter bar (compact) ---- */
+  #dashboard-content>div:first-child {
+    transform: scale(0.75);
+    transform-origin: top left;
+    width: 133% !important;
+    margin-bottom: -20px !important;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  /* ---- Calendar Grid: use full width ---- */
+  #monthly-calendar-container {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Preserve 7-column grid */
+  .grid-cols-7 {
+    display: grid !important;
+    grid-template-columns: repeat(7, 1fr) !important;
+  }
+
+  /* ---- Annual calendar: scale to fit ---- */
+  #annual-calendar-container {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    transform: scale(0.80);
+    transform-origin: top left;
+    width: 125% !important;
+    margin-bottom: -50px !important;
+  }
+
+  #annual-calendar-container table {
+    font-size: 9px !important;
+  }
+
+  /* ---- Tendencia container ---- */
+  #tendencia-container {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #tendencia-container table {
+    font-size: 9px !important;
+  }
+
+  /* ---- General print polish ---- */
+  .rounded-3xl,
+  .rounded-2xl,
+  .rounded-xl {
+    border-radius: 6px !important;
+  }
+
+  .gap-8 {
+    gap: 8px !important;
+  }
+
+  .gap-6 {
+    gap: 6px !important;
+  }
+
+  .mt-8 {
+    margin-top: 8px !important;
+  }
+
+  /* Charts: fill the page */
+  .recharts-wrapper {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}

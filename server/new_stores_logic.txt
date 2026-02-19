@@ -1,0 +1,73 @@
+        // Query to get groups (CODALMACEN starting with 'G')
+        // Use current month to ensure we have data
+        const currentMonth = new Date().getMonth() + 1; // 1-12
+        
+        let groupsQuery = `
+            SELECT DISTINCT Local
+            FROM RSM_ALCANCE_DIARIO 
+            WHERE Año = 2026 
+            AND Canal = 'Todos' 
+            AND Tipo = 'Ventas' 
+            AND Mes = @month
+            AND SUBSTRING(CODALMACEN, 1, 1) = 'G'
+        `;
+
+        // Query to get all locals
+        let allLocalsQuery = `
+            SELECT DISTINCT Local
+            FROM RSM_ALCANCE_DIARIO 
+            WHERE Año = 2026
+        `;
+
+        if (userStores.length > 0) {
+            const request = pool.request();
+            request.input('month', sql.Int, currentMonth);
+            
+            const storeList = userStores.map((s, i) => `@store${i}`).join(', ');
+            groupsQuery += ` AND Local IN (${storeList})`;
+            allLocalsQuery += ` AND Local IN (${storeList})`;
+            
+            userStores.forEach((store, i) => {
+                request.input(`store${i}`, sql.NVarChar, store);
+            });
+            
+            groupsQuery += ' ORDER BY Local';
+            allLocalsQuery += ' ORDER BY Local';
+            
+            // Get groups
+            const groupsResult = await request.query(groupsQuery);
+            const groups = groupsResult.recordset.map(r => r.Local);
+            
+            // Get all locals
+            const allRequest = pool.request();
+            userStores.forEach((store, i) => {
+                allRequest.input(`store${i}`, sql.NVarChar, store);
+            });
+            const allResult = await allRequest.query(allLocalsQuery);
+            const allLocals = allResult.recordset.map(r => r.Local);
+            
+            // Individuals = all locals minus groups
+            const groupSet = new Set(groups);
+            const individuals = allLocals.filter(local => !groupSet.has(local));
+            
+            console.log(`✅ Found ${groups.length} groups and ${individuals.length} individuals`);
+            res.json({ groups, individuals });
+        } else {
+            // User has access to all stores
+            groupsQuery += ' ORDER BY Local';
+            allLocalsQuery += ' ORDER BY Local';
+            
+            const groupsRequest = pool.request();
+            groupsRequest.input('month', sql.Int, currentMonth);
+            const groupsResult = await groupsRequest.query(groupsQuery);
+            const groups = groupsResult.recordset.map(r => r.Local);
+            
+            const allResult = await pool.request().query(allLocalsQuery);
+            const allLocals = allResult.recordset.map(r => r.Local);
+            
+            const groupSet = new Set(groups);
+            const individuals = allLocals.filter(local => !groupSet.has(local));
+            
+            console.log(`✅ Found ${groups.length} groups and ${individuals.length} individuals (all access)`);
+            res.json({ groups, individuals });
+        }

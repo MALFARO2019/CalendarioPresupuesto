@@ -1,0 +1,956 @@
+import type { BudgetRecord } from './mockData';
+
+export const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+
+export interface User {
+    id: number;
+    email: string;
+    nombre: string;
+    clave?: string;
+    activo: boolean;
+    accesoTendencia: boolean;
+    accesoTactica: boolean;
+    accesoEventos: boolean;
+    accesoPresupuesto: boolean;
+    accesoPresupuestoMensual: boolean;
+    accesoPresupuestoAnual: boolean;
+    accesoPresupuestoRangos: boolean;
+    accesoTiempos: boolean;
+    accesoEvaluaciones: boolean;
+    accesoInventarios: boolean;
+    accesoPersonal: boolean;
+    esAdmin: boolean;
+    esProtegido: boolean;
+    allowedStores: string[];
+    allowedCanales: string[];
+    permitirEnvioClave?: boolean;
+    perfilId?: number | null;
+}
+
+
+// ==========================================
+// Token management
+// ==========================================
+
+export function getToken(): string | null {
+    // Check sessionStorage first (for superadmin)
+    return sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
+}
+
+export function setToken(token: string, user?: any): void {
+    // Don't store token for superadmin user (must always login manually)
+    if (user && user.email === 'soporte@rostipolloscr.com') {
+        // Store in sessionStorage instead (cleared when browser closes)
+        sessionStorage.setItem('auth_token', token);
+        return;
+    }
+    localStorage.setItem('auth_token', token);
+}
+
+export function clearToken(): void {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    sessionStorage.removeItem('auth_token'); // Also clear sessionStorage
+    sessionStorage.removeItem('auth_user');
+}
+
+export function getUser(): User | null {
+    const userStr = sessionStorage.getItem('auth_user') || localStorage.getItem('auth_user');
+    return userStr ? JSON.parse(userStr) : null;
+}
+
+export function setUser(user: User): void {
+    // Don't store user for superadmin (must always login manually)
+    if (user.email === 'soporte@rostipolloscr.com') {
+        sessionStorage.setItem('auth_user', JSON.stringify(user));
+        return;
+    }
+    localStorage.setItem('auth_user', JSON.stringify(user));
+}
+
+function authHeaders(): HeadersInit {
+    const token = getToken();
+    return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+// ==========================================
+// Auth API
+// ==========================================
+
+export async function login(email: string, clave: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, clave })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        return { success: false, error: data.error };
+    }
+
+    // Store token and user
+    setToken(data.token, data.user); // Pass user for superadmin detection
+    setUser(data.user);
+
+    return { success: true, token: data.token, user: data.user };
+}
+
+export async function verifyToken(): Promise<boolean> {
+    const token = getToken();
+    if (!token) return false;
+
+    try {
+        const response = await fetch(`${API_BASE}/auth/verify`, {
+            method: 'POST',
+            headers: authHeaders()
+        });
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
+export function logout(): void {
+    clearToken();
+}
+
+// ==========================================
+// Admin API
+// ==========================================
+
+export async function verifyAdminPassword(password: string): Promise<boolean> {
+    const response = await fetch(`${API_BASE}/admin/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+    });
+    return response.ok;
+}
+
+export async function fetchAdminUsers(): Promise<User[]> {
+    console.log('🔍 Fetching admin users from:', `${API_BASE}/admin/users`);
+    console.log('📤 Headers:', authHeaders());
+    const response = await fetch(`${API_BASE}/admin/users`, {
+        headers: authHeaders()
+    });
+    console.log('📥 Response status:', response.status, response.statusText);
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ fetchAdminUsers failed:', { status: response.status, error: errorText });
+        throw new Error(`Error fetching users: ${response.status} - ${errorText}`);
+    }
+    return response.json();
+}
+
+export async function createAdminUser(
+    email: string,
+    nombre: string,
+    clave: string,
+    stores: string[],
+    canales: string[],
+    accesoTendencia: boolean = false,
+    accesoTactica: boolean = false,
+    accesoEventos: boolean = false,
+    accesoPresupuesto: boolean = true,
+    accesoPresupuestoMensual: boolean = true,
+    accesoPresupuestoAnual: boolean = true,
+    accesoPresupuestoRangos: boolean = true,
+    accesoTiempos: boolean = false,
+    accesoEvaluaciones: boolean = false,
+    accesoInventarios: boolean = false,
+    accesoPersonal: boolean = false,
+    esAdmin: boolean = false
+): Promise<{ success: boolean; userId: number; clave: string }> {
+    const response = await fetch(`${API_BASE}/admin/users`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin })
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error creating user');
+    }
+    return response.json();
+}
+
+export async function updateAdminUser(
+    userId: number,
+    email: string,
+    nombre: string,
+    activo: boolean,
+    clave: string | null,
+    stores: string[],
+    canales: string[],
+    accesoTendencia: boolean,
+    accesoTactica: boolean,
+    accesoEventos: boolean,
+    accesoPresupuesto: boolean,
+    accesoPresupuestoMensual: boolean,
+    accesoPresupuestoAnual: boolean,
+    accesoPresupuestoRangos: boolean,
+    accesoTiempos: boolean,
+    accesoEvaluaciones: boolean,
+    accesoInventarios: boolean,
+    accesoPersonal: boolean,
+    esAdmin: boolean,
+    permitirEnvioClave: boolean = true,
+    perfilId: number | null = null
+): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId })
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error updating user');
+    }
+    return response.json();
+}
+
+export async function deleteAdminUser(userId: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error deleting user');
+    }
+    return response.json();
+}
+
+export async function fetchAllStores(): Promise<string[]> {
+    console.log('🔍 Fetching all stores from:', `${API_BASE}/all-stores`);
+    console.log('📤 Headers:', authHeaders());
+    const response = await fetch(`${API_BASE}/all-stores`, {
+        headers: authHeaders()
+    });
+    console.log('📥 Response status:', response.status, response.statusText);
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ fetchAllStores failed:', { status: response.status, error: errorText });
+        throw new Error(`Error fetching stores: ${response.status} - ${errorText}`);
+    }
+    return response.json();
+}
+
+// GET /api/available-canales - Fetch canales allowed for current user
+export async function fetchAvailableCanales(): Promise<string[]> {
+    const response = await fetch(`${API_BASE}/available-canales`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        console.error('Error fetching available canales:', response.statusText);
+        return ['Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp'];
+    }
+    const data = await response.json();
+    return data.canales || [];
+}
+
+// ==========================================
+// Data API (authenticated)
+// ==========================================
+
+// GET /api/fecha-limite - Returns the last date with real data (MontoReal > 0)
+export async function fetchFechaLimite(year: number = 2026): Promise<string | null> {
+    try {
+        const response = await fetch(`${API_BASE}/fecha-limite?year=${year}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.fechaLimite || null;
+    } catch {
+        return null;
+    }
+}
+
+export async function fetchBudgetData(
+    year: number = 2026,
+    local?: string,
+    canal: string = 'Todos',
+    tipo: string = 'Ventas',
+    startDate?: string,
+    endDate?: string
+): Promise<BudgetRecord[]> {
+    const params = new URLSearchParams({ year: year.toString(), canal, tipo });
+    if (local) {
+        params.set('local', local);
+    }
+    if (startDate && endDate) {
+        params.set('startDate', startDate);
+        params.set('endDate', endDate);
+    }
+
+    const response = await fetch(`${API_BASE}/budget?${params}`, {
+        headers: authHeaders()
+    });
+
+    if (response.status === 401) {
+        clearToken();
+        window.location.reload();
+        return [];
+    }
+
+    if (!response.ok) {
+        throw new Error(`Error fetching budget data: ${response.statusText}`);
+    }
+
+    const rawData = await response.json();
+
+    return rawData.map((row: any) => ({
+        Fecha: row.Fecha || '',
+        Año: parseInt(row.Año) || parseInt(row.AÑO) || year,
+        Mes: parseInt(row.Mes) || parseInt(row.MES) || 0,
+        Dia: parseInt(row.Dia) || parseInt(row.dia) || parseInt(row.DIA) || 0,
+        DiaSemana: parseInt(row.idDia) || parseInt(row.iddia) || parseInt(row.DiaSemana) || 0,
+        MontoReal: parseFloat(row.MontoReal) || 0,
+        Monto: parseFloat(row.Monto) || 0,
+        MontoAcumulado: parseFloat(row.Monto_Acumulado) || parseFloat(row.MontoAcumulado) || 0,
+        MontoAnterior: parseFloat(row.MontoAnterior) || 0,
+        MontoAnteriorAcumulado: parseFloat(row.MontoAnterior_Acumulado) || parseFloat(row.MontoAnteriorAcumulado) || 0,
+        MontoAnteriorAjustado: parseFloat(row.MontoAnteriorAjustado) || 0,
+        MontoAnteriorAjustadoAcumulado: parseFloat(row.MontoAnteriorAjustado_Acumulado) || parseFloat(row.MontoAnteriorAjustadoAcumulado) || 0,
+    }));
+}
+
+export async function fetchStores(): Promise<{ groups: string[]; individuals: string[] }> {
+    const response = await fetch(`${API_BASE}/stores-v2`, {
+        headers: authHeaders()
+    });
+
+    if (response.status === 401) {
+        clearToken();
+        window.location.reload();
+        return { groups: [], individuals: [] };
+    }
+
+    if (!response.ok) {
+        throw new Error(`Error fetching stores: ${response.statusText}`);
+    }
+    return response.json();
+}
+
+export async function fetchGroupStores(groupName: string): Promise<{ stores: string[] }> {
+    const response = await fetch(`${API_BASE}/group-stores/${encodeURIComponent(groupName)}`, {
+        headers: authHeaders()
+    });
+
+    if (response.status === 401) {
+        clearToken();
+        window.location.reload();
+        return { stores: [] };
+    }
+
+    if (!response.ok) {
+        throw new Error(`Error fetching group stores: ${response.statusText}`);
+    }
+    return response.json();
+}
+
+// ==========================================
+// Eventos API (admin only)
+// ==========================================
+
+export interface Evento {
+    IDEVENTO: number;
+    EVENTO: string;
+    ESFERIADO: string;
+    USARENPRESUPUESTO: string;
+    ESINTERNO: string;
+}
+
+export interface EventoFecha {
+    ID: number;
+    IDEVENTO: number;
+    FECHA: string;
+    FECHA_EFECTIVA: string;
+    Canal: string;
+    GrupoAlmacen: number | null;
+    USUARIO_MODIFICACION: string | null;
+    FECHA_MODIFICACION: string | null;
+}
+
+export async function fetchEventos(): Promise<Evento[]> {
+    const response = await fetch(`${API_BASE}/eventos`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching eventos');
+    return response.json();
+}
+
+export async function createEvento(data: Omit<Evento, 'IDEVENTO'>): Promise<{ success: boolean; id: number }> {
+    const response = await fetch(`${API_BASE}/eventos`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error creating evento');
+    }
+    return response.json();
+}
+
+export async function updateEvento(id: number, data: Omit<Evento, 'IDEVENTO'>): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/eventos/${id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Error updating evento');
+    return response.json();
+}
+
+export async function deleteEvento(id: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/eventos/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error deleting evento');
+    return response.json();
+}
+
+export async function fetchEventoFechas(idEvento: number): Promise<EventoFecha[]> {
+    const response = await fetch(`${API_BASE}/eventos/${idEvento}/fechas`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching evento fechas');
+    return response.json();
+}
+
+export async function createEventoFecha(data: {
+    idEvento: number;
+    fecha: string;
+    fechaEfectiva: string;
+    canal: string;
+    grupoAlmacen: number | null;
+    usuario: string;
+}): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/eventos-fechas`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Error creating evento fecha');
+    return response.json();
+}
+
+export async function updateEventoFecha(data: {
+    idEvento: number;
+    oldFecha: string;
+    newFecha: string;
+    fechaEfectiva: string;
+    canal: string;
+    grupoAlmacen: number | null;
+    usuario: string;
+}): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/eventos-fechas`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Error updating evento fecha');
+    return response.json();
+}
+
+export async function deleteEventoFecha(idEvento: number, fecha: string): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/eventos-fechas?idEvento=${idEvento}&fecha=${fecha}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error deleting evento fecha');
+    return response.json();
+}
+
+// Lightweight type for event overlays on charts (read-only, any authenticated user)
+export interface EventoItem {
+    id: number;
+    evento: string;
+    esFeriado: boolean;
+    esInterno: boolean;
+}
+
+export type EventosByDate = Record<string, EventoItem[]>;
+
+// GET /api/eventos/por-mes - events grouped by date for a given month
+export async function fetchEventosPorMes(year: number, month: number): Promise<EventosByDate> {
+    try {
+        const response = await fetch(`${API_BASE}/eventos/por-mes?year=${year}&month=${month}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return {};
+        const data = await response.json();
+        return data.byDate || {};
+    } catch {
+        return {};
+    }
+}
+
+// GET /api/eventos/por-ano - all events grouped by date for a given year
+export async function fetchEventosPorAno(year: number): Promise<EventosByDate> {
+    try {
+        const response = await fetch(`${API_BASE}/eventos/por-ano?year=${year}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return {};
+        const data = await response.json();
+        return data.byDate || {};
+    } catch {
+        return {};
+    }
+}
+
+export async function fetchTactica(data: {
+    storeName: string;
+    year: number;
+    kpi: string;
+    monthlyData: any[];
+    annualTotals: any;
+}): Promise<{ analysis: string }> {
+    const response = await fetch(`${API_BASE}/tactica`, {
+        method: 'POST',
+        headers: {
+            ...authHeaders(),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (response.status === 401) {
+        clearToken();
+        window.location.reload();
+        return { analysis: '' };
+    }
+
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Error al generar análisis táctico');
+    }
+
+    return response.json();
+}
+
+// ==========================================
+// Config API (admin only)
+// ==========================================
+
+export async function fetchConfig(key: string): Promise<{ Valor: string; FechaModificacion: string | null; UsuarioModificacion: string | null }> {
+    const response = await fetch(`${API_BASE}/admin/config/${encodeURIComponent(key)}`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error fetching config');
+    }
+    return response.json();
+}
+
+export async function saveConfig(key: string, valor: string): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/admin/config/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ valor })
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error saving config');
+    }
+    return response.json();
+}
+
+// ==========================================
+// User Dashboard Config API
+// ==========================================
+
+export async function getDashboardConfig(): Promise<{ dashboardLocales: string[]; comparativePeriod: string }> {
+    const response = await fetch(`${API_BASE}/user/dashboard-config`, {
+        headers: authHeaders()
+    });
+
+    if (!response.ok) {
+        console.error('Error fetching dashboard config:', response.statusText);
+        return { dashboardLocales: [], comparativePeriod: 'Month' };
+    }
+
+    const result = await response.json();
+    return {
+        dashboardLocales: result.dashboardLocales || [],
+        comparativePeriod: result.comparativePeriod || 'Month'
+    };
+}
+
+export async function saveDashboardConfig(config: { dashboardLocales?: string[]; comparativePeriod?: string }): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/user/dashboard-config`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error saving dashboard config');
+    }
+
+    return response.json();
+}
+
+// ==========================================
+// AUXILIARY DATABASE API
+// ==========================================
+
+export interface AuxiliaryDBConfig {
+    server: string;
+    database: string;
+    username: string;
+    password?: string;
+    port?: string; // optional direct port — avoid SQL Server Browser UDP lookup
+}
+
+export interface DBStatus {
+    activeMode: 'primary' | 'auxiliary';
+    primaryHealthy: boolean;
+    auxiliaryConfigured: boolean;
+    lastHealthCheck: string | null;
+}
+
+export interface SyncStats {
+    RSM_ALCANCE_DIARIO?: number;
+    APP_USUARIOS?: number;
+    [key: string]: number | undefined;
+}
+
+export async function saveAuxiliaryDBConfig(config: AuxiliaryDBConfig): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/admin/db-config/auxiliary`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+        },
+        body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error al guardar configuración');
+    }
+
+    return response.json();
+}
+
+export async function getAuxiliaryDBConfig(): Promise<Partial<AuxiliaryDBConfig>> {
+    const response = await fetch(`${API_BASE}/admin/db-config/auxiliary`, {
+        headers: {
+            'Authorization': `Bearer ${getToken()}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Error al obtener configuración');
+    }
+
+    return response.json();
+}
+
+export async function testAuxiliaryDBConnection(config: AuxiliaryDBConfig): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/admin/db-config/test-auxiliary`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+        },
+        body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+        throw new Error('Error al probar conexión');
+    }
+
+    return response.json();
+}
+
+export async function getDBStatus(): Promise<DBStatus> {
+    const response = await fetch(`${API_BASE}/admin/db-status`, {
+        headers: {
+            'Authorization': `Bearer ${getToken()}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Error al obtener estado de BD');
+    }
+
+    return response.json();
+}
+
+export async function syncDatabases(): Promise<{ success: boolean; message: string; stats: SyncStats }> {
+    const response = await fetch(`${API_BASE}/admin/db-sync`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${getToken()}`
+        }
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error al sincronizar datos');
+    }
+
+    return response.json();
+}
+
+// ==========================================
+// PROFILES API (admin only)
+// ==========================================
+
+export interface Profile {
+    id: number;
+    nombre: string;
+    descripcion: string | null;
+    accesoTendencia: boolean;
+    accesoTactica: boolean;
+    accesoEventos: boolean;
+    accesoPresupuesto: boolean;
+    accesoPresupuestoMensual: boolean;
+    accesoPresupuestoAnual: boolean;
+    accesoPresupuestoRangos: boolean;
+    accesoTiempos: boolean;
+    accesoEvaluaciones: boolean;
+    accesoInventarios: boolean;
+    accesoPersonal: boolean;
+    esAdmin: boolean;
+    permitirEnvioClave: boolean;
+    usuariosAsignados: number;
+    fechaCreacion: string;
+    fechaModificacion: string | null;
+    usuarioCreador: string | null;
+}
+
+export async function fetchProfiles(): Promise<Profile[]> {
+    const response = await fetch(`${API_BASE}/admin/profiles`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error fetching profiles');
+    }
+    return response.json();
+}
+
+export async function createProfile(data: {
+    nombre: string;
+    descripcion: string;
+    permisos: {
+        accesoTendencia: boolean;
+        accesoTactica: boolean;
+        accesoEventos: boolean;
+        accesoPresupuesto: boolean;
+        accesoPresupuestoMensual: boolean;
+        accesoPresupuestoAnual: boolean;
+        accesoPresupuestoRangos: boolean;
+        accesoTiempos: boolean;
+        accesoEvaluaciones: boolean;
+        accesoInventarios: boolean;
+        accesoPersonal: boolean;
+        esAdmin: boolean;
+        permitirEnvioClave: boolean;
+    };
+}): Promise<{ success: boolean; profileId: number }> {
+    const response = await fetch(`${API_BASE}/admin/profiles`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error creating profile');
+    }
+    return response.json();
+}
+
+export async function updateProfile(
+    profileId: number,
+    data: {
+        nombre: string;
+        descripcion: string;
+        permisos: {
+            accesoTendencia: boolean;
+            accesoTactica: boolean;
+            accesoEventos: boolean;
+            accesoPresupuesto: boolean;
+            accesoPresupuestoMensual: boolean;
+            accesoPresupuestoAnual: boolean;
+            accesoPresupuestoRangos: boolean;
+            accesoTiempos: boolean;
+            accesoEvaluaciones: boolean;
+            accesoInventarios: boolean;
+            accesoPersonal: boolean;
+            esAdmin: boolean;
+            permitirEnvioClave: boolean;
+        };
+    }
+): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/admin/profiles/${profileId}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error updating profile');
+    }
+    return response.json();
+}
+
+export async function deleteProfile(profileId: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/admin/profiles/${profileId}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error deleting profile');
+    }
+    return response.json();
+}
+
+export async function assignProfileToUsers(
+    profileId: number,
+    userIds: number[],
+    syncPermissions: boolean = true
+): Promise<{ success: boolean; assigned: number }> {
+    const response = await fetch(`${API_BASE}/admin/profiles/${profileId}/assign`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userIds, syncPermissions })
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error assigning profile');
+    }
+    return response.json();
+}
+
+export async function syncProfilePermissions(profileId: number): Promise<{ success: boolean; updatedCount: number }> {
+    const response = await fetch(`${API_BASE}/admin/profiles/${profileId}/sync`, {
+        method: 'POST',
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error syncing profile permissions');
+    }
+    return response.json();
+}
+
+// ==========================================
+// PERSONAL MODULE API
+// ==========================================
+
+export interface Personal {
+    id: number;
+    nombre: string;
+    correo: string | null;
+    cedula: string | null;
+    telefono: string | null;
+    activo: boolean;
+    fechaCreacion: string;
+}
+
+export interface Asignacion {
+    id: number;
+    personalId: number;
+    nombrePersonal: string;
+    local: string;
+    perfil: string;
+    fechaInicio: string;
+    fechaFin: string | null;
+    notas: string | null;
+    fechaAsignacion: string;
+    asignadoPor: string;
+}
+
+export async function fetchPersonal(): Promise<Personal[]> {
+    const response = await fetch(`${API_BASE}/personal`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching personal');
+    return response.json();
+}
+
+export async function createPersona(nombre: string, correo?: string, cedula?: string, telefono?: string): Promise<Personal> {
+    const response = await fetch(`${API_BASE}/personal`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ nombre, correo, cedula, telefono })
+    });
+    if (!response.ok) throw new Error('Error creating persona');
+    return response.json();
+}
+
+export async function updatePersona(id: number, nombre: string, correo?: string, cedula?: string, telefono?: string, activo?: boolean): Promise<Personal> {
+    const response = await fetch(`${API_BASE}/personal/${id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ nombre, correo, cedula, telefono, activo })
+    });
+    if (!response.ok) throw new Error('Error updating persona');
+    return response.json();
+}
+
+export async function deletePersona(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE}/personal/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error deleting persona');
+}
+
+export async function fetchAsignaciones(personalId?: number): Promise<Asignacion[]> {
+    const url = personalId ? `${API_BASE}/personal/asignaciones?personalId=${personalId}` : `${API_BASE}/personal/asignaciones`;
+    const response = await fetch(url, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching asignaciones');
+    return response.json();
+}
+
+export async function createAsignacion(personalId: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string): Promise<Asignacion> {
+    const response = await fetch(`${API_BASE}/personal/asignaciones`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ personalId, local, perfil, fechaInicio, fechaFin, notas })
+    });
+    if (!response.ok) throw new Error('Error creating asignacion');
+    return response.json();
+}
+
+export async function updateAsignacion(id: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string): Promise<Asignacion> {
+    const response = await fetch(`${API_BASE}/personal/asignaciones/${id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ local, perfil, fechaInicio, fechaFin, notas })
+    });
+    if (!response.ok) throw new Error('Error updating asignacion');
+    return response.json();
+}
+
+export async function deleteAsignacion(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE}/personal/asignaciones/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error deleting asignacion');
+}
+
+export async function fetchLocalesSinCobertura(perfil?: string): Promise<{ Local: string, PerfilesFaltantes: string }[]> {
+    const url = perfil ? `${API_BASE}/personal/locales-sin-cobertura?perfil=${encodeURIComponent(perfil)}` : `${API_BASE}/personal/locales-sin-cobertura`;
+    const response = await fetch(url, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching locales sin cobertura');
+    return response.json();
+}
