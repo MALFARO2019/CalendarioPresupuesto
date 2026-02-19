@@ -6,7 +6,16 @@ const { sql, poolPromise } = require('./db');
  * @param {string|null} customPrompt - Custom prompt template from DB (uses placeholders)
  * @returns {string} - Markdown analysis
  */
-async function generateTacticaAnalysis(data, customPrompt = null) {
+const SUPPORTED_MODELS = [
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-1.5-pro',
+    'gemini-2.5-pro',
+];
+
+const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
+
+async function generateTacticaAnalysis(data, customPrompt = null, model = null) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
         throw new Error('GEMINI_API_KEY no está configurada en .env');
@@ -16,10 +25,11 @@ async function generateTacticaAnalysis(data, customPrompt = null) {
         ? applyTemplate(customPrompt, data)
         : buildDefaultPrompt(data);
 
-    console.log('🤖 Calling Gemini for tactical analysis...');
+    // Validate and use requested model, fall back to default
+    const selectedModel = model && SUPPORTED_MODELS.includes(model) ? model : DEFAULT_MODEL;
+    console.log(`🤖 Calling Gemini for tactical analysis... Model: ${selectedModel}`);
 
-    const model = 'gemini-2.5-flash-lite';
-    const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1/models/${selectedModel}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
         method: 'POST',

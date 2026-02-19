@@ -6,6 +6,7 @@
 export interface ModuleConfig {
     id: string;
     name: string;
+    subtitle?: string;
     description: string;
     icon: string;
     color: string;

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Autorizar OneNote</title>
+</head>
+
+<body>
+    <script>
+        window.location.href = "https://login.microsoftonline.com/70df046e-e545-44c7-ae8c-21c53272ee6e/oauth2/v2.0/authorize" +
+            "?client_id=44490c35-76d8-451c-a10f-05c526df8e38" +
+            "&response_type=code" +
+            "&redirect_uri=" + encodeURIComponent("http://localhost") +
+            "&scope=" + encodeURIComponent("Notes.Read Notes.Read.All offline_access") +
+            "&response_mode=query";
+    </script>
+    <p>Redirigiendo a Microsoft para autorizar OneNote...</p>
+</body>
+
+</html>

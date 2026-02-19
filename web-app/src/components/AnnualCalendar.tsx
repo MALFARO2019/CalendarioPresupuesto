@@ -1,9 +1,10 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+﻿import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { BudgetRecord } from '../mockData';
 import { formatCurrencyCompact, useFormatCurrency } from '../utils/formatters';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 import { useUserPreferences } from '../context/UserPreferences';
 import { fetchTactica } from '../api';
+import type { EventosByDate } from '../api';
 import jsPDF from 'jspdf';
 
 interface AnnualCalendarProps {
@@ -16,6 +17,9 @@ interface AnnualCalendarProps {
     tacticaOpen?: boolean;
     onTacticaClose?: () => void;
     fechaLimite?: string; // YYYY-MM-DD format
+    verEventos?: boolean;
+    onVerEventosChange?: (v: boolean) => void;
+    eventosByYear?: EventosByDate;
 }
 
 const MONTH_NAMES = [
@@ -50,7 +54,8 @@ interface MonthAgg {
 }
 
 export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
-    data, year, kpi, yearType, storeName = '', tacticaOpen = false, onTacticaClose, fechaLimite
+    data, year, kpi, yearType, storeName = '', tacticaOpen = false, onTacticaClose, fechaLimite,
+    verEventos = false, onVerEventosChange, eventosByYear = {}
 }) => {
     const [visibleBars, setVisibleBars] = useState({
         presupuesto: true,
@@ -71,7 +76,7 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
     const { formatPct100 } = useUserPreferences();
     const fc = useFormatCurrency();
 
-    // Táctica state
+    // T&E state
     const [activePreview, setActivePreview] = useState<{ label: string; value: number, color: string } | null>(null);
     const [isLegendTooltipVisible, setIsLegendTooltipVisible] = useState(false);
     const [activeMonth, setActiveMonth] = useState<number | null>(null);
@@ -106,9 +111,17 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
             const allMonthRecords = data.filter(d => d.Mes === monthNum && d.Año === year);
 
             // Get records filtered by fechaLimite (for P. ACUM and Real calculation)
+            // IMPORTANT: Normalize d.Fecha to 'YYYY-MM-DD' before comparing, because the API may return
+            // ISO datetime strings like '2026-02-17T00:00:00.000Z' which are lexicographically greater
+            // than '2026-02-17', causing the fechaLimite day to be incorrectly excluded.
             let monthRecordsWithData = allMonthRecords;
             if (fechaLimite) {
-                monthRecordsWithData = allMonthRecords.filter(d => d.Fecha <= fechaLimite);
+                monthRecordsWithData = allMonthRecords.filter(d => {
+                    if (!d.Fecha) return true;
+                    // Normalize to YYYY-MM-DD for safe string comparison
+                    const fechaStr = String(d.Fecha).substring(0, 10);
+                    return fechaStr <= fechaLimite;
+                });
             }
 
             const hasRealData = monthRecordsWithData.some(d => d.MontoReal > 0);
@@ -296,7 +309,7 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
         return null;
     };
 
-    // Táctica handler
+    // T&E handler
     const handleTactica = async () => {
         setShowTacticaModal(true);
         setTacticaLoading(true);
@@ -348,7 +361,7 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
         pdf.setTextColor(255, 255, 255);
         pdf.setFontSize(18);
         pdf.setFont('helvetica', 'bold');
-        pdf.text('Análisis Táctico', margin, 15);
+        pdf.text('Análisis T&E', margin, 15);
         pdf.setFontSize(11);
         pdf.setFont('helvetica', 'normal');
         pdf.text(`${storeName} · ${kpi} · ${year}`, margin, 23);
@@ -410,7 +423,7 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
             pdf.setPage(i);
             pdf.setFontSize(8);
             pdf.setTextColor(150);
-            pdf.text(`Rostipollos · Análisis Táctico IA · Página ${i}/${pages}`, pageWidth / 2, 290, { align: 'center' });
+            pdf.text(`Rostipollos · Análisis T&E IA · Página ${i}/${pages}`, pageWidth / 2, 290, { align: 'center' });
         }
 
         pdf.save(`Tactica_${storeName}_${year}_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -638,7 +651,7 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
                 </div>
             </div>
 
-            {/* Táctica Modal */}
+            {/* T&E Modal */}
             {showTacticaModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     {/* Backdrop */}
@@ -650,7 +663,7 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
                         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-5 flex items-center justify-between flex-shrink-0">
                             <div>
                                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <span className="text-2xl">✨</span> Análisis Táctico
+                                    <span className="text-2xl">✨</span> Análisis T&amp;E
                                 </h2>
                                 <p className="text-indigo-200 text-sm mt-0.5">{storeName} · {kpi} · {year}</p>
                             </div>

@@ -38,7 +38,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 setError(result.error || 'Error al iniciar sesión');
             }
         } catch (err: any) {
-            setError('No se pudo conectar al servidor. Verifique que el servidor esté ejecutándose.');
+            setError('No se pudo conectar al servidor. Verifique que el servidor esté ejecutándose. Revisar conexión al VPN de Rosti.');
         } finally {
             setLoading(false);
         }
@@ -73,7 +73,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 setError(data.error || 'Error al enviar el correo');
             }
         } catch (err) {
-            setError('No se pudo conectar al servidor');
+            setError('No se pudo conectar al servidor. Revisar conexión al VPN de Rosti.');
         } finally {
             setSendingEmail(false);
         }
@@ -243,6 +243,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                             </div>
                         </div>
                     )}
+                </div>
+                {/* Version Indicator */}
+                <div className="mt-8 text-center text-xs text-indigo-200 opacity-60">
+                    v2.0 - FIX
                 </div>
             </div>
         </div>

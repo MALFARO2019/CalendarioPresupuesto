@@ -107,6 +107,16 @@
       padding: 0.75rem !important;
     }
   }
+
+  /* Hide scrollbar but keep scrollability (for tab bars on mobile) */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* ===================================

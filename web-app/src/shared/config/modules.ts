@@ -8,7 +8,8 @@ import type { ModuleConfig } from '../types/modules';
 export const MODULES: ModuleConfig[] = [
     {
         id: 'presupuesto',
-        name: 'Alcance Presupuesto Acumulado al año',
+        name: 'Alcance de Presupuesto',
+        subtitle: 'Acumulado del Año',
         description: 'Mensual, Anual, Tendencia',
         icon: '🔥',
         color: '#FF4535',

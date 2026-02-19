@@ -77,12 +77,15 @@ async function getDBConfig() {
                 DirectServer,
                 DirectDatabase,
                 DirectUser,
+                DirectPassword,
                 ReadServer,
                 ReadDatabase,
                 ReadUser,
+                ReadPassword,
                 WriteServer,
                 WriteDatabase,
                 WriteUser,
+                WritePassword,
                 FechaModificacion,
                 UsuarioModificacion
             FROM APP_DB_CONFIG
@@ -93,8 +96,13 @@ async function getDBConfig() {
             return null;
         }
 
-        // Return config without passwords
-        return result.recordset[0];
+        const row = result.recordset[0];
+        // Decrypt passwords (return empty string if not set or decryption fails)
+        const safeDecrypt = (enc) => { try { return enc ? decryptPassword(enc) : ''; } catch { return ''; } };
+        row.DirectPassword = safeDecrypt(row.DirectPassword);
+        row.ReadPassword = safeDecrypt(row.ReadPassword);
+        row.WritePassword = safeDecrypt(row.WritePassword);
+        return row;
     } catch (err) {
         console.error('Error getting DB config:', err);
         throw err;

@@ -1,17 +1,20 @@
 import React, { useState, useMemo } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush, LabelList } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush, LabelList, ReferenceLine } from "recharts";
 import { formatCurrencyCompact, useFormatCurrency } from '../utils/formatters';
 import { useUserPreferences } from '../context/UserPreferences';
+import type { EventosByDate } from '../api';
 
 interface DailyBehaviorChartProps {
     data: any[];
     kpi: string;
     dateRange?: { startDate: string; endDate: string };
+    verEventos?: boolean;
+    eventsByDate?: EventosByDate;
 }
 
 const DAY_LETTERS = ['D', 'L', 'K', 'M', 'J', 'V', 'S'];
 
-export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi, dateRange }) => {
+export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi, dateRange, verEventos = false, eventsByDate = {} }) => {
     const fc = useFormatCurrency();
     const { formatPct100 } = useUserPreferences();
     // State for controlling which lines are visible
@@ -433,6 +436,31 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                 />
                             </Area>
                         )}
+
+                        {/* Event Reference Lines */}
+                        {verEventos && Object.entries(eventsByDate).map(([dateStr, evs]) => {
+                            // Match date to chart data point name key
+                            const [y, m, d] = dateStr.split('-').map(Number);
+                            const date = new Date(y, m - 1, d);
+                            const dayLetter = ['D', 'L', 'K', 'M', 'J', 'V', 'S'][date.getDay()];
+                            const dd = String(d).padStart(2, '0');
+                            const mm = String(m).padStart(2, '0');
+                            const yy = String(y).slice(-2);
+                            const xKey = `${dayLetter}_${dd}/${mm}/${yy}`;
+                            const hasFeriado = evs.some(e => e.esFeriado);
+                            const label = evs.map(e => e.evento).join(', ');
+                            return (
+                                <ReferenceLine
+                                    key={dateStr}
+                                    x={xKey}
+                                    stroke={hasFeriado ? '#EF4444' : '#F59E0B'}
+                                    strokeWidth={2}
+                                    strokeDasharray="4 2"
+                                    label={{ value: '📅', position: 'top', fontSize: 10 }}
+                                    isFront
+                                />
+                            );
+                        })}
 
                         {/* Interactive brush for date range selection */}
                         <Brush

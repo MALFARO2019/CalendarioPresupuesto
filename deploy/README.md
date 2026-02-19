@@ -1,65 +1,73 @@
-# Despliegue - Calendario de Presupuesto
+# Despliegue - KPIs Rosti
 
-## Instalación Inicial (Primera Vez)
+## Deploy a UN solo servidor
 
-### Pasos:
+### Instalación inicial (primera vez en el servidor)
 
-1. **Copiar toda la carpeta `CalendarioPresupuesto`** al servidor de aplicaciones
-2. **Abrir PowerShell como Administrador** en el servidor
-3. **Ejecutar:**
-
+1. Copiar la carpeta `CalendarioPresupuesto` al servidor
+2. Abrir PowerShell como Administrador en el servidor
+3. Ejecutar:
 ```powershell
-cd C:\ruta\donde\copiaste\CalendarioPresupuesto\deploy
+cd C:\ruta\...\CalendarioPresupuesto\deploy
 .\deploy.ps1
 ```
 
-¡Eso es todo! El script hace todo automáticamente:
-- ✅ Instala Node.js
-- ✅ Instala NSSM
-- ✅ Configura IIS + URL Rewrite + ARR
-- ✅ Compila y despliega el frontend
-- ✅ Despliega el backend
-- ✅ Crea el servicio de Windows
-- ✅ Configura el firewall
-- ✅ Verifica que todo funcione
-
-### Parámetros Opcionales
-
+### Actualizar
 ```powershell
-# Cambiar el directorio de instalación (default: C:\Apps\CalendarioPresupuesto)
-.\deploy.ps1 -InstallDir "D:\MiApp\CalendarioPresupuesto"
-
-# Cambiar el puerto de IIS (default: 80)
-.\deploy.ps1 -IISPort 8080
+.\update.ps1                   # Frontend + Backend
+.\update.ps1 -SkipBackend     # Solo frontend
+.\update.ps1 -SkipFrontend    # Solo backend
 ```
 
 ---
 
-## Actualización (Cambios Posteriores)
+## Deploy a DOS (o más) servidores simultáneamente
 
+### Pre-requisito: habilitar WinRM en CADA servidor (una sola vez)
+En cada servidor remoto, como Administrador:
 ```powershell
-cd C:\ruta\donde\copiaste\CalendarioPresupuesto\deploy
-.\update.ps1
+winrm quickconfig -q
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*" -Force
 ```
 
-### Solo frontend:
+### Configurar IPs y credenciales
+Editar `deploy-multi.ps1` → parámetro `$Servers`:
 ```powershell
-.\update.ps1 -SkipBackend
+$Servers = @(
+    @{ Name="Servidor-1"; Host="10.29.1.XX"; User="Administrador"; Password=""; InstallDir="C:\Apps\..." },
+    @{ Name="Servidor-2"; Host="10.29.1.YY"; User="Administrador"; Password=""; InstallDir="C:\Apps\..." }
+)
+```
+> Deja `Password=""` para que lo pida de forma segura al ejecutar.
+
+### Ejecutar el deploy paralelo (desde TU PC)
+```powershell
+cd C:\AntiGravityDev\CalendarioPresupuesto\deploy
+
+# Primera instalacion completa en ambos servidores:
+.\deploy-multi.ps1
+
+# Actualizar frontend + backend en ambos:
+.\deploy-multi.ps1 -Update
+
+# Solo frontend:
+.\deploy-multi.ps1 -Update -SkipBackend
+
+# Solo backend:
+.\deploy-multi.ps1 -Update -SkipFrontend
 ```
 
-### Solo backend:
-```powershell
-.\update.ps1 -SkipFrontend
-```
+El script:
+1. Compila el frontend **una sola vez** localmente
+2. Copia y despliega en **ambos servidores al mismo tiempo** (PowerShell Jobs)
+3. Tarda igual que deploying a 1 servidor
 
 ---
 
-## Post-Instalación
+## Post-instalación (primera vez)
 
-Después del primer despliegue, edite las credenciales de producción:
-
+Editar credenciales de producción en cada servidor:
 ```powershell
 notepad C:\Apps\CalendarioPresupuesto\server\.env
 ```
-
-**Importante:** Cambie `DB_PASSWORD`, `JWT_SECRET` y `SMTP_PASS` por valores seguros.
+Cambiar: `DB_PASSWORD`, `JWT_SECRET`, `SMTP_PASS`

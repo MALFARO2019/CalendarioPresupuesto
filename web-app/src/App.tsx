@@ -6,7 +6,7 @@ import { AdminPage } from './components/AdminPage';
 import { Dashboard } from './views/Dashboard';
 import { generateMockData } from './mockData';
 import type { BudgetRecord } from './mockData';
-import { fetchBudgetData, fetchFechaLimite, fetchStores, fetchGroupStores, fetchAvailableCanales, getToken, getUser, logout, verifyToken, API_BASE } from './api';
+import { fetchBudgetData, fetchFechaLimite, fetchStores, fetchGroupStores, fetchAvailableCanales, getToken, getUser, logout, verifyToken, API_BASE, fetchEventosPorMes, fetchEventosPorAno, type EventosByDate } from './api';
 import { addMonths, format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X, SlidersHorizontal, Home } from 'lucide-react';
@@ -24,8 +24,9 @@ import { IncrementCard } from './components/IncrementCard';
 import { SummaryCard } from './components/SummaryCard';
 import { GroupMembersCard } from './components/GroupMembersCard';
 import { RangosView } from './components/RangosView';
+import { PreferencesView } from './components/PreferencesView';
 
-type AppView = 'login' | 'dashboard' | 'admin';
+type AppView = 'login' | 'dashboard' | 'admin' | 'preferencias';
 type DashboardTab = 'home' | 'mensual' | 'anual' | 'tendencia' | 'rangos';
 
 function App() {
@@ -39,7 +40,8 @@ function App() {
   const [filterCanal, setFilterCanal] = useState('Todos');
   const [filterKpi, setFilterKpi] = useState('Ventas');
   const [filterType, setFilterType] = useState('Presupuesto');
-  const { preferences, setPctDisplayMode, setPctDecimals, setValueDecimals, setValueDisplayMode, setDefaultYearType } = useUserPreferences();
+  const { preferences, setPctDisplayMode, setPctDecimals, setValueDecimals, setValueDisplayMode, setDefaultYearType, setGroupOrder } = useUserPreferences();
+  const user = getUser();
   const [yearType, setYearType] = useState<'Año Anterior' | 'Año Anterior Ajustado'>(preferences.defaultYearType);
 
   const [data, setData] = useState<BudgetRecord[]>([]);
@@ -56,6 +58,10 @@ function App() {
   const [availableCanales, setAvailableCanales] = useState<string[]>([]);
   const [dbMode, setDbMode] = useState<string>('primary');
   const [fechaLimite, setFechaLimite] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [verEventos, setVerEventos] = useState(false);
+  const [eventsByDate, setEventsByDate] = useState<EventosByDate>({});
+  const [eventosByYear, setEventosByYear] = useState<EventosByDate>({});
+  const [eventosYear, setEventosYear] = useState(new Date().getFullYear());
 
   // Fetch DB mode on mount
   useEffect(() => {
@@ -64,6 +70,23 @@ function App() {
       .then(d => { if (d.mode) setDbMode(d.mode); })
       .catch(() => { });
   }, []);
+
+  // Fetch eventos por mes y por año cuando verEventos está activo
+  useEffect(() => {
+    if (!verEventos) {
+      setEventsByDate({});
+      setEventosByYear({});
+      return;
+    }
+    const token = getToken();
+    if (!token) return;
+    const month = currentDate.getMonth() + 1;
+    const currentYear = currentDate.getFullYear();
+    // Fetch por mes (for the monthly calendar grid)
+    fetchEventosPorMes(currentYear, month).then(setEventsByDate);
+    // Fetch por año (for annual/trend/rangos charts)
+    fetchEventosPorAno(eventosYear).then(setEventosByYear);
+  }, [verEventos, currentDate, eventosYear]);
 
   // Check if user is already logged in
   useEffect(() => {
@@ -228,7 +251,6 @@ function App() {
   };
 
   const [showReportMenu, setShowReportMenu] = useState(false);
-  const [showUserPrefs, setShowUserPrefs] = useState(false);
   const [tacticaOpen, setTacticaOpen] = useState(false);
   const tendenciaExportRef = useRef<(() => void) | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -354,7 +376,7 @@ function App() {
     setEmailSending(false);
   };
 
-  const user = getUser();
+
 
   // Loading auth check
   if (checkingAuth) {
@@ -377,6 +399,25 @@ function App() {
   // Admin view
   if (view === 'admin') {
     return <AdminPage onBack={() => setView('dashboard')} currentUser={user} />;
+  }
+
+  // Preferences view
+  if (view === 'preferencias') {
+    const currentYr = currentDate.getFullYear();
+    const availYears = [currentYr - 1, currentYr, currentYr + 1, currentYr + 2].filter(y => y >= 2024);
+    return (
+      <PreferencesView
+        onBack={() => setView('dashboard')}
+        verEventos={verEventos}
+        onVerEventosChange={setVerEventos}
+        eventosYear={eventosYear}
+        onEventosYearChange={y => { setEventosYear(y); }}
+        availableYears={availYears}
+        groups={groups}
+        yearType={yearType}
+        onYearTypeChange={setYearType}
+      />
+    );
   }
 
   // Dashboard view
@@ -475,132 +516,15 @@ function App() {
               )}
             </div>
 
-            {/* User Preferences */}
-            <div className="relative">
-              <button
-                onClick={() => setShowUserPrefs(!showUserPrefs)}
-                className="touch-target p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                title="Preferencias"
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-              </button>
-              {showUserPrefs && (
-                <>
-                  <div className="fixed inset-0 z-20" onClick={() => setShowUserPrefs(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-full max-w-[320px] sm:w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
-                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                      <h4 className="text-sm font-bold text-gray-700">⚙️ Preferencias</h4>
-                    </div>
-                    <div className="p-4 space-y-3">
-                      {/* Formato de Porcentajes */}
-                      <div>
-                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Formato de Porcentajes</label>
-                        <div className="flex flex-col gap-2">
-                          <label className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border ${preferences.pctDisplayMode === 'base100' ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
-                            <input type="radio" name="pctMode" checked={preferences.pctDisplayMode === 'base100'} onChange={() => setPctDisplayMode('base100')} className="accent-indigo-600" />
-                            <div>
-                              <div className="text-sm font-semibold text-gray-800">Base 100</div>
-                              <div className="text-xs text-gray-500">Ej: 105%, 92%</div>
-                            </div>
-                          </label>
-                          <label className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border ${preferences.pctDisplayMode === 'differential' ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
-                            <input type="radio" name="pctMode" checked={preferences.pctDisplayMode === 'differential'} onChange={() => setPctDisplayMode('differential')} className="accent-indigo-600" />
-                            <div>
-                              <div className="text-sm font-semibold text-gray-800">Diferencial</div>
-                              <div className="text-xs text-gray-500">Ej: +5%, -8%</div>
-                            </div>
-                          </label>
-                        </div>
-                      </div>
 
-                      <div className="h-px bg-gray-100" />
-
-                      {/* Decimales de Porcentajes */}
-                      <div>
-                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Decimales en Porcentajes</label>
-                        <div className="flex gap-1">
-                          {[0, 1, 2, 3].map(d => (
-                            <button
-                              key={d}
-                              onClick={() => setPctDecimals(d)}
-                              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all border ${preferences.pctDecimals === d
-                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                                }`}
-                            >{d}</button>
-                          ))}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">Ej: {(105.1234).toFixed(preferences.pctDecimals)}%</p>
-                      </div>
-
-                      <div className="h-px bg-gray-100" />
-
-                      {/* Decimales de Valores */}
-                      <div>
-                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Decimales en Valores</label>
-                        <div className="flex gap-1">
-                          {[0, 1, 2, 3].map(d => (
-                            <button
-                              key={d}
-                              onClick={() => setValueDecimals(d)}
-                              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all border ${preferences.valueDecimals === d
-                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                                }`}
-                            >{d}</button>
-                          ))}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">Ej: ₡{new Intl.NumberFormat('es-CR', { minimumFractionDigits: preferences.valueDecimals, maximumFractionDigits: preferences.valueDecimals }).format(1234567.89)}</p>
-                      </div>
-
-                      <div className="h-px bg-gray-100" />
-
-                      {/* Formato de Valores */}
-                      <div>
-                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Formato de Valores</label>
-                        <div className="flex gap-1">
-                          {(['completo', 'miles', 'millones'] as const).map(mode => (
-                            <button
-                              key={mode}
-                              onClick={() => setValueDisplayMode(mode)}
-                              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all border ${preferences.valueDisplayMode === mode
-                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                                }`}
-                            >
-                              {mode === 'completo' ? 'Completo' : mode === 'miles' ? 'Miles' : 'Millones'}
-                            </button>
-                          ))}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">
-                          Ej: {preferences.valueDisplayMode === 'completo' ? '₡1 234 568' : preferences.valueDisplayMode === 'miles' ? '₡1 235K' : '₡1,2M'}
-                        </p>
-                      </div>
-
-                      <div className="h-px bg-gray-100" />
-
-                      {/* Tipo Año Predeterminado */}
-                      <div>
-                        <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Tipo Año Predeterminado</label>
-                        <select
-                          value={preferences.defaultYearType}
-                          onChange={e => {
-                            const val = e.target.value as 'Año Anterior' | 'Año Anterior Ajustado';
-                            setDefaultYearType(val);
-                            setYearType(val);
-                          }}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                        >
-                          <option value="Año Anterior">Año Anterior</option>
-                          <option value="Año Anterior Ajustado">Año Anterior Ajustado</option>
-                        </select>
-                      </div>
-
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+            {/* User Preferences - navigate to full view */}
+            <button
+              onClick={() => setView('preferencias')}
+              className="touch-target p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+              title="Preferencias"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
 
             {/* Táctica Button - only in Annual view and if enabled */}
             {dashboardTab === 'anual' && user?.accesoTactica && (
@@ -652,26 +576,30 @@ function App() {
               {/* Only show presupuesto tabs when not in home */}
               {dashboardTab !== 'home' && (
                 <>
-                  <button
-                    onClick={() => setDashboardTab('mensual')}
-                    className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'mensual'
-                      ? 'bg-white shadow-sm text-indigo-600'
-                      : 'text-gray-400 hover:text-gray-600'
-                      }`}
-                  >
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span className="hidden lg:inline">Mensual</span>
-                  </button>
-                  <button
-                    onClick={() => setDashboardTab('anual')}
-                    className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'anual'
-                      ? 'bg-white shadow-sm text-indigo-600'
-                      : 'text-gray-400 hover:text-gray-600'
-                      }`}
-                  >
-                    <BarChart3 className="w-3.5 h-3.5" />
-                    <span className="hidden lg:inline">Anual</span>
-                  </button>
+                  {user?.accesoPresupuestoMensual && (
+                    <button
+                      onClick={() => setDashboardTab('mensual')}
+                      className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'mensual'
+                        ? 'bg-white shadow-sm text-indigo-600'
+                        : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span className="hidden lg:inline">Mensual</span>
+                    </button>
+                  )}
+                  {user?.accesoPresupuestoAnual && (
+                    <button
+                      onClick={() => setDashboardTab('anual')}
+                      className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'anual'
+                        ? 'bg-white shadow-sm text-indigo-600'
+                        : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      <span className="hidden lg:inline">Anual</span>
+                    </button>
+                  )}
                   {user?.accesoTendencia && (
                     <button
                       onClick={() => setDashboardTab('tendencia')}
@@ -684,16 +612,18 @@ function App() {
                       <span className="hidden lg:inline">Tendencia</span>
                     </button>
                   )}
-                  <button
-                    onClick={() => setDashboardTab('rangos')}
-                    className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'rangos'
-                      ? 'bg-white shadow-sm text-indigo-600'
-                      : 'text-gray-400 hover:text-gray-600'
-                      }`}
-                  >
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span className="hidden lg:inline">Rangos</span>
-                  </button>
+                  {user?.accesoPresupuestoRangos && (
+                    <button
+                      onClick={() => setDashboardTab('rangos')}
+                      className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'rangos'
+                        ? 'bg-white shadow-sm text-indigo-600'
+                        : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span className="hidden lg:inline">Rangos</span>
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -735,7 +665,9 @@ function App() {
             setFilterKpi={setFilterKpi}
             filterType={filterType}
             setFilterType={setFilterType}
-            groups={groups}
+            groups={preferences.groupOrder && preferences.groupOrder.length > 0
+              ? preferences.groupOrder.filter((g: string) => groups.includes(g)).concat(groups.filter((g: string) => !(preferences.groupOrder || []).includes(g)))
+              : groups}
             individualStores={individualStores}
             yearType={yearType}
             setYearType={(type: 'Año Anterior' | 'Año Anterior Ajustado') => {
@@ -765,7 +697,9 @@ function App() {
             setFilterKpi={setFilterKpi}
             filterType={filterType}
             setFilterType={setFilterType}
-            groups={groups}
+            groups={preferences.groupOrder && preferences.groupOrder.length > 0
+              ? preferences.groupOrder.filter((g: string) => groups.includes(g)).concat(groups.filter((g: string) => !(preferences.groupOrder || []).includes(g)))
+              : groups}
             individualStores={individualStores}
             yearType={yearType}
             setYearType={(type: 'Año Anterior' | 'Año Anterior Ajustado') => {
@@ -791,7 +725,7 @@ function App() {
 
         {error && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6 flex items-center gap-3">
-            <span className="text-yellow-600 text-sm">⚠️ No se pudo conectar al servidor. Usando datos de prueba.</span>
+            <span className="text-yellow-600 text-sm">⚠️ No se pudo conectar al servidor. Revisar conexión al VPN de Rosti. Usando datos de prueba.</span>
             <button
               onClick={() => { setUseApi(true); setError(null); }}
               className="text-yellow-700 underline text-sm font-medium hover:text-yellow-800"
@@ -805,14 +739,25 @@ function App() {
           <Dashboard
             onNavigateToModule={(moduleId) => {
               if (moduleId === 'presupuesto') {
-                setDashboardTab('mensual');
+                if (user?.accesoPresupuestoMensual) {
+                  setDashboardTab('mensual');
+                } else if (user?.accesoPresupuestoAnual) {
+                  setDashboardTab('anual');
+                } else if (user?.accesoPresupuestoRangos) {
+                  setDashboardTab('rangos');
+                } else if (user?.accesoTendencia) {
+                  setDashboardTab('tendencia'); // Fallback if they have tendency access but no specific budget section access (unlikely combo but safe)
+                } else {
+                  // Fallback to mensual anyway, permissions will just hide content
+                  setDashboardTab('mensual');
+                }
               }
               // Future modules will be handled here
             }}
           />
         )}
 
-        {!loading && dashboardTab === 'mensual' && (
+        {!loading && dashboardTab === 'mensual' && user?.accesoPresupuestoMensual && (
           <>
             {/* Summary Card */}
             <div className="print-page">
@@ -824,6 +769,17 @@ function App() {
                 comparisonType={filterType}
                 yearType={yearType}
                 filterLocal={filterLocal}
+                dateRange={(() => {
+                  const yr = currentDate.getFullYear();
+                  const mo = currentDate.getMonth() + 1;
+                  const startDate = `${yr}-${String(mo).padStart(2, '0')}-01`;
+                  // Last day of the selected month
+                  const lastDayOfMonth = new Date(yr, mo, 0).getDate();
+                  const lastDayStr = `${yr}-${String(mo).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+                  // Use fechaLimite only if it's within the same month; otherwise use last day of month
+                  const endDate = fechaLimite < lastDayStr ? fechaLimite : lastDayStr;
+                  return { startDate, endDate };
+                })()}
               />
             </div>
 
@@ -832,12 +788,26 @@ function App() {
               {/* Calendar Grid */}
               <div className="print-page lg:flex-[3]">
                 <div id="monthly-calendar-container">
+                  {/* Toggle Ver Eventos */}
+                  <div className="flex justify-end mb-2">
+                    <button
+                      onClick={() => setVerEventos(v => !v)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${verEventos
+                        ? 'bg-amber-100 text-amber-700 border-amber-300'
+                        : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                        }`}
+                    >
+                      <span>{verEventos ? '📅' : '🗓️'}</span>
+                      Ver Eventos
+                    </button>
+                  </div>
                   <CalendarGrid
                     data={currentMonthData}
                     month={currentDate.getMonth()}
                     year={currentDate.getFullYear()}
                     comparisonType={filterType}
                     kpi={filterKpi}
+                    eventsByDate={verEventos ? eventsByDate : {}}
                   />
                 </div>
               </div>
@@ -868,6 +838,8 @@ function App() {
                     startDate: `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`,
                     endDate: fechaLimite
                   }}
+                  verEventos={verEventos}
+                  eventsByDate={eventsByDate}
                 />
               </div>
             </div>
@@ -900,7 +872,7 @@ function App() {
           </>
         )}
 
-        {!loading && dashboardTab === 'anual' && (
+        {!loading && dashboardTab === 'anual' && user?.accesoPresupuestoAnual && (
           <>
             {/* Summary Card */}
             <SummaryCard
@@ -929,6 +901,9 @@ function App() {
                 tacticaOpen={tacticaOpen}
                 onTacticaClose={() => setTacticaOpen(false)}
                 fechaLimite={fechaLimite}
+                verEventos={verEventos}
+                onVerEventosChange={(v) => setVerEventos(v)}
+                eventosByYear={eventosByYear}
               />
             </div>
 
@@ -950,20 +925,30 @@ function App() {
               year={year}
               startDate={`${year}-01-01`}
               endDate={fechaLimite}
-              groups={groups}
+              groups={preferences.groupOrder && preferences.groupOrder.length > 0
+                ? preferences.groupOrder.filter((g: string) => groups.includes(g)).concat(groups.filter((g: string) => !(preferences.groupOrder || []).includes(g)))
+                : groups}
               individualStores={individualStores}
               onExportExcel={(fn) => { tendenciaExportRef.current = fn; }}
+              verEventos={verEventos}
+              onVerEventosChange={(v) => setVerEventos(v)}
+              eventosByYear={eventosByYear}
+              filterLocal={filterLocal}
+              onFilterLocalChange={setFilterLocal}
             />
           </div>
         )}
 
-        {!loading && dashboardTab === 'rangos' && (
+        {!loading && dashboardTab === 'rangos' && user?.accesoPresupuestoRangos && (
           <RangosView
             year={year}
             filterLocal={filterLocal}
             filterCanal={filterCanal}
             filterKpi={filterKpi}
             yearType={yearType}
+            verEventos={verEventos}
+            onVerEventosChange={(v) => setVerEventos(v)}
+            eventosByYear={eventosByYear}
           />
         )}
       </main>

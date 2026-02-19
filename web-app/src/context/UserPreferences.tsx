@@ -8,12 +8,13 @@ export type ValueDisplayMode = 'completo' | 'miles' | 'millones';
 
 interface UserPreferences {
     pctDisplayMode: PctDisplayMode;
-    pctDecimals: number;         // Decimals for percentages (0-3)
-    valueDecimals: number;       // Decimals for currency/values (0-3)
-    valueDisplayMode: ValueDisplayMode; // How to display values: full, thousands, millions
-    defaultYearType: YearType;   // Default year comparison type
-    dashboardLocales?: string[]; // User-selected locales for dashboard KPIs (max 5)
-    comparativePeriod: ComparativePeriod; // Comparative period for trend calculations
+    pctDecimals: number;
+    valueDecimals: number;
+    valueDisplayMode: ValueDisplayMode;
+    defaultYearType: YearType;
+    dashboardLocales?: string[];
+    comparativePeriod: ComparativePeriod;
+    groupOrder?: string[];  // Custom order for groups
 }
 
 interface UserPreferencesContextType {
@@ -25,6 +26,7 @@ interface UserPreferencesContextType {
     setDefaultYearType: (yearType: YearType) => void;
     setDashboardLocales: (locales: string[]) => void;
     setComparativePeriod: (period: ComparativePeriod) => void;
+    setGroupOrder: (order: string[]) => void;
     addDashboardLocal: (local: string) => boolean;
     removeDashboardLocal: (local: string) => void;
     /** Format a percentage (already in 0-1 scale, e.g. 1.05 = 105%) */
@@ -130,6 +132,10 @@ export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ chi
         setPreferences(prev => ({ ...prev, defaultYearType: yearType }));
     };
 
+    const setGroupOrder = (order: string[]) => {
+        setPreferences(prev => ({ ...prev, groupOrder: order }));
+    };
+
     const setDashboardLocales = (locales: string[]) => {
         setPreferences(prev => ({ ...prev, dashboardLocales: locales.slice(0, 5) }));
     };
@@ -181,6 +187,7 @@ export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ chi
             setDefaultYearType,
             setDashboardLocales,
             setComparativePeriod,
+            setGroupOrder,
             addDashboardLocal,
             removeDashboardLocal,
             formatPctValue,

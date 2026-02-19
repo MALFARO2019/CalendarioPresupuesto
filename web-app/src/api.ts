@@ -12,14 +12,19 @@ export interface User {
     accesoTactica: boolean;
     accesoEventos: boolean;
     accesoPresupuesto: boolean;
+    accesoPresupuestoMensual: boolean;
+    accesoPresupuestoAnual: boolean;
+    accesoPresupuestoRangos: boolean;
     accesoTiempos: boolean;
     accesoEvaluaciones: boolean;
     accesoInventarios: boolean;
+    accesoPersonal: boolean;
     esAdmin: boolean;
     esProtegido: boolean;
     allowedStores: string[];
     allowedCanales: string[];
     permitirEnvioClave?: boolean;
+    perfilId?: number | null;
 }
 
 
@@ -149,15 +154,19 @@ export async function createAdminUser(
     accesoTactica: boolean = false,
     accesoEventos: boolean = false,
     accesoPresupuesto: boolean = true,
+    accesoPresupuestoMensual: boolean = true,
+    accesoPresupuestoAnual: boolean = true,
+    accesoPresupuestoRangos: boolean = true,
     accesoTiempos: boolean = false,
     accesoEvaluaciones: boolean = false,
     accesoInventarios: boolean = false,
+    accesoPersonal: boolean = false,
     esAdmin: boolean = false
 ): Promise<{ success: boolean; userId: number; clave: string }> {
     const response = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin })
+        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -178,16 +187,21 @@ export async function updateAdminUser(
     accesoTactica: boolean,
     accesoEventos: boolean,
     accesoPresupuesto: boolean,
+    accesoPresupuestoMensual: boolean,
+    accesoPresupuestoAnual: boolean,
+    accesoPresupuestoRangos: boolean,
     accesoTiempos: boolean,
     accesoEvaluaciones: boolean,
     accesoInventarios: boolean,
+    accesoPersonal: boolean,
     esAdmin: boolean,
-    permitirEnvioClave: boolean = true
+    permitirEnvioClave: boolean = true,
+    perfilId: number | null = null
 ): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoTiempos, accesoEvaluaciones, accesoInventarios, esAdmin, permitirEnvioClave })
+        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -452,6 +466,44 @@ export async function deleteEventoFecha(idEvento: number, fecha: string): Promis
     return response.json();
 }
 
+// Lightweight type for event overlays on charts (read-only, any authenticated user)
+export interface EventoItem {
+    id: number;
+    evento: string;
+    esFeriado: boolean;
+    esInterno: boolean;
+}
+
+export type EventosByDate = Record<string, EventoItem[]>;
+
+// GET /api/eventos/por-mes - events grouped by date for a given month
+export async function fetchEventosPorMes(year: number, month: number): Promise<EventosByDate> {
+    try {
+        const response = await fetch(`${API_BASE}/eventos/por-mes?year=${year}&month=${month}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return {};
+        const data = await response.json();
+        return data.byDate || {};
+    } catch {
+        return {};
+    }
+}
+
+// GET /api/eventos/por-ano - all events grouped by date for a given year
+export async function fetchEventosPorAno(year: number): Promise<EventosByDate> {
+    try {
+        const response = await fetch(`${API_BASE}/eventos/por-ano?year=${year}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return {};
+        const data = await response.json();
+        return data.byDate || {};
+    } catch {
+        return {};
+    }
+}
+
 export async function fetchTactica(data: {
     storeName: string;
     year: number;
@@ -555,6 +607,7 @@ export interface AuxiliaryDBConfig {
     database: string;
     username: string;
     password?: string;
+    port?: string; // optional direct port — avoid SQL Server Browser UDP lookup
 }
 
 export interface DBStatus {
@@ -646,5 +699,258 @@ export async function syncDatabases(): Promise<{ success: boolean; message: stri
         throw new Error(error.error || 'Error al sincronizar datos');
     }
 
+    return response.json();
+}
+
+// ==========================================
+// PROFILES API (admin only)
+// ==========================================
+
+export interface Profile {
+    id: number;
+    nombre: string;
+    descripcion: string | null;
+    accesoTendencia: boolean;
+    accesoTactica: boolean;
+    accesoEventos: boolean;
+    accesoPresupuesto: boolean;
+    accesoPresupuestoMensual: boolean;
+    accesoPresupuestoAnual: boolean;
+    accesoPresupuestoRangos: boolean;
+    accesoTiempos: boolean;
+    accesoEvaluaciones: boolean;
+    accesoInventarios: boolean;
+    accesoPersonal: boolean;
+    esAdmin: boolean;
+    permitirEnvioClave: boolean;
+    usuariosAsignados: number;
+    fechaCreacion: string;
+    fechaModificacion: string | null;
+    usuarioCreador: string | null;
+}
+
+export async function fetchProfiles(): Promise<Profile[]> {
+    const response = await fetch(`${API_BASE}/admin/profiles`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error fetching profiles');
+    }
+    return response.json();
+}
+
+export async function createProfile(data: {
+    nombre: string;
+    descripcion: string;
+    permisos: {
+        accesoTendencia: boolean;
+        accesoTactica: boolean;
+        accesoEventos: boolean;
+        accesoPresupuesto: boolean;
+        accesoPresupuestoMensual: boolean;
+        accesoPresupuestoAnual: boolean;
+        accesoPresupuestoRangos: boolean;
+        accesoTiempos: boolean;
+        accesoEvaluaciones: boolean;
+        accesoInventarios: boolean;
+        accesoPersonal: boolean;
+        esAdmin: boolean;
+        permitirEnvioClave: boolean;
+    };
+}): Promise<{ success: boolean; profileId: number }> {
+    const response = await fetch(`${API_BASE}/admin/profiles`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error creating profile');
+    }
+    return response.json();
+}
+
+export async function updateProfile(
+    profileId: number,
+    data: {
+        nombre: string;
+        descripcion: string;
+        permisos: {
+            accesoTendencia: boolean;
+            accesoTactica: boolean;
+            accesoEventos: boolean;
+            accesoPresupuesto: boolean;
+            accesoPresupuestoMensual: boolean;
+            accesoPresupuestoAnual: boolean;
+            accesoPresupuestoRangos: boolean;
+            accesoTiempos: boolean;
+            accesoEvaluaciones: boolean;
+            accesoInventarios: boolean;
+            accesoPersonal: boolean;
+            esAdmin: boolean;
+            permitirEnvioClave: boolean;
+        };
+    }
+): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/admin/profiles/${profileId}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error updating profile');
+    }
+    return response.json();
+}
+
+export async function deleteProfile(profileId: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/admin/profiles/${profileId}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error deleting profile');
+    }
+    return response.json();
+}
+
+export async function assignProfileToUsers(
+    profileId: number,
+    userIds: number[],
+    syncPermissions: boolean = true
+): Promise<{ success: boolean; assigned: number }> {
+    const response = await fetch(`${API_BASE}/admin/profiles/${profileId}/assign`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userIds, syncPermissions })
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error assigning profile');
+    }
+    return response.json();
+}
+
+export async function syncProfilePermissions(profileId: number): Promise<{ success: boolean; updatedCount: number }> {
+    const response = await fetch(`${API_BASE}/admin/profiles/${profileId}/sync`, {
+        method: 'POST',
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error syncing profile permissions');
+    }
+    return response.json();
+}
+
+// ==========================================
+// PERSONAL MODULE API
+// ==========================================
+
+export interface Personal {
+    id: number;
+    nombre: string;
+    correo: string | null;
+    cedula: string | null;
+    telefono: string | null;
+    activo: boolean;
+    fechaCreacion: string;
+}
+
+export interface Asignacion {
+    id: number;
+    personalId: number;
+    nombrePersonal: string;
+    local: string;
+    perfil: string;
+    fechaInicio: string;
+    fechaFin: string | null;
+    notas: string | null;
+    fechaAsignacion: string;
+    asignadoPor: string;
+}
+
+export async function fetchPersonal(): Promise<Personal[]> {
+    const response = await fetch(`${API_BASE}/personal`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching personal');
+    return response.json();
+}
+
+export async function createPersona(nombre: string, correo?: string, cedula?: string, telefono?: string): Promise<Personal> {
+    const response = await fetch(`${API_BASE}/personal`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ nombre, correo, cedula, telefono })
+    });
+    if (!response.ok) throw new Error('Error creating persona');
+    return response.json();
+}
+
+export async function updatePersona(id: number, nombre: string, correo?: string, cedula?: string, telefono?: string, activo?: boolean): Promise<Personal> {
+    const response = await fetch(`${API_BASE}/personal/${id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ nombre, correo, cedula, telefono, activo })
+    });
+    if (!response.ok) throw new Error('Error updating persona');
+    return response.json();
+}
+
+export async function deletePersona(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE}/personal/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error deleting persona');
+}
+
+export async function fetchAsignaciones(personalId?: number): Promise<Asignacion[]> {
+    const url = personalId ? `${API_BASE}/personal/asignaciones?personalId=${personalId}` : `${API_BASE}/personal/asignaciones`;
+    const response = await fetch(url, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching asignaciones');
+    return response.json();
+}
+
+export async function createAsignacion(personalId: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string): Promise<Asignacion> {
+    const response = await fetch(`${API_BASE}/personal/asignaciones`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ personalId, local, perfil, fechaInicio, fechaFin, notas })
+    });
+    if (!response.ok) throw new Error('Error creating asignacion');
+    return response.json();
+}
+
+export async function updateAsignacion(id: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string): Promise<Asignacion> {
+    const response = await fetch(`${API_BASE}/personal/asignaciones/${id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ local, perfil, fechaInicio, fechaFin, notas })
+    });
+    if (!response.ok) throw new Error('Error updating asignacion');
+    return response.json();
+}
+
+export async function deleteAsignacion(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE}/personal/asignaciones/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error deleting asignacion');
+}
+
+export async function fetchLocalesSinCobertura(perfil?: string): Promise<{ Local: string, PerfilesFaltantes: string }[]> {
+    const url = perfil ? `${API_BASE}/personal/locales-sin-cobertura?perfil=${encodeURIComponent(perfil)}` : `${API_BASE}/personal/locales-sin-cobertura`;
+    const response = await fetch(url, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching locales sin cobertura');
     return response.json();
 }

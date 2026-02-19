@@ -116,15 +116,8 @@ async function getTendenciaData(req, res) {
         const query = `
             SELECT 
                 r.Local,
-                -- Annual budget (sum of ALL days in year for this Local)
-                (SELECT SUM(Monto) 
-                 FROM RSM_ALCANCE_DIARIO 
-                 WHERE Local = r.Local 
-                   AND Año = YEAR(@endDate) 
-                   AND Tipo = @kpi 
-                   AND ${canalSubFilter}
-                   AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-                ) as PresupuestoAnual,
+                -- Period budget (sum of ALL days in the selected date range for this Local)
+                SUM(r.Monto) as PresupuestoPeriodo,
                 -- Period budget (sum of days WITH sales only)
                 SUM(CASE WHEN r.MontoReal > 0 THEN r.Monto ELSE 0 END) as PresupuestoAcum,
                 -- Period real (sum of actual sales)
@@ -203,7 +196,7 @@ async function getTendenciaData(req, res) {
         const resumen = { totalPresupuesto: 0, totalPresupuestoAcum: 0, totalReal: 0, totalAnterior: 0 };
 
         result.recordset.forEach(row => {
-            const presupuesto = row.PresupuestoAnual || 0;
+            const presupuesto = row.PresupuestoPeriodo || 0;
             const presupuestoAcum = row.PresupuestoAcum || 0;
             const real = row.RealAcum || 0;
             const anterior = row.AnteriorAcum || 0;
@@ -260,36 +253,23 @@ async function getTendenciaData(req, res) {
             canalFilter2 = `Canal = @canal2`;
         }
 
+        // NOTE: TQP is NOT summed from DB — it must be calculated as Ventas/Transacciones
+        // We only fetch Ventas and Transacciones here, then derive TQP in JS.
+        // PresupuestoPeriodo = SUM(Monto) for ALL days in the selected date range (period budget)
         const multiKpiQuery = `
-            WITH AnnualBudgetByTipo AS (
-                SELECT Tipo, SUM(Monto) as PresupuestoAnual
-                FROM RSM_ALCANCE_DIARIO
-                WHERE Año = YEAR(@endDate2) AND ${canalFilter2}
-                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-                    ${localFilter.replace(/@ml/g, '@ml2_').replace(/@local/g, '@local2')}
-                GROUP BY Tipo
-            ),
-            PeriodByTipo AS (
-                SELECT 
-                    Tipo,
-                    SUM(Monto) as PresupuestoAcum,
-                    SUM(MontoReal) as RealAcum,
-                    SUM(${anteriorField}) as AnteriorAcum
-                FROM RSM_ALCANCE_DIARIO
-                WHERE Fecha BETWEEN @startDate2 AND @endDate2
-                    AND Año = YEAR(@endDate2) AND ${canalFilter2}
-                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-                    ${localFilter.replace(/@ml/g, '@ml2_').replace(/@local/g, '@local2')}
-                GROUP BY Tipo
-            )
             SELECT 
-                COALESCE(ab.Tipo, pt.Tipo) as Tipo,
-                ISNULL(ab.PresupuestoAnual, 0) as PresupuestoAnual,
-                ISNULL(pt.PresupuestoAcum, 0) as PresupuestoAcum,
-                ISNULL(pt.RealAcum, 0) as RealAcum,
-                ISNULL(pt.AnteriorAcum, 0) as AnteriorAcum
-            FROM AnnualBudgetByTipo ab
-            FULL OUTER JOIN PeriodByTipo pt ON ab.Tipo = pt.Tipo
+                Tipo,
+                SUM(Monto) as PresupuestoPeriodo,
+                SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) as PresupuestoAcum,
+                SUM(MontoReal) as RealAcum,
+                SUM(CASE WHEN MontoReal > 0 THEN ${anteriorField} ELSE 0 END) as AnteriorAcum
+            FROM RSM_ALCANCE_DIARIO
+            WHERE Fecha BETWEEN @startDate2 AND @endDate2
+                AND Año = YEAR(@endDate2) AND ${canalFilter2}
+                AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                AND Tipo IN ('Ventas', 'Transacciones')
+                ${localFilter.replace(/@ml/g, '@ml2_').replace(/@local/g, '@local2')}
+            GROUP BY Tipo
         `;
         const multiReq = pool.request();
         multiReq.input('startDate2', sql.Date, startDate);
@@ -314,30 +294,39 @@ async function getTendenciaData(req, res) {
 
         const resumenMultiKpi = {};
         multiResult.recordset.forEach(row => {
-            const pAnual = row.PresupuestoAnual || 0;
+            const pPeriodo = row.PresupuestoPeriodo || 0;
             const pAcum = row.PresupuestoAcum || 0;
             const real = row.RealAcum || 0;
             const ant = row.AnteriorAcum || 0;
             const pctPpto = pAcum > 0 ? (real / pAcum) : 0;
             resumenMultiKpi[row.Tipo] = {
-                totalPresupuesto: pAnual,
+                totalPresupuesto: pPeriodo,
                 totalPresupuestoAcum: pAcum,
                 totalReal: real,
                 totalAnterior: ant,
                 pctPresupuesto: pctPpto,
                 pctAnterior: ant > 0 ? (real / ant) : 0
             };
-            // DEBUG: Log Ventas percentage for Corporativo
-            if (row.Tipo === 'Ventas' && (local === 'Corporativo' || memberLocals?.length === 41)) {
-                console.log('🔥🔥🔥 VENTAS PERCENTAGE FROM multiKpiQuery 🔥🔥🔥');
-                console.log(`   PresupuestoAcum: ${pAcum}`);
-                console.log(`   RealAcum: ${real}`);
-                console.log(`   Calculation: ${real} / ${pAcum}`);
-                console.log(`   pctPresupuesto: ${pctPpto}`);
-                console.log(`   As percentage: ${(pctPpto * 100).toFixed(1)}%`);
-                console.log(`   Expected: 90.6%`);
-            }
         });
+
+        // Calculate TQP (Tiquete Promedio) = Ventas / Transacciones — cannot be summed from DB
+        const mkVentas = resumenMultiKpi['Ventas'];
+        const mkTrans = resumenMultiKpi['Transacciones'];
+        if (mkVentas && mkTrans) {
+            const tqpReal = mkTrans.totalReal > 0 ? mkVentas.totalReal / mkTrans.totalReal : 0;
+            // Period-based TQP budget = Ventas period budget / Transacciones period budget
+            const tqpPptoPeriodo = mkTrans.totalPresupuesto > 0 ? mkVentas.totalPresupuesto / mkTrans.totalPresupuesto : 0;
+            const tqpPptoAcum = mkTrans.totalPresupuestoAcum > 0 ? mkVentas.totalPresupuestoAcum / mkTrans.totalPresupuestoAcum : 0;
+            const tqpAnterior = mkTrans.totalAnterior > 0 ? mkVentas.totalAnterior / mkTrans.totalAnterior : 0;
+            resumenMultiKpi['TQP'] = {
+                totalPresupuesto: tqpPptoPeriodo,
+                totalPresupuestoAcum: tqpPptoAcum,
+                totalReal: tqpReal,
+                totalAnterior: tqpAnterior,
+                pctPresupuesto: tqpPptoAcum > 0 ? (tqpReal / tqpPptoAcum) : 0,
+                pctAnterior: tqpAnterior > 0 ? (tqpReal / tqpAnterior) : 0
+            };
+        }
         console.log('📊 Multi-KPI summary keys:', Object.keys(resumenMultiKpi), 'rows:', multiResult.recordset.length);
 
         // TREND CALCULATION: Fetch previous period data to calculate trends
@@ -382,17 +371,18 @@ async function getTendenciaData(req, res) {
             canalFilter3 = `Canal = @canal3`;
         }
 
-        // Fetch previous period multi-KPI data
+        // Fetch previous period multi-KPI data (only Ventas & Transacciones; TQP derived in JS)
         const prevMultiKpiQuery = `
             SELECT 
                 Tipo,
-                SUM(Monto) as PresupuestoAcum,
+                SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) as PresupuestoAcum,
                 SUM(MontoReal) as RealAcum,
-                SUM(${anteriorField}) as AnteriorAcum
+                SUM(CASE WHEN MontoReal > 0 THEN ${anteriorField} ELSE 0 END) as AnteriorAcum
             FROM RSM_ALCANCE_DIARIO
             WHERE Fecha BETWEEN @prevStartDate AND @prevEndDate
                 AND Año = YEAR(@prevEndDate) AND ${canalFilter3}
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                AND Tipo IN ('Ventas', 'Transacciones')
                 ${localFilter.replace(/@ml/g, '@ml3_').replace(/@local/g, '@local3')}
             GROUP BY Tipo
         `;
@@ -418,10 +408,26 @@ async function getTendenciaData(req, res) {
             const real = row.RealAcum || 0;
             const ant = row.AnteriorAcum || 0;
             prevKpiMap[row.Tipo] = {
+                totalPresupuestoAcum: pAcum,
+                totalReal: real,
+                totalAnterior: ant,
                 pctPresupuesto: pAcum > 0 ? (real / pAcum) : 0,
                 pctAnterior: ant > 0 ? (real / ant) : 0
             };
         });
+
+        // Derive previous TQP from previous Ventas / Transacciones
+        const pvVentas = prevKpiMap['Ventas'];
+        const pvTrans = prevKpiMap['Transacciones'];
+        if (pvVentas && pvTrans) {
+            const pvTqpReal = pvTrans.totalReal > 0 ? pvVentas.totalReal / pvTrans.totalReal : 0;
+            const pvTqpPptoAcum = pvTrans.totalPresupuestoAcum > 0 ? pvVentas.totalPresupuestoAcum / pvTrans.totalPresupuestoAcum : 0;
+            const pvTqpAnterior = pvTrans.totalAnterior > 0 ? pvVentas.totalAnterior / pvTrans.totalAnterior : 0;
+            prevKpiMap['TQP'] = {
+                pctPresupuesto: pvTqpPptoAcum > 0 ? (pvTqpReal / pvTqpPptoAcum) : 0,
+                pctAnterior: pvTqpAnterior > 0 ? (pvTqpReal / pvTqpAnterior) : 0
+            };
+        }
 
         // Calculate trends for each KPI
         Object.keys(resumenMultiKpi).forEach(kpi => {
@@ -653,4 +659,139 @@ async function getResumenCanal(req, res) {
     }
 }
 
-module.exports = { getTendenciaData, getResumenCanal };
+/**
+ * GET /api/tendencia/resumen-grupos
+ * 
+ * Returns aggregated KPI data per group.
+ * Receives: startDate, endDate, kpi, groups (comma-separated), yearType, channel
+ * For each group, resolves member stores and sums their data.
+ */
+async function getResumenGrupos(req, res) {
+    console.log('📊 getResumenGrupos called');
+    console.log('   Query params:', req.query);
+    try {
+        const { startDate, endDate, kpi = 'Ventas', groups: groupsParam, yearType = 'anterior', channel = 'Total' } = req.query;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({ error: 'startDate and endDate are required' });
+        }
+        if (!groupsParam) {
+            return res.json({ grupos: [] });
+        }
+
+        const pool = await poolPromise;
+        const dbCanal = channel === 'Total' ? 'Todos' : channel;
+        const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
+
+        // For users with limited channels
+        const userAllowedCanales = req.user?.allowedCanales || [];
+        const allCanales = ['Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp'];
+        const hasLimitedChannels = userAllowedCanales.length > 0 && userAllowedCanales.length < allCanales.length;
+        const useMultiChannel = dbCanal === 'Todos' && hasLimitedChannels;
+
+        const groupNames = groupsParam.split(',').map(g => g.trim()).filter(Boolean);
+
+        // Resolve member stores for each group in parallel
+        const groupData = await Promise.all(groupNames.map(async (groupName) => {
+            try {
+                // Step 1: Get IDGRUPO
+                const idGrupoResult = await pool.request()
+                    .input('gname', sql.NVarChar, groupName)
+                    .query(`SELECT GA.IDGRUPO FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENCAB GA WHERE GA.CODVISIBLE = 20 AND GA.DESCRIPCION = @gname`);
+
+                if (idGrupoResult.recordset.length === 0) {
+                    console.log(`⚠️ No group found for: "${groupName}"`);
+                    return { grupo: groupName, presupuestoAcum: 0, real: 0, anterior: 0, pctPresupuesto: 0, pctAnterior: 0, memberCount: 0 };
+                }
+
+                const idGrupos = idGrupoResult.recordset.map(r => r.IDGRUPO);
+
+                // Step 2: Get member CODALMACEN
+                const memberCodesReq = pool.request();
+                idGrupos.forEach((id, i) => memberCodesReq.input(`idgrupo${i}`, sql.Int, id));
+                const memberCodesResult = await memberCodesReq.query(
+                    `SELECT DISTINCT GL.CODALMACEN FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENLIN GL WHERE GL.IDGRUPO IN (${idGrupos.map((_, i) => `@idgrupo${i}`).join(', ')})`
+                );
+                const memberCodes = memberCodesResult.recordset.map(r => r.CODALMACEN);
+
+                if (memberCodes.length === 0) {
+                    return { grupo: groupName, presupuestoAcum: 0, real: 0, anterior: 0, pctPresupuesto: 0, pctAnterior: 0, memberCount: 0 };
+                }
+
+                // Step 3: Get Local names
+                const localsReq = pool.request();
+                localsReq.input('endDate_l', sql.Date, endDate);
+                memberCodes.forEach((code, i) => localsReq.input(`mcode${i}`, sql.NVarChar, code));
+                const localsResult = await localsReq.query(
+                    `SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = YEAR(@endDate_l) AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')}) AND SUBSTRING(CODALMACEN, 1, 1) != 'G'`
+                );
+                const memberLocals = localsResult.recordset.map(r => r.Local);
+
+                if (memberLocals.length === 0) {
+                    return { grupo: groupName, presupuestoAcum: 0, real: 0, anterior: 0, pctPresupuesto: 0, pctAnterior: 0, memberCount: 0 };
+                }
+
+                // Step 4: Aggregate data for this group
+                const localPh = memberLocals.map((_, i) => `@ml${i}`).join(', ');
+                let canalFilter;
+                if (useMultiChannel) {
+                    canalFilter = `Canal IN (${userAllowedCanales.map((_, i) => `@ch${i}`).join(', ')})`;
+                } else {
+                    canalFilter = `Canal = @canal`;
+                }
+
+                const aggReq = pool.request();
+                aggReq.input('startDate_a', sql.Date, startDate);
+                aggReq.input('endDate_a', sql.Date, endDate);
+                aggReq.input('kpi_a', sql.VarChar, kpi);
+                if (useMultiChannel) {
+                    userAllowedCanales.forEach((ch, i) => aggReq.input(`ch${i}`, sql.NVarChar, ch));
+                } else {
+                    aggReq.input('canal', sql.NVarChar, dbCanal);
+                }
+                memberLocals.forEach((name, i) => aggReq.input(`ml${i}`, sql.NVarChar, name));
+
+                const aggResult = await aggReq.query(`
+                    SELECT
+                        SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) as PresupuestoAcum,
+                        SUM(MontoReal) as RealAcum,
+                        SUM(CASE WHEN MontoReal > 0 THEN ${anteriorField} ELSE 0 END) as AnteriorAcum
+                    FROM RSM_ALCANCE_DIARIO
+                    WHERE Fecha BETWEEN @startDate_a AND @endDate_a
+                        AND Año = YEAR(@endDate_a)
+                        AND Tipo = @kpi_a
+                        AND ${canalFilter}
+                        AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                        AND Local IN (${localPh})
+                `);
+
+                const row = aggResult.recordset[0];
+                const presupuestoAcum = row?.PresupuestoAcum || 0;
+                const real = row?.RealAcum || 0;
+                const anterior = row?.AnteriorAcum || 0;
+
+                return {
+                    grupo: groupName,
+                    presupuestoAcum,
+                    real,
+                    anterior,
+                    pctPresupuesto: presupuestoAcum > 0 ? (real / presupuestoAcum) : 0,
+                    pctAnterior: anterior > 0 ? (real / anterior) : 0,
+                    memberCount: memberLocals.length
+                };
+            } catch (err) {
+                console.error(`Error processing group "${groupName}":`, err.message);
+                return { grupo: groupName, presupuestoAcum: 0, real: 0, anterior: 0, pctPresupuesto: 0, pctAnterior: 0, memberCount: 0, error: err.message };
+            }
+        }));
+
+        console.log(`✅ getResumenGrupos: returning data for ${groupData.length} groups`);
+        res.json({ grupos: groupData });
+
+    } catch (error) {
+        console.error('Error in getResumenGrupos:', error);
+        res.status(500).json({ error: error.message });
+    }
+}
+
+module.exports = { getTendenciaData, getResumenCanal, getResumenGrupos };

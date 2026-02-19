@@ -58,10 +58,15 @@ export function ModuleCard({ module, stats = [], isLoading = false, onClick, dat
                     {module.icon}
                 </div>
                 <div className="flex-1">
-                    <h3 className="text-lg font-bold text-gray-900 mb-0.5">
+                    <h3 className="text-lg font-bold text-gray-900 leading-tight">
                         {module.name}
                     </h3>
-                    <p className="text-xs text-gray-500 font-medium">
+                    {module.subtitle && (
+                        <p className="text-xs font-semibold mt-0.5" style={{ color: module.color }}>
+                            {module.subtitle}
+                        </p>
+                    )}
+                    <p className="text-xs text-gray-500 font-medium mt-0.5">
                         {module.description}
                     </p>
                     {dateRange && (

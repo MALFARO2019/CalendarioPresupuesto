@@ -1,0 +1,43 @@
+Changed database context to 'InvGateData'.
+Estado actual de InvgateConfig:
+ConfigKey                                                                                            ConfigValuePreview                                                                                                                                                                                                                                               Len                 
+---------------------------------------------------------------------------------------------------- ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- --------------------
+API_KEY                                                                                              019c6c8e-9c7c-738e-9dd5-69b6bd                                                                                                                                                                                                                                                     36
+API_URL                                                                                              https://rostipollos.cloud.invg                                                                                                                                                                                                                                                     61
+LAST_SYNC_DATE                                                                                                                                                                                                                                                                                                                                                                           0
+SYNC_ENABLED                                                                                         true                                                                                                                                                                                                                                                                                4
+SYNC_INTERVAL_HOURS                                                                                  1                                                                                                                                                                                                                                                                                   1
+SYNC_PAGE_SIZE                                                                                       100                                                                                                                                                                                                                                                                                 3
+
+(6 rows affected)
+
+(1 rows affected)
+✅ CLIENT_ID guardado
+
+(1 rows affected)
+✅ CLIENT_SECRET guardado
+
+(1 rows affected)
+✅ TOKEN_URL guardado
+
+(1 rows affected)
+✅ API_BASE_URL guardado
+
+(1 rows affected)
+✅ SYNC_ENABLED guardado
+ 
+Estado FINAL de InvgateConfig:
+ConfigKey                                                                                            ConfigValuePreview                                                                                                                                                                                                                                               Len                 
+---------------------------------------------------------------------------------------------------- ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- --------------------
+API_BASE_URL                                                                                         https://rostipollos.cloud.invgate.net/ap                                                                                                                                                                                                                                           44
+API_KEY                                                                                              019c6c8e-9c7c-738e-9dd5-69b6bd09860c                                                                                                                                                                                                                                               36
+API_URL                                                                                              https://rostipollos.cloud.invgate.net/oa                                                                                                                                                                                                                                           61
+CLIENT_ID                                                                                            019c6eb1-0ee4-723d-91ce-5e547b33ab3b                                                                                                                                                                                                                                               36
+CLIENT_SECRET                                                                                        n3Pb449eA[04!o<#zRznlq!jtGlEu,~63wTUpO@0                                                                                                                                                                                                                                           64
+LAST_SYNC_DATE                                                                                                                                                                                                                                                                                                                                                                           0
+SYNC_ENABLED                                                                                         true                                                                                                                                                                                                                                                                                4
+SYNC_INTERVAL_HOURS                                                                                  1                                                                                                                                                                                                                                                                                   1
+SYNC_PAGE_SIZE                                                                                       100                                                                                                                                                                                                                                                                                 3
+TOKEN_URL                                                                                            https://rostipollos.cloud.invgate.net/oa                                                                                                                                                                                                                                           61
+
+(10 rows affected)

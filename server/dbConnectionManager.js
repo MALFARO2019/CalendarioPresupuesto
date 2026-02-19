@@ -18,6 +18,8 @@ class DatabaseConnectionManager {
                 trustServerCertificate: true,
                 enableArithAbort: true
             },
+            connectionTimeout: 15000,
+            requestTimeout: 30000,
             pool: {
                 max: 10,
                 min: 0,
@@ -254,15 +256,52 @@ class DatabaseConnectionManager {
             return false;
         }
     }
+
+    /**
+     * Get current status for API response
+     */
+    getCurrentStatus() {
+        return {
+            activeMode: this.activeMode || 'primary',
+            primaryHealthy: this.primaryHealthy,
+            auxiliaryConfigured: !!this.auxiliaryConfig,
+            lastHealthCheck: this.lastHealthCheck ? this.lastHealthCheck.toISOString() : null
+        };
+    }
+
+    /**
+     * Test a connection config without persisting it
+     */
+    async testConnection(config) {
+        try {
+            const pool = await new sql.ConnectionPool(config).connect();
+            await pool.request().query('SELECT 1 AS Test');
+            await pool.close();
+            return { success: true, message: 'Conexión exitosa' };
+        } catch (err) {
+            return { success: false, message: err.message };
+        }
+    }
 }
+
 
 // Create singleton instance
 const dbManager = new DatabaseConnectionManager();
 
-// Initialize on module load
+// Initialize on module load  
 (async () => {
-    await dbManager.initializePrimary();
-    await dbManager.loadAuxiliaryConfig();
+    try {
+        await dbManager.initializePrimary();
+        // Only attempt to load auxiliary config if primary connected successfully
+        if (dbManager.primaryPool) {
+            await dbManager.loadAuxiliaryConfig();
+        }
+    } catch (err) {
+        console.error('⚠️ Database initialization error:', err.message);
+        console.log('⏳ Server will continue attempting to connect...');
+        // Don't crash the entire server - just log the error
+        // The poolPromise resolver will keep trying
+    }
 })();
 
 module.exports = {

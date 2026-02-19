@@ -3,7 +3,7 @@ import { DateRangePicker } from './DateRangePicker';
 import { GroupingSelector, type GroupByType } from './GroupingSelector';
 import { DynamicGrid } from './DynamicGrid';
 import { InteractiveBrushChart } from './InteractiveBrushChart';
-import { getToken, API_BASE } from '../api';
+import { getToken, API_BASE, type EventosByDate } from '../api';
 import { Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { useFormatCurrency } from '../utils/formatters';
 
@@ -13,6 +13,9 @@ interface RangosViewProps {
     filterCanal: string;
     filterKpi: string;
     yearType: 'Año Anterior' | 'Año Anterior Ajustado';
+    verEventos?: boolean;
+    onVerEventosChange?: (v: boolean) => void;
+    eventosByYear?: EventosByDate;
 }
 
 interface PeriodData {
@@ -81,7 +84,7 @@ interface CanalResponse {
     totals: CanalData;
 }
 
-export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType }: RangosViewProps) {
+export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType, verEventos = false, onVerEventosChange, eventosByYear = {} }: RangosViewProps) {
     const formatCurrency = useFormatCurrency();
 
     // Initialize with current month as default
@@ -245,13 +248,29 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
 
     return (
         <div className="space-y-6">
-            {/* Date Range Picker */}
-            <DateRangePicker
-                startDate={startDate}
-                endDate={endDate}
-                onDateChange={handleDateChange}
-                year={year}
-            />
+            {/* Date Range Picker + Events Toggle */}
+            <div className="flex flex-wrap items-start gap-3">
+                <div className="flex-1 min-w-0">
+                    <DateRangePicker
+                        startDate={startDate}
+                        endDate={endDate}
+                        onDateChange={handleDateChange}
+                        year={year}
+                    />
+                </div>
+                {onVerEventosChange && (
+                    <button
+                        onClick={() => onVerEventosChange(!verEventos)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border self-center mt-1 ${verEventos
+                            ? 'bg-amber-100 text-amber-700 border-amber-300'
+                            : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                            }`}
+                    >
+                        <span>{verEventos ? '📅' : '🗓️'}</span>
+                        Eventos
+                    </button>
+                )}
+            </div>
 
             {/* Grouping Selector */}
             <GroupingSelector
@@ -275,6 +294,8 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
                         periods={data.periods}
                         kpi={filterKpi}
                         onBrushChange={handleBrushChange}
+                        verEventos={verEventos}
+                        eventosByYear={eventosByYear}
                     />
 
                     {/* Multi-KPI Summary Cards */}
@@ -497,46 +518,101 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
 
                             {/* Top 5 Tab */}
                             {activeTab === 'top5' && (
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    {/* Top 5 Best */}
-                                    <div>
-                                        <h4 className="text-md font-bold text-green-700 mb-3 flex items-center gap-2">
-                                            <TrendingUp className="w-5 h-5" />
-                                            Top 5 Mejores
-                                        </h4>
-                                        <div className="space-y-2">
-                                            {top5.best.map((period, idx) => (
-                                                <div key={idx} className="bg-green-50 rounded-lg p-3 border border-green-200">
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="font-semibold text-gray-800">#{idx + 1} {period.periodo}</span>
-                                                        <span className="font-bold text-green-700">{formatPct(period.pctAlcance)}</span>
+                                <div className="space-y-6">
+                                    <div className="grid md:grid-cols-2 gap-6">
+                                        {/* Top 5 Best */}
+                                        <div>
+                                            <h4 className="text-md font-bold text-green-700 mb-3 flex items-center gap-2">
+                                                <TrendingUp className="w-5 h-5" />
+                                                Top 5 Mejores (% Ppto)
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {top5.best.map((period, idx) => (
+                                                    <div key={idx} className="bg-green-50 rounded-lg p-3 border border-green-200">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="font-semibold text-gray-800">#{idx + 1} {period.periodo}</span>
+                                                            <span className="font-bold text-green-700">{formatPct(period.pctAlcance)}</span>
+                                                        </div>
+                                                        <div className="text-xs text-gray-600 mt-1">
+                                                            Real: {formatCurrency(period.real, filterKpi)} / Ppto: {formatCurrency(period.presupuesto, filterKpi)}
+                                                        </div>
                                                     </div>
-                                                    <div className="text-xs text-gray-600 mt-1">
-                                                        Real: {formatCurrency(period.real, filterKpi)} / Ppto: {formatCurrency(period.presupuesto, filterKpi)}
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Top 5 Worst */}
+                                        <div>
+                                            <h4 className="text-md font-bold text-red-700 mb-3 flex items-center gap-2">
+                                                <TrendingDown className="w-5 h-5" />
+                                                Top 5 Peores (% Ppto)
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {top5.worst.map((period, idx) => (
+                                                    <div key={idx} className="bg-red-50 rounded-lg p-3 border border-red-200">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="font-semibold text-gray-800">#{idx + 1} {period.periodo}</span>
+                                                            <span className="font-bold text-red-700">{formatPct(period.pctAlcance)}</span>
+                                                        </div>
+                                                        <div className="text-xs text-gray-600 mt-1">
+                                                            Real: {formatCurrency(period.real, filterKpi)} / Ppto: {formatCurrency(period.presupuesto, filterKpi)}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
 
-                                    {/* Top 5 Worst */}
-                                    <div>
-                                        <h4 className="text-md font-bold text-red-700 mb-3 flex items-center gap-2">
-                                            <TrendingDown className="w-5 h-5" />
-                                            Top 5 Peores
-                                        </h4>
-                                        <div className="space-y-2">
-                                            {top5.worst.map((period, idx) => (
-                                                <div key={idx} className="bg-red-50 rounded-lg p-3 border border-red-200">
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="font-semibold text-gray-800">#{idx + 1} {period.periodo}</span>
-                                                        <span className="font-bold text-red-700">{formatPct(period.pctAlcance)}</span>
-                                                    </div>
-                                                    <div className="text-xs text-gray-600 mt-1">
-                                                        Real: {formatCurrency(period.real, filterKpi)} / Ppto: {formatCurrency(period.presupuesto, filterKpi)}
-                                                    </div>
-                                                </div>
-                                            ))}
+                                    {/* Rankings adicionales */}
+                                    <div className="grid md:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
+                                        {/* Ranking por Real */}
+                                        <div>
+                                            <h4 className="text-md font-bold text-blue-700 mb-3">📊 Ranking por Ventas Real</h4>
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="border-b border-blue-200">
+                                                        <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">#</th>
+                                                        <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">Período</th>
+                                                        <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">Real</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {(data?.periods || []).sort((a, b) => b.real - a.real).slice(0, 10).map((period, idx) => (
+                                                        <tr key={idx} className="border-b border-blue-50 hover:bg-blue-50">
+                                                            <td className="py-2 px-2 text-xs font-bold text-blue-600">#{idx + 1}</td>
+                                                            <td className="py-2 px-2 text-sm font-medium text-gray-800">{period.periodo}</td>
+                                                            <td className="py-2 px-2 text-sm text-right font-mono font-semibold text-gray-900">{formatCurrency(period.real, filterKpi)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {/* Ranking por % Año Anterior */}
+                                        <div>
+                                            <h4 className="text-md font-bold text-purple-700 mb-3">📈 Ranking por % Año Anterior</h4>
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="border-b border-purple-200">
+                                                        <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">#</th>
+                                                        <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">Período</th>
+                                                        <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">% Ant.</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {(data?.periods || []).sort((a, b) => b.pctAnterior - a.pctAnterior).slice(0, 10).map((period, idx) => (
+                                                        <tr key={idx} className="border-b border-purple-50 hover:bg-purple-50">
+                                                            <td className="py-2 px-2 text-xs font-bold text-purple-600">#{idx + 1}</td>
+                                                            <td className="py-2 px-2 text-sm font-medium text-gray-800">{period.periodo}</td>
+                                                            <td className="py-2 px-2 text-right">
+                                                                <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${period.pctAnterior >= 1 ? 'bg-green-100 text-green-800' : period.pctAnterior >= 0.9 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                                                                    {formatPct(period.pctAnterior)}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                 </div>

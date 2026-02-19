@@ -11,12 +11,13 @@ interface CalendarGridProps {
     year: number;
     comparisonType: string;
     kpi: string;
+    eventsByDate?: Record<string, { id: number; evento: string; esFeriado: boolean; esInterno: boolean }[]>;
 }
 
 // L = Lunes, K = Martes, M = Miércoles, J, V, S, D
 const DAYS_OF_WEEK = ['L', 'K', 'M', 'J', 'V', 'S', 'D'];
 
-export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, comparisonType, kpi }) => {
+export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, comparisonType, kpi, eventsByDate = {} }) => {
     const { formatPct100 } = useUserPreferences();
     const fc = useFormatCurrency();
     // Data is already filtered for the month by parent component
@@ -46,15 +47,59 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
         if (d <= 3) {
             console.log(`Day ${d}: found record?`, dayRecord ? 'YES' : 'NO', dayRecord);
         }
+        // Build date key for events
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const dateKey = `${year}-${pad(month + 1)}-${pad(d)}`;
+        const dayEvents = eventsByDate[dateKey] || [];
         cells.push(
-            <DayCell
-                key={`day-${d}`}
-                day={d}
-                data={dayRecord}
-                isCurrentMonth={true}
-                comparisonType={comparisonType}
-                kpi={kpi}
-            />
+            <div key={`day-${d}`} className="relative">
+                <DayCell
+                    day={d}
+                    data={dayRecord}
+                    isCurrentMonth={true}
+                    comparisonType={comparisonType}
+                    kpi={kpi}
+                />
+                {dayEvents.length > 0 && (
+                    <div className="absolute bottom-0.5 left-0 right-0 px-0.5 flex flex-col gap-0.5">
+                        {dayEvents.slice(0, 2).map((ev, i) => (
+                            <div key={i} className="group/ev relative">
+                                <div
+                                    className={`text-[8px] leading-tight font-semibold truncate rounded px-0.5 cursor-default ${ev.esFeriado
+                                            ? 'bg-red-500 text-white'
+                                            : 'bg-amber-400 text-amber-900'
+                                        }`}
+                                >
+                                    {ev.evento}
+                                </div>
+                                {/* Rich tooltip */}
+                                <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/ev:flex flex-col min-w-[160px] max-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl p-2 text-left pointer-events-none">
+                                    <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded mb-1 inline-block ${ev.esFeriado ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
+                                        }`}>
+                                        {ev.esFeriado ? '🔴 Feriado' : '🟡 Evento'}
+                                    </div>
+                                    <p className="text-xs font-semibold text-gray-800 leading-snug">{ev.evento}</p>
+                                </div>
+                            </div>
+                        ))}
+                        {dayEvents.length > 2 && (
+                            <div className="group/more relative">
+                                <div className="text-[7px] text-gray-500 font-bold text-center cursor-default">+{dayEvents.length - 2} más</div>
+                                {/* Show all events tooltip on the +N chip */}
+                                <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/more:flex flex-col min-w-[160px] max-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl p-2 pointer-events-none">
+                                    {dayEvents.map((ev2, j) => (
+                                        <div key={j} className="flex items-start gap-1.5 py-1 border-b last:border-0 border-gray-100">
+                                            <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${ev2.esFeriado ? 'bg-red-500' : 'bg-amber-400'
+                                                }`} />
+                                            <p className="text-[10px] text-gray-800 font-medium leading-snug">{ev2.evento}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
         );
     }
 

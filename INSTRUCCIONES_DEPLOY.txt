@@ -1,0 +1,17 @@
+# Instrucciones de Despliegue - KPIs Rosti (Simplificado)
+
+## 1. Copiar Archivos
+Copie **toda la carpeta del proyecto** (`CalendarioPresupuesto`) al servidor de destino.
+
+## 2. Iniciar Sistema
+Dentro de la carpeta copiada, haga doble clic en el archivo:
+
+👉 **`START_APP.bat`**
+
+Este script se encargará automáticamente de:
+1.  Instalar las librerías necesarias (si es la primera vez).
+2.  Construir la aplicación web (si no está lista).
+3.  Iniciar el servidor y abrir el navegador.
+
+---
+**Nota:** El proceso de instalación inicial puede tardar unos minutos dependiendo de la velocidad de intenet del servidor. Las siguientes veces será instantáneo.

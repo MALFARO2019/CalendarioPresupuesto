@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush, Legend, LabelList } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush, Legend, LabelList, ReferenceLine } from 'recharts';
 import { formatCurrencyCompact } from '../utils/formatters';
+import type { EventosByDate } from '../api';
 
 interface PeriodData {
     periodo: string;
@@ -20,9 +21,11 @@ interface InteractiveBrushChartProps {
     periods: PeriodData[];
     kpi: string;
     onBrushChange?: (startIndex: number, endIndex: number) => void;
+    verEventos?: boolean;
+    eventosByYear?: EventosByDate;
 }
 
-export function InteractiveBrushChart({ periods, kpi, onBrushChange }: InteractiveBrushChartProps) {
+export function InteractiveBrushChart({ periods, kpi, onBrushChange, verEventos = false, eventosByYear = {} }: InteractiveBrushChartProps) {
     // Series visibility state
     const [showReal, setShowReal] = useState(true);
     const [showPresupuesto, setShowPresupuesto] = useState(true);
@@ -289,6 +292,25 @@ export function InteractiveBrushChart({ periods, kpi, onBrushChange }: Interacti
                             {showAntAjustLabel && <LabelList dataKey="AnteriorAjustado" position="top" formatter={(value: number) => formatCurrencyCompact(value, kpi)} style={{ fontSize: '10px', fill: '#ec4899', fontWeight: 'bold' }} />}
                         </Area>
                     )}
+                    {/* Event Reference Lines – match dates within displayed period ranges */}
+                    {verEventos && Object.entries(eventosByYear).map(([dateStr, evs]) => {
+                        // Find which period this date falls in
+                        const period = periods.find(p => dateStr >= p.periodoInicio && dateStr <= p.periodoFin);
+                        if (!period) return null;
+                        const hasFeriado = evs.some(e => e.esFeriado);
+                        const label = evs.map(e => e.evento).slice(0, 2).join(', ');
+                        return (
+                            <ReferenceLine
+                                key={dateStr}
+                                x={period.periodo}
+                                stroke={hasFeriado ? '#EF4444' : '#F59E0B'}
+                                strokeWidth={2}
+                                strokeDasharray="4 2"
+                                label={{ value: '📅', position: 'insideTopLeft', fontSize: 10 }}
+                                isFront
+                            />
+                        );
+                    })}
                     <Brush
                         dataKey="name"
                         height={30}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFormatCurrency } from '../utils/formatters';
-import { getToken, API_BASE } from '../api';
+import { getToken, API_BASE, type EventosByDate } from '../api';
 import { useUserPreferences } from '../context/UserPreferences';
 import { exportTendenciaExcel } from '../utils/excelExporter';
 import { TrendIndicator } from '../shared/components/TrendIndicator';
@@ -13,6 +13,11 @@ interface TendenciaAlcanceProps {
     individualStores?: string[];
     onExportExcel?: (exportFn: () => void) => void;
     availableCanales?: string[];
+    verEventos?: boolean;
+    onVerEventosChange?: (v: boolean) => void;
+    eventosByYear?: EventosByDate;
+    filterLocal?: string;
+    onFilterLocalChange?: (local: string) => void;
 }
 
 interface EvaluacionRecord {
@@ -88,14 +93,23 @@ const EvaluacionRow = React.memo(({ row, kpi, fc, formatPct, getAlcanceBadge }: 
 ));
 EvaluacionRow.displayName = 'EvaluacionRow';
 
-export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startDate, endDate, groups = [], individualStores = [], onExportExcel, availableCanales }) => {
+export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startDate, endDate, groups = [], individualStores = [], onExportExcel, availableCanales, verEventos = false, onVerEventosChange, filterLocal: filterLocalProp, onFilterLocalChange }) => {
     const fc = useFormatCurrency();
     const { preferences } = useUserPreferences();
-    const [activeTab, setActiveTab] = useState<'evaluacion' | 'resumenCanal' | 'top10'>('evaluacion');
+    const [activeTab, setActiveTab] = useState<'evaluacion' | 'resumenCanal' | 'resumenGrupos' | 'top10'>('evaluacion');
     const [kpi, setKpi] = useState<string>('Ventas');
-    const [channel, setChannel] = useState<string>('Todos'); // Changed from 'Total' to 'Todos'
-    const [selectedLocal, setSelectedLocal] = useState<string>('Corporativo');
+    const [channel, setChannel] = useState<string>('Todos');
+    const [selectedLocalInternal, setSelectedLocalInternal] = useState<string>('Corporativo');
+    // Use prop if provided (synchronized with global state), otherwise use internal state
+    const selectedLocal = filterLocalProp !== undefined && filterLocalProp !== '' ? filterLocalProp : selectedLocalInternal;
+    const setSelectedLocal = (val: string) => {
+        setSelectedLocalInternal(val);
+        if (onFilterLocalChange) onFilterLocalChange(val);
+    };
     const [yearType, setYearType] = useState<string>('anterior');
+    // Selector de rango de fechas
+    const [rangoFecha, setRangoFecha] = useState<'anual' | 'mes' | 'trimestre' | 'semestre' | 'personalizado'>('anual');
+    const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth()); // 0-indexed
     const [data, setData] = useState<{ evaluacion: EvaluacionRecord[], resumen: ResumenData, resumenMultiKpi?: Record<string, { totalPresupuesto: number, totalPresupuestoAcum: number, totalReal: number, totalAnterior: number, pctPresupuesto: number, pctAnterior: number, trendPresupuesto?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number }, trendAnterior?: { direction: 'up' | 'down' | 'neutral'; percentage: number; previousValue?: number } }> } | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -103,6 +117,38 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
     const [sortDir, setSortDir] = useState<SortDir>('desc');
     const [canalData, setCanalData] = useState<{ canales: CanalRecord[], totals: CanalTotals } | null>(null);
     const [canalLoading, setCanalLoading] = useState(false);
+    const [gruposData, setGruposData] = useState<{ grupo: string; presupuestoAcum: number; real: number; anterior: number; pctPresupuesto: number; pctAnterior: number; memberCount: number }[] | null>(null);
+    const [gruposLoading, setGruposLoading] = useState(false);
+    const [gruposError, setGruposError] = useState<string | null>(null);
+
+    // Calcular fechas efectivas basadas en el rango seleccionado
+    const { effectiveStart, effectiveEnd } = React.useMemo(() => {
+        const yearNum = year;
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        void monthNames;
+        const pad = (n: number) => String(n).padStart(2, '0');
+        if (rangoFecha === 'anual') return { effectiveStart: startDate, effectiveEnd: endDate };
+        if (rangoFecha === 'mes') {
+            const m = selectedMonth + 1;
+            const lastDay = new Date(yearNum, m, 0).getDate();
+            return { effectiveStart: `${yearNum}-${pad(m)}-01`, effectiveEnd: `${yearNum}-${pad(m)}-${pad(lastDay)}` };
+        }
+        if (rangoFecha === 'trimestre') {
+            const q = Math.floor(selectedMonth / 3);
+            const qStart = q * 3 + 1;
+            const qEnd = qStart + 2;
+            const lastDay = new Date(yearNum, qEnd, 0).getDate();
+            return { effectiveStart: `${yearNum}-${pad(qStart)}-01`, effectiveEnd: `${yearNum}-${pad(qEnd)}-${pad(lastDay)}` };
+        }
+        if (rangoFecha === 'semestre') {
+            const s = selectedMonth < 6 ? 1 : 2;
+            const sStart = s === 1 ? 1 : 7;
+            const sEnd = s === 1 ? 6 : 12;
+            const lastDay = new Date(yearNum, sEnd, 0).getDate();
+            return { effectiveStart: `${yearNum}-${pad(sStart)}-01`, effectiveEnd: `${yearNum}-${pad(sEnd)}-${pad(lastDay)}` };
+        }
+        return { effectiveStart: startDate, effectiveEnd: endDate };
+    }, [rangoFecha, selectedMonth, year, startDate, endDate]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -112,7 +158,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                 const token = getToken();
                 if (!token) { setError('No hay sesión activa'); return; }
 
-                const params = new URLSearchParams({ startDate, endDate, kpi, channel, yearType });
+                const params = new URLSearchParams({ startDate: effectiveStart, endDate: effectiveEnd, kpi, channel, yearType });
                 if (selectedLocal) params.set('local', selectedLocal);
                 params.set('comparativePeriod', preferences.comparativePeriod);
 
@@ -137,7 +183,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             }
         };
         fetchData();
-    }, [startDate, endDate, kpi, channel, selectedLocal, yearType, preferences.comparativePeriod]);
+    }, [effectiveStart, effectiveEnd, kpi, channel, selectedLocal, yearType, preferences.comparativePeriod]);
 
     // Fetch canal breakdown data when resumenCanal tab is active
     useEffect(() => {
@@ -147,7 +193,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             try {
                 const token = getToken();
                 if (!token) return;
-                const params = new URLSearchParams({ startDate, endDate, kpi, yearType });
+                const params = new URLSearchParams({ startDate: effectiveStart, endDate: effectiveEnd, kpi, yearType });
                 if (selectedLocal) params.set('local', selectedLocal);
                 const url = `${API_BASE}/tendencia/resumen-canal?${params}`;
                 console.log('📡 Fetching resumen canal:', url);
@@ -166,7 +212,43 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             }
         };
         fetchCanalData();
-    }, [activeTab, startDate, endDate, kpi, selectedLocal, yearType]);
+    }, [activeTab, effectiveStart, effectiveEnd, kpi, selectedLocal, yearType]);
+
+    // Fetch resumen de grupos when tab is active and groups exist
+    useEffect(() => {
+        if (activeTab !== 'resumenGrupos' || groups.length === 0) return;
+        const token = getToken();
+        if (!token) return;
+        const fetchGruposData = async () => {
+            setGruposLoading(true);
+            setGruposError(null);
+            try {
+                const params = new URLSearchParams({
+                    startDate: effectiveStart,
+                    endDate: effectiveEnd,
+                    kpi,
+                    yearType,
+                    channel,
+                    groups: groups.join(',')
+                });
+                const response = await fetch(`${API_BASE}/tendencia/resumen-grupos?${params}`, {
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                });
+                if (response.status === 401) { localStorage.clear(); window.location.reload(); return; }
+                if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+                const result = await response.json();
+                console.log('✅ Grupos data:', result.grupos?.length, 'groups');
+                setGruposData(result.grupos || []);
+            } catch (err: any) {
+                console.error('Error fetching resumen grupos:', err);
+                setGruposError(err.message || 'Error desconocido');
+                setGruposData([]);
+            } finally {
+                setGruposLoading(false);
+            }
+        };
+        fetchGruposData();
+    }, [activeTab, effectiveStart, effectiveEnd, kpi, yearType, channel, groups]);
 
     // Register export function with parent
     useEffect(() => {
@@ -176,13 +258,13 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                     data.evaluacion,
                     data.resumen,
                     year,
-                    `${startDate} - ${endDate}`,
+                    `${effectiveStart} - ${effectiveEnd}`,
                     kpi,
                     channel
                 );
             });
         }
-    }, [data, kpi, channel, year, startDate, endDate, onExportExcel]);
+    }, [data, kpi, channel, year, effectiveStart, effectiveEnd, onExportExcel]);
 
     const handleSort = useCallback((col: SortColumn) => {
         if (sortCol === col) {
@@ -329,6 +411,29 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                             <option value="ajustado">Ajustado</option>
                         </select>
                     </div>
+                    {/* Rango de Fechas */}
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Rango</label>
+                        <select value={rangoFecha} onChange={(e) => setRangoFecha(e.target.value as any)}
+                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="anual">Acum. Anual</option>
+                            <option value="trimestre">Acum. Trimestre</option>
+                            <option value="semestre">Acum. Semestre</option>
+                            <option value="mes">Mes</option>
+                        </select>
+                    </div>
+                    {/* Mes (solo cuando rango es Mes, Trimestre o Semestre) */}
+                    {rangoFecha !== 'anual' && (
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mes Ref.</label>
+                            <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                {['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map((m, i) => (
+                                    <option key={i} value={i}>{m}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -336,7 +441,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             {data?.resumen && (
                 <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-purple-50 rounded-2xl p-4 shadow-lg border border-indigo-100">
                     <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Resumen Total</h2>
+                        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Ventas</h2>
                         <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-semibold">
                             <span className="flex items-center gap-0.5">
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -446,12 +551,12 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
 
             {/* Tabs */}
             <div className="bg-white rounded-t-3xl shadow-lg border-b border-gray-200">
-                <div className="flex gap-2 px-6 pt-6">
-                    {(['evaluacion', 'resumenCanal', 'top10'] as const).map(tab => (
+                <div className="flex gap-2 px-6 pt-6 overflow-x-auto">
+                    {(['evaluacion', 'resumenCanal', 'resumenGrupos', 'top10'] as const).map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)}
-                            className={`px-6 py-3 font-semibold text-sm rounded-t-xl transition-colors ${activeTab === tab
+                            className={`px-6 py-3 font-semibold text-sm rounded-t-xl transition-colors whitespace-nowrap ${activeTab === tab
                                 ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                            {tab === 'evaluacion' ? 'Evaluación' : tab === 'resumenCanal' ? 'Resumen Canal' : 'Top 5'}
+                            {tab === 'evaluacion' ? 'Evaluación' : tab === 'resumenCanal' ? 'Resumen Canal' : tab === 'resumenGrupos' ? 'Resumen Grupos' : 'Top 5'}
                         </button>
                     ))}
                 </div>
@@ -642,63 +747,242 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                     </div>
                 )}
 
-                {activeTab === 'top10' && (
+                {activeTab === 'resumenGrupos' && (
                     <div>
-                        <h2 className="text-lg font-bold text-gray-800 mb-6">Top 5 Restaurantes</h2>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div>
-                                <h3 className="text-md font-semibold text-green-700 mb-3">🏆 Top 5 Mejores (% Ppto)</h3>
+                        <h2 className="text-lg font-bold text-gray-800 mb-4">Resumen por Grupo</h2>
+                        {groups.length === 0 ? (
+                            <p className="text-gray-500 text-sm">No hay grupos configurados para mostrar.</p>
+                        ) : gruposLoading ? (
+                            <div className="flex items-center gap-2 py-8 text-gray-400"><span className="animate-spin">⟳</span> Cargando datos de grupos...</div>
+                        ) : gruposData && gruposData.length > 0 ? (
+                            <div className="overflow-x-auto">
                                 <table className="w-full">
                                     <thead>
-                                        <tr className="border-b border-green-200">
-                                            <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">Restaurante</th>
-                                            <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">P. Acum</th>
-                                            <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">Real</th>
-                                            <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">% Ppto</th>
+                                        <tr className="border-b-2 border-gray-200">
+                                            <th className="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Grupo</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">P. Acum</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Real</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">% Ppto</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">{yearTypeLabel}</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">{yearTypePctLabel}</th>
+                                            <th className="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase"># Locals</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {(data?.evaluacion || []).sort((a, b) => b.pctPresupuesto - a.pctPresupuesto).slice(0, 5).map((row, idx) => (
-                                            <tr key={idx} className="border-b border-green-100 bg-green-50">
-                                                <td className="py-2 px-2 text-sm font-medium text-gray-800">{row.local}</td>
-                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-600">{fc(row.presupuestoAcum, kpi)}</td>
-                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-800 font-semibold">{fc(row.real, kpi)}</td>
-                                                <td className="py-2 px-2 text-right">
-                                                    <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${getAlcanceBadge(row.pctPresupuesto)}`}>
+                                        {gruposData.map(row => (
+                                            <tr key={row.grupo} className="border-b border-gray-100 hover:bg-gray-50">
+                                                <td className="py-3 px-3 text-sm font-semibold text-gray-800">{row.grupo}</td>
+                                                <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.presupuestoAcum, kpi)}</td>
+                                                <td className="py-3 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
+                                                <td className="py-3 px-3 text-right">
+                                                    <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${getAlcanceBadge(row.pctPresupuesto)}`}>
                                                         {formatPct(row.pctPresupuesto)}
                                                     </span>
                                                 </td>
+                                                <td className="py-3 px-3 text-sm text-right font-mono text-gray-700">{fc(row.anterior, kpi)}</td>
+                                                <td className="py-3 px-3 text-right">
+                                                    <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${getAlcanceBadge(row.pctAnterior)}`}>
+                                                        {formatPct(row.pctAnterior)}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-3 text-xs text-right text-gray-400">{row.memberCount}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
-                            <div>
-                                <h3 className="text-md font-semibold text-red-700 mb-3">⚠️ Top 5 Peores (% Ppto)</h3>
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="border-b border-red-200">
-                                            <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">Restaurante</th>
-                                            <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">P. Acum</th>
-                                            <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">Real</th>
-                                            <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">% Ppto</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(data?.evaluacion || []).sort((a, b) => a.pctPresupuesto - b.pctPresupuesto).slice(0, 5).map((row, idx) => (
-                                            <tr key={idx} className="border-b border-red-100 bg-red-50">
-                                                <td className="py-2 px-2 text-sm font-medium text-gray-800">{row.local}</td>
-                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-600">{fc(row.presupuestoAcum, kpi)}</td>
-                                                <td className="py-2 px-2 text-sm text-right font-mono text-gray-800 font-semibold">{fc(row.real, kpi)}</td>
-                                                <td className="py-2 px-2 text-right">
-                                                    <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-red-100 text-red-800">
-                                                        {formatPct(row.pctPresupuesto)}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                        ) : gruposError ? (
+                            <div className="py-4">
+                                <p className="text-red-500 text-sm font-medium">⚠️ Error cargando grupos</p>
+                                <p className="text-gray-400 text-xs mt-1">{gruposError}</p>
+                                <p className="text-gray-400 text-xs mt-1">Asegúrate de que el servidor esté actualizado y reiniciado.</p>
+                            </div>
+                        ) : (
+                            <p className="text-gray-500 text-sm">No hay datos de grupos disponibles para el período seleccionado.</p>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'top10' && (
+                    <div>
+                        <h2 className="text-lg font-bold text-gray-800 mb-6">Top 5 Restaurantes</h2>
+
+                        {/* Sección: VENTAS REALES */}
+                        <div className="mb-8">
+                            <div className="flex items-center gap-2 mb-4">
+                                <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200">💰 Ventas Reales</span>
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {/* Mejores por Ventas Real */}
+                                <div className="border border-green-200 rounded-xl overflow-hidden">
+                                    <div className="bg-green-50 px-4 py-2 border-b border-green-200">
+                                        <h3 className="text-sm font-bold text-green-700">🏆 Top 5 Mejores (% Ppto)</h3>
+                                    </div>
+                                    <table className="w-full">
+                                        <thead><tr className="border-b border-gray-100 bg-gray-50">
+                                            <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Restaurante</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">P. Acum</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">Real</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">% Ppto</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {(data?.evaluacion || []).filter(r => !groups.includes(r.local)).sort((a, b) => b.real - a.real).slice(0, 5).map((row, idx) => (
+                                                <tr key={idx} className="border-b border-gray-50 hover:bg-green-50">
+                                                    <td className="py-2 px-3 text-sm font-medium text-gray-800">{row.local}</td>
+                                                    <td className="py-2 px-3 text-xs text-right font-mono text-gray-500">{fc(row.presupuestoAcum, kpi)}</td>
+                                                    <td className="py-2 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
+                                                    <td className="py-2 px-3 text-right">
+                                                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${getAlcanceBadge(row.pctPresupuesto)}`}>{formatPct(row.pctPresupuesto)}</span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {/* Peores por Ventas Real */}
+                                <div className="border border-red-200 rounded-xl overflow-hidden">
+                                    <div className="bg-red-50 px-4 py-2 border-b border-red-200">
+                                        <h3 className="text-sm font-bold text-red-700">⚠️ Top 5 Peores (% Ppto)</h3>
+                                    </div>
+                                    <table className="w-full">
+                                        <thead><tr className="border-b border-gray-100 bg-gray-50">
+                                            <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Restaurante</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">P. Acum</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">Real</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">% Ppto</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {(data?.evaluacion || []).filter(r => !groups.includes(r.local)).sort((a, b) => a.real - b.real).slice(0, 5).map((row, idx) => (
+                                                <tr key={idx} className="border-b border-gray-50 hover:bg-red-50">
+                                                    <td className="py-2 px-3 text-sm font-medium text-gray-800">{row.local}</td>
+                                                    <td className="py-2 px-3 text-xs text-right font-mono text-gray-500">{fc(row.presupuestoAcum, kpi)}</td>
+                                                    <td className="py-2 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
+                                                    <td className="py-2 px-3 text-right">
+                                                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${getAlcanceBadge(row.pctPresupuesto)}`}>{formatPct(row.pctPresupuesto)}</span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Sección: % PPTO */}
+                        <div className="mb-8 pt-6 border-t border-gray-100">
+                            <div className="flex items-center gap-2 mb-4">
+                                <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200">📊 % Presupuesto</span>
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div className="border border-green-200 rounded-xl overflow-hidden">
+                                    <div className="bg-green-50 px-4 py-2 border-b border-green-200">
+                                        <h3 className="text-sm font-bold text-green-700">🏆 Top 5 Mejores (% Ppto)</h3>
+                                    </div>
+                                    <table className="w-full">
+                                        <thead><tr className="border-b border-gray-100 bg-gray-50">
+                                            <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Restaurante</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">P. Acum</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">Real</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">% Ppto</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {(data?.evaluacion || []).filter(r => !groups.includes(r.local)).sort((a, b) => b.pctPresupuesto - a.pctPresupuesto).slice(0, 5).map((row, idx) => (
+                                                <tr key={idx} className="border-b border-gray-50 hover:bg-green-50">
+                                                    <td className="py-2 px-3 text-sm font-medium text-gray-800">{row.local}</td>
+                                                    <td className="py-2 px-3 text-xs text-right font-mono text-gray-500">{fc(row.presupuestoAcum, kpi)}</td>
+                                                    <td className="py-2 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
+                                                    <td className="py-2 px-3 text-right">
+                                                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${getAlcanceBadge(row.pctPresupuesto)}`}>{formatPct(row.pctPresupuesto)}</span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="border border-red-200 rounded-xl overflow-hidden">
+                                    <div className="bg-red-50 px-4 py-2 border-b border-red-200">
+                                        <h3 className="text-sm font-bold text-red-700">⚠️ Top 5 Peores (% Ppto)</h3>
+                                    </div>
+                                    <table className="w-full">
+                                        <thead><tr className="border-b border-gray-100 bg-gray-50">
+                                            <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Restaurante</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">P. Acum</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">Real</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">% Ppto</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {(data?.evaluacion || []).filter(r => !groups.includes(r.local)).sort((a, b) => a.pctPresupuesto - b.pctPresupuesto).slice(0, 5).map((row, idx) => (
+                                                <tr key={idx} className="border-b border-gray-50 hover:bg-red-50">
+                                                    <td className="py-2 px-3 text-sm font-medium text-gray-800">{row.local}</td>
+                                                    <td className="py-2 px-3 text-xs text-right font-mono text-gray-500">{fc(row.presupuestoAcum, kpi)}</td>
+                                                    <td className="py-2 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
+                                                    <td className="py-2 px-3 text-right">
+                                                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${getAlcanceBadge(row.pctPresupuesto)}`}>{formatPct(row.pctPresupuesto)}</span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Sección: % AÑO ANTERIOR */}
+                        <div className="pt-6 border-t border-gray-100">
+                            <div className="flex items-center gap-2 mb-4">
+                                <span className="text-xs font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-3 py-1 rounded-full border border-purple-200">📈 {yearTypePctLabel} — {yearTypeLabel}</span>
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div className="border border-green-200 rounded-xl overflow-hidden">
+                                    <div className="bg-green-50 px-4 py-2 border-b border-green-200">
+                                        <h3 className="text-sm font-bold text-green-700">🏆 Top 5 Mejores ({yearTypePctLabel})</h3>
+                                    </div>
+                                    <table className="w-full">
+                                        <thead><tr className="border-b border-gray-100 bg-gray-50">
+                                            <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Restaurante</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">{yearTypeLabel}</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">Real</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">{yearTypePctLabel}</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {(data?.evaluacion || []).filter(r => !groups.includes(r.local) && r.anterior > 0).sort((a, b) => b.pctAnterior - a.pctAnterior).slice(0, 5).map((row, idx) => (
+                                                <tr key={idx} className="border-b border-gray-50 hover:bg-green-50">
+                                                    <td className="py-2 px-3 text-sm font-medium text-gray-800">{row.local}</td>
+                                                    <td className="py-2 px-3 text-xs text-right font-mono text-gray-500">{fc(row.anterior, kpi)}</td>
+                                                    <td className="py-2 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
+                                                    <td className="py-2 px-3 text-right">
+                                                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${getAlcanceBadge(row.pctAnterior)}`}>{formatPct(row.pctAnterior)}</span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="border border-red-200 rounded-xl overflow-hidden">
+                                    <div className="bg-red-50 px-4 py-2 border-b border-red-200">
+                                        <h3 className="text-sm font-bold text-red-700">⚠️ Top 5 Peores ({yearTypePctLabel})</h3>
+                                    </div>
+                                    <table className="w-full">
+                                        <thead><tr className="border-b border-gray-100 bg-gray-50">
+                                            <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Restaurante</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">{yearTypeLabel}</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">Real</th>
+                                            <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">{yearTypePctLabel}</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {(data?.evaluacion || []).filter(r => !groups.includes(r.local) && r.anterior > 0).sort((a, b) => a.pctAnterior - b.pctAnterior).slice(0, 5).map((row, idx) => (
+                                                <tr key={idx} className="border-b border-gray-50 hover:bg-red-50">
+                                                    <td className="py-2 px-3 text-sm font-medium text-gray-800">{row.local}</td>
+                                                    <td className="py-2 px-3 text-xs text-right font-mono text-gray-500">{fc(row.anterior, kpi)}</td>
+                                                    <td className="py-2 px-3 text-sm text-right font-mono font-semibold text-gray-900">{fc(row.real, kpi)}</td>
+                                                    <td className="py-2 px-3 text-right">
+                                                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${getAlcanceBadge(row.pctAnterior)}`}>{formatPct(row.pctAnterior)}</span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -241,8 +241,11 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
             {/* Header */}
             <div className="mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">
-                    Alcance Canal Todos {filterLocal}
+                    Alcance de Presupuesto {filterLocal && filterLocal !== 'Todos' ? `— ${filterLocal}` : ''}
                 </h2>
+                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">
+                    {isAnnual ? 'Acumulado del Año' : `Acumulado del Mes — ${monthNames[currentMonth]}`}
+                </p>
                 <p className="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
                     <span>Año: {new Date().getFullYear()}{isAnnual ? '' : ` - Mes: ${monthNames[currentMonth]}`}</span>
                     {dateRange && (
