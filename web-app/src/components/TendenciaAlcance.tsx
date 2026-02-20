@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFormatCurrency } from '../utils/formatters';
-import { getToken, API_BASE, type EventosByDate } from '../api';
+import { getToken, API_BASE, fetchAdminPorLocal, type PersonalAsignado, type EventosByDate } from '../api';
 import { useUserPreferences } from '../context/UserPreferences';
 import { exportTendenciaExcel } from '../utils/excelExporter';
 import { TrendIndicator } from '../shared/components/TrendIndicator';
@@ -120,6 +120,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
     const [gruposData, setGruposData] = useState<{ grupo: string; presupuestoAcum: number; real: number; anterior: number; pctPresupuesto: number; pctAnterior: number; memberCount: number }[] | null>(null);
     const [gruposLoading, setGruposLoading] = useState(false);
     const [gruposError, setGruposError] = useState<string | null>(null);
+    const [adminName, setAdminName] = useState<PersonalAsignado[]>([]);
 
     // Calcular fechas efectivas basadas en el rango seleccionado
     const { effectiveStart, effectiveEnd } = React.useMemo(() => {
@@ -149,6 +150,19 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
         }
         return { effectiveStart: startDate, effectiveEnd: endDate };
     }, [rangoFecha, selectedMonth, year, startDate, endDate]);
+
+    // Fetch personal for selected local when rango=mes and it's an individual store
+    useEffect(() => {
+        if (rangoFecha !== 'mes' || !selectedLocal || groups.includes(selectedLocal) || selectedLocal === 'Corporativo') {
+            setAdminName([]);
+            return;
+        }
+        let cancelled = false;
+        fetchAdminPorLocal(selectedLocal).then(lista => {
+            if (!cancelled) setAdminName(lista);
+        });
+        return () => { cancelled = true; };
+    }, [rangoFecha, selectedLocal, groups]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -333,7 +347,24 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             {/* Header with filters */}
             <div className="bg-white rounded-3xl p-6 shadow-lg border border-gray-100">
                 <div className="flex items-center justify-between mb-4">
-                    <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Tendencia Alcance {year}</h1>
+                    <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
+                        Tendencia Alcance {year}
+                        {rangoFecha === 'mes' && selectedLocal && !groups.includes(selectedLocal) && (
+                            <span className="ml-2 font-semibold text-gray-700 text-xl">
+                                {selectedLocal}
+                                {adminName.length > 0 && (
+                                    <span className="ml-2 inline-flex flex-wrap gap-x-3 items-baseline">
+                                        {adminName.map((p, i) => (
+                                            <span key={i} className="text-gray-600 font-semibold text-base">
+                                                {p.nombre}{' '}
+                                                <span className="text-gray-400 font-normal text-xs italic">({p.perfil})</span>
+                                            </span>
+                                        ))}
+                                    </span>
+                                )}
+                            </span>
+                        )}
+                    </h1>
                     <div className="text-right">
                         <div className="text-sm text-gray-500">
                             {startDate} — {endDate}
@@ -816,7 +847,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                 {/* Mejores por Ventas Real */}
                                 <div className="border border-green-200 rounded-xl overflow-hidden">
                                     <div className="bg-green-50 px-4 py-2 border-b border-green-200">
-                                        <h3 className="text-sm font-bold text-green-700">🏆 Top 5 Mejores (% Ppto)</h3>
+                                        <h3 className="text-sm font-bold text-green-700">🏆 Top 5 Mejores</h3>
                                     </div>
                                     <table className="w-full">
                                         <thead><tr className="border-b border-gray-100 bg-gray-50">
@@ -842,7 +873,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                 {/* Peores por Ventas Real */}
                                 <div className="border border-red-200 rounded-xl overflow-hidden">
                                     <div className="bg-red-50 px-4 py-2 border-b border-red-200">
-                                        <h3 className="text-sm font-bold text-red-700">⚠️ Top 5 Peores (% Ppto)</h3>
+                                        <h3 className="text-sm font-bold text-red-700">⚠️ Top 5 Peores</h3>
                                     </div>
                                     <table className="w-full">
                                         <thead><tr className="border-b border-gray-100 bg-gray-50">
@@ -876,7 +907,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <div className="border border-green-200 rounded-xl overflow-hidden">
                                     <div className="bg-green-50 px-4 py-2 border-b border-green-200">
-                                        <h3 className="text-sm font-bold text-green-700">🏆 Top 5 Mejores (% Ppto)</h3>
+                                        <h3 className="text-sm font-bold text-green-700">🏆 Top 5 Mejores</h3>
                                     </div>
                                     <table className="w-full">
                                         <thead><tr className="border-b border-gray-100 bg-gray-50">
@@ -901,7 +932,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                                 </div>
                                 <div className="border border-red-200 rounded-xl overflow-hidden">
                                     <div className="bg-red-50 px-4 py-2 border-b border-red-200">
-                                        <h3 className="text-sm font-bold text-red-700">⚠️ Top 5 Peores (% Ppto)</h3>
+                                        <h3 className="text-sm font-bold text-red-700">⚠️ Top 5 Peores</h3>
                                     </div>
                                     <table className="w-full">
                                         <thead><tr className="border-b border-gray-100 bg-gray-50">

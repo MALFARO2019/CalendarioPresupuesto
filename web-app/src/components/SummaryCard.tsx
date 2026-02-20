@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { useFormatCurrency } from '../utils/formatters';
 import { useUserPreferences } from '../context/UserPreferences';
+import type { PersonalAsignado } from '../api';
 // Note: Trend indicators for SummaryCard will be implemented in Phase 8
 
 interface SummaryCardProps {
@@ -13,9 +14,11 @@ interface SummaryCardProps {
     filterLocal: string;
     isAnnual?: boolean;
     dateRange?: { startDate: string; endDate: string };
+    adminName?: string | null;
+    personalLocal?: PersonalAsignado[] | null;
 }
 
-export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransacciones, dataTQP, currentMonth, comparisonType, yearType, filterLocal, isAnnual = false, dateRange }) => {
+export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransacciones, dataTQP, currentMonth, comparisonType, yearType, filterLocal, isAnnual = false, dateRange, adminName, personalLocal }) => {
     const { formatPct100 } = useUserPreferences();
     const fc = useFormatCurrency();
     const summary = useMemo(() => {
@@ -242,6 +245,19 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
             <div className="mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">
                     Alcance de Presupuesto {filterLocal && filterLocal !== 'Todos' ? `— ${filterLocal}` : ''}
+                    {personalLocal && personalLocal.length > 0 && filterLocal && filterLocal !== 'Todos' && (
+                        <span className="ml-2 inline-flex flex-wrap gap-x-3 gap-y-0.5 items-baseline">
+                            {personalLocal.map((p, i) => (
+                                <span key={i} className="text-gray-700 font-semibold text-base">
+                                    {p.nombre}{' '}
+                                    <span className="text-gray-400 font-normal text-xs italic">({p.perfil})</span>
+                                </span>
+                            ))}
+                        </span>
+                    )}
+                    {(!personalLocal || personalLocal.length === 0) && adminName && filterLocal && filterLocal !== 'Todos' && (
+                        <span className="text-gray-500 font-normal text-xl ml-1">({adminName})</span>
+                    )}
                 </h2>
                 <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">
                     {isAnnual ? 'Acumulado del Año' : `Acumulado del Mes — ${monthNames[currentMonth]}`}

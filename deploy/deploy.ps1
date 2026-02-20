@@ -251,11 +251,21 @@ Write-Info "Copiando frontend..."
 robocopy "$webAppDist" "$InstallDir\web-app" /MIR /NFL /NDL /NJH /NJS /nc /ns /np 2>&1 | Out-Null
 Write-Ok "Frontend copiado a $InstallDir\web-app"
 
-# Copiar backend (todos los .js y package files, excluyendo node_modules y .env)
+# Copiar backend (todos los .js, subdirectorios y package files, excluyendo node_modules y .env)
 Write-Info "Copiando backend..."
-# Copiar todos los archivos .js
+# Copiar todos los archivos .js del directorio raiz
 Get-ChildItem -Path $serverSrc -Filter "*.js" | ForEach-Object {
     Copy-Item $_.FullName -Destination "$InstallDir\server\$($_.Name)" -Force
+}
+# Copiar subdirectorios necesarios (services, jobs, migrations, scripts)
+@("services", "jobs", "migrations", "scripts") | ForEach-Object {
+    $subDir = Join-Path $serverSrc $_
+    if (Test-Path $subDir) {
+        $destSubDir = Join-Path "$InstallDir\server" $_
+        if (-not (Test-Path $destSubDir)) { New-Item -ItemType Directory -Path $destSubDir -Force | Out-Null }
+        robocopy "$subDir" "$destSubDir" /MIR /NFL /NDL /NJH /NJS /nc /ns /np 2>&1 | Out-Null
+        Write-Info "  Copiado: $_/"
+    }
 }
 # Copiar package files
 @("package.json", "package-lock.json") | ForEach-Object {
@@ -289,6 +299,20 @@ SMTP_HOST=smtp.office365.com
 SMTP_PORT=587
 SMTP_USER=alertas@rostipolloscr.com
 SMTP_PASS=Rosti2020
+
+# Gemini AI (for Tactica analysis)
+GEMINI_API_KEY=AIzaSyBEuVeCka5ib3-POtEReONq8yYOUZH1MEM
+
+# Security
+ADMIN_PASSWORD=R0st1p017
+
+# InvGate Integration
+INVGATE_CLIENT_ID=019c6eb1-0ee4-723d-91ce-5e547b33ab3b
+INVGATE_CLIENT_SECRET=n3Pb449eA[04!o<#zRznlq!jtGlEu,~63wTUpO@0wJjLqVXi.gzZqXk8-=DrzUsP
+INVGATE_TOKEN_URL=https://rostipollos.cloud.invgate.net/oauth/v2/0/access_token
+INVGATE_API_BASE_URL=https://rostipollos.cloud.invgate.net/api/v2
+INVGATE_SYNC_ENABLED=true
+INVGATE_SYNC_INTERVAL=1
 "@ | Set-Content $envFile -Encoding UTF8
     
     Write-Ok "Archivo .env creado (REVISE y ajuste las credenciales)"

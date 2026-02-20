@@ -6,7 +6,7 @@ import { AdminPage } from './components/AdminPage';
 import { Dashboard } from './views/Dashboard';
 import { generateMockData } from './mockData';
 import type { BudgetRecord } from './mockData';
-import { fetchBudgetData, fetchFechaLimite, fetchStores, fetchGroupStores, fetchAvailableCanales, getToken, getUser, logout, verifyToken, API_BASE, fetchEventosPorMes, fetchEventosPorAno, type EventosByDate } from './api';
+import { fetchBudgetData, fetchFechaLimite, fetchStores, fetchGroupStores, fetchAvailableCanales, getToken, getUser, logout, verifyToken, API_BASE, fetchEventosPorMes, fetchEventosPorAno, fetchSPEventosPorMes, fetchSPEventosPorAno, fetchEventosAjuste, fetchAdminPorLocal, type PersonalAsignado, type EventosByDate } from './api';
 import { addMonths, format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X, SlidersHorizontal, Home } from 'lucide-react';
@@ -62,6 +62,9 @@ function App() {
   const [eventsByDate, setEventsByDate] = useState<EventosByDate>({});
   const [eventosByYear, setEventosByYear] = useState<EventosByDate>({});
   const [eventosYear, setEventosYear] = useState(new Date().getFullYear());
+  const [verEventosAjuste, setVerEventosAjuste] = useState(false);
+  const [eventosAjusteByDate, setEventosAjusteByDate] = useState<EventosByDate>({});
+  const [adminNameForLocal, setAdminNameForLocal] = useState<PersonalAsignado[]>([]);
 
   // Fetch DB mode on mount
   useEffect(() => {
@@ -72,6 +75,7 @@ function App() {
   }, []);
 
   // Fetch eventos por mes y por año cuando verEventos está activo
+  // Merges both DIM_EVENTOS (internal) and SharePoint Eventos Rosti
   useEffect(() => {
     if (!verEventos) {
       setEventsByDate({});
@@ -82,11 +86,52 @@ function App() {
     if (!token) return;
     const month = currentDate.getMonth() + 1;
     const currentYear = currentDate.getFullYear();
-    // Fetch por mes (for the monthly calendar grid)
-    fetchEventosPorMes(currentYear, month).then(setEventsByDate);
-    // Fetch por año (for annual/trend/rangos charts)
-    fetchEventosPorAno(eventosYear).then(setEventosByYear);
+
+    // Merge helper: combine two EventosByDate maps
+    const mergeEvents = (a: EventosByDate, b: EventosByDate): EventosByDate => {
+      const merged = { ...a };
+      for (const [key, evs] of Object.entries(b)) {
+        merged[key] = [...(merged[key] || []), ...evs];
+      }
+      return merged;
+    };
+
+    // Fetch por mes: DIM_EVENTOS + SharePoint
+    Promise.all([
+      fetchEventosPorMes(currentYear, month),
+      fetchSPEventosPorMes(currentYear, month)
+    ]).then(([dim, sp]) => setEventsByDate(mergeEvents(dim, sp)));
+
+    // Fetch por año: DIM_EVENTOS + SharePoint
+    Promise.all([
+      fetchEventosPorAno(eventosYear),
+      fetchSPEventosPorAno(eventosYear)
+    ]).then(([dim, sp]) => setEventosByYear(mergeEvents(dim, sp)));
   }, [verEventos, currentDate, eventosYear]);
+
+  // Fetch all personal assigned to selected local (only for individual stores, not groups)
+  useEffect(() => {
+    if (!filterLocal || groups.includes(filterLocal)) {
+      setAdminNameForLocal([]);
+      return;
+    }
+    let cancelled = false;
+    fetchAdminPorLocal(filterLocal).then(lista => {
+      if (!cancelled) setAdminNameForLocal(lista);
+    });
+    return () => { cancelled = true; };
+  }, [filterLocal, groups]);
+
+  // Fetch adjustment events (USARENPRESUPUESTO) - no year filter
+  useEffect(() => {
+    if (!verEventosAjuste) {
+      setEventosAjusteByDate({});
+      return;
+    }
+    const token = getToken();
+    if (!token) return;
+    fetchEventosAjuste().then(data => setEventosAjusteByDate(data));
+  }, [verEventosAjuste]);
 
   // Check if user is already logged in
   useEffect(() => {
@@ -392,27 +437,23 @@ function App() {
     return (
       <LoginPage
         onLoginSuccess={() => { setUseApi(true); setView('dashboard'); }}
+        onAdminAccess={() => { setView('admin'); }}
       />
     );
   }
 
   // Admin view
   if (view === 'admin') {
-    return <AdminPage onBack={() => setView('dashboard')} currentUser={user} />;
+    const adminUser = user || getUser();
+    const isOfflineAdmin = adminUser?.offlineAdmin === true;
+    return <AdminPage onBack={() => setView(isOfflineAdmin ? 'login' : 'dashboard')} currentUser={adminUser} />;
   }
 
   // Preferences view
   if (view === 'preferencias') {
-    const currentYr = currentDate.getFullYear();
-    const availYears = [currentYr - 1, currentYr, currentYr + 1, currentYr + 2].filter(y => y >= 2024);
     return (
       <PreferencesView
         onBack={() => setView('dashboard')}
-        verEventos={verEventos}
-        onVerEventosChange={setVerEventos}
-        eventosYear={eventosYear}
-        onEventosYearChange={y => { setEventosYear(y); }}
-        availableYears={availYears}
         groups={groups}
         yearType={yearType}
         onYearTypeChange={setYearType}
@@ -769,6 +810,8 @@ function App() {
                 comparisonType={filterType}
                 yearType={yearType}
                 filterLocal={filterLocal}
+                adminName={null}
+                personalLocal={adminNameForLocal}
                 dateRange={(() => {
                   const yr = currentDate.getFullYear();
                   const mo = currentDate.getMonth() + 1;
@@ -788,8 +831,7 @@ function App() {
               {/* Calendar Grid */}
               <div className="print-page lg:flex-[3]">
                 <div id="monthly-calendar-container">
-                  {/* Toggle Ver Eventos */}
-                  <div className="flex justify-end mb-2">
+                  <div className="flex justify-end mb-2 gap-2">
                     <button
                       onClick={() => setVerEventos(v => !v)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${verEventos
@@ -800,6 +842,16 @@ function App() {
                       <span>{verEventos ? '📅' : '🗓️'}</span>
                       Ver Eventos
                     </button>
+                    <button
+                      onClick={() => setVerEventosAjuste(v => !v)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${verEventosAjuste
+                        ? 'bg-red-100 text-red-700 border-red-300'
+                        : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                        }`}
+                    >
+                      <span>{verEventosAjuste ? '🔴' : '⚪'}</span>
+                      Eventos Ajuste
+                    </button>
                   </div>
                   <CalendarGrid
                     data={currentMonthData}
@@ -808,6 +860,7 @@ function App() {
                     comparisonType={filterType}
                     kpi={filterKpi}
                     eventsByDate={verEventos ? eventsByDate : {}}
+                    eventosAjusteByDate={verEventosAjuste ? eventosAjusteByDate : {}}
                   />
                 </div>
               </div>
@@ -840,6 +893,8 @@ function App() {
                   }}
                   verEventos={verEventos}
                   eventsByDate={eventsByDate}
+                  verEventosAjuste={verEventosAjuste}
+                  eventosAjusteByDate={eventosAjusteByDate}
                 />
               </div>
             </div>
@@ -904,6 +959,9 @@ function App() {
                 verEventos={verEventos}
                 onVerEventosChange={(v) => setVerEventos(v)}
                 eventosByYear={eventosByYear}
+                verEventosAjuste={verEventosAjuste}
+                onVerEventosAjusteChange={(v) => setVerEventosAjuste(v)}
+                eventosAjusteByDate={eventosAjusteByDate}
               />
             </div>
 

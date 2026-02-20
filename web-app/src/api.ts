@@ -25,6 +25,7 @@ export interface User {
     allowedCanales: string[];
     permitirEnvioClave?: boolean;
     perfilId?: number | null;
+    offlineAdmin?: boolean;
 }
 
 
@@ -95,6 +96,26 @@ export async function login(email: string, clave: string): Promise<{ success: bo
     setUser(data.user);
 
     return { success: true, token: data.token, user: data.user };
+}
+
+export async function adminLogin(password: string): Promise<{ success: boolean; error?: string }> {
+    const response = await fetch(`${API_BASE}/auth/admin-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        return { success: false, error: data.error };
+    }
+
+    // Store token and user in sessionStorage (admin offline sessions should not persist)
+    sessionStorage.setItem('auth_token', data.token);
+    sessionStorage.setItem('auth_user', JSON.stringify(data.user));
+
+    return { success: true };
 }
 
 export async function verifyToken(): Promise<boolean> {
@@ -472,6 +493,7 @@ export interface EventoItem {
     evento: string;
     esFeriado: boolean;
     esInterno: boolean;
+    usarEnPresupuesto?: boolean;
 }
 
 export type EventosByDate = Record<string, EventoItem[]>;
@@ -494,6 +516,52 @@ export async function fetchEventosPorMes(year: number, month: number): Promise<E
 export async function fetchEventosPorAno(year: number): Promise<EventosByDate> {
     try {
         const response = await fetch(`${API_BASE}/eventos/por-ano?year=${year}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return {};
+        const data = await response.json();
+        return data.byDate || {};
+    } catch {
+        return {};
+    }
+}
+
+// ==========================================
+// SharePoint Eventos Rosti (cached)
+// ==========================================
+
+// GET /api/sp-eventos/por-mes - SharePoint events for a given month (from cache)
+export async function fetchSPEventosPorMes(year: number, month: number): Promise<EventosByDate> {
+    try {
+        const response = await fetch(`${API_BASE}/sp-eventos/por-mes?year=${year}&month=${month}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return {};
+        const data = await response.json();
+        return data.byDate || {};
+    } catch {
+        return {};
+    }
+}
+
+// GET /api/sp-eventos/por-ano - SharePoint events for an entire year (from cache)
+export async function fetchSPEventosPorAno(year: number): Promise<EventosByDate> {
+    try {
+        const response = await fetch(`${API_BASE}/sp-eventos/por-ano?year=${year}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return {};
+        const data = await response.json();
+        return data.byDate || {};
+    } catch {
+        return {};
+    }
+}
+
+// GET /api/eventos-ajuste/all - All adjustment events (USARENPRESUPUESTO) without year filter
+export async function fetchEventosAjuste(): Promise<EventosByDate> {
+    try {
+        const response = await fetch(`${API_BASE}/eventos-ajuste/all`, {
             headers: authHeaders()
         });
         if (!response.ok) return {};
@@ -861,16 +929,17 @@ export interface Personal {
 }
 
 export interface Asignacion {
-    id: number;
-    personalId: number;
-    nombrePersonal: string;
-    local: string;
-    perfil: string;
-    fechaInicio: string;
-    fechaFin: string | null;
-    notas: string | null;
-    fechaAsignacion: string;
-    asignadoPor: string;
+    ID: number;
+    PERSONAL_ID: number;
+    PERSONAL_NOMBRE: string;
+    LOCAL: string;
+    PERFIL: string;
+    FECHA_INICIO: string;
+    FECHA_FIN: string | null;
+    NOTAS: string | null;
+    FECHA_ASIGNACION: string;
+    ASIGNADO_POR: string;
+    ACTIVO: boolean;
 }
 
 export async function fetchPersonal(): Promise<Personal[]> {
@@ -909,9 +978,13 @@ export async function deletePersona(id: number): Promise<void> {
     if (!response.ok) throw new Error('Error deleting persona');
 }
 
-export async function fetchAsignaciones(personalId?: number): Promise<Asignacion[]> {
-    const url = personalId ? `${API_BASE}/personal/asignaciones?personalId=${personalId}` : `${API_BASE}/personal/asignaciones`;
-    const response = await fetch(url, {
+export async function fetchAsignaciones(personalId?: number, month?: number, year?: number): Promise<Asignacion[]> {
+    const params = new URLSearchParams();
+    if (personalId) params.append('personalId', personalId.toString());
+    if (month) params.append('month', month.toString());
+    if (year) params.append('year', year.toString());
+
+    const response = await fetch(`${API_BASE}/personal/asignaciones?${params.toString()}`, {
         headers: authHeaders()
     });
     if (!response.ok) throw new Error('Error fetching asignaciones');
@@ -946,11 +1019,75 @@ export async function deleteAsignacion(id: number): Promise<void> {
     if (!response.ok) throw new Error('Error deleting asignacion');
 }
 
-export async function fetchLocalesSinCobertura(perfil?: string): Promise<{ Local: string, PerfilesFaltantes: string }[]> {
-    const url = perfil ? `${API_BASE}/personal/locales-sin-cobertura?perfil=${encodeURIComponent(perfil)}` : `${API_BASE}/personal/locales-sin-cobertura`;
-    const response = await fetch(url, {
+export async function fetchLocalesSinCobertura(perfil?: string, month?: number, year?: number): Promise<{ Local: string, PerfilesFaltantes: string }[]> {
+    const params = new URLSearchParams();
+    if (perfil) params.append('perfil', perfil);
+    if (month) params.append('month', month.toString());
+    if (year) params.append('year', year.toString());
+
+    const response = await fetch(`${API_BASE}/personal/locales-sin-cobertura?${params.toString()}`, {
         headers: authHeaders()
     });
     if (!response.ok) throw new Error('Error fetching locales sin cobertura');
     return response.json();
+}
+
+// --- Almacenes individuales (sin grupos) ---
+
+export async function fetchPersonalStores(): Promise<string[]> {
+    const response = await fetch(`${API_BASE}/personal/stores`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching stores');
+    return response.json();
+}
+
+// --- Cargos (Perfiles) ---
+
+export async function fetchCargos(): Promise<{ ID: number, NOMBRE: string, ACTIVO: boolean }[]> {
+    const response = await fetch(`${API_BASE}/personal/cargos`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching cargos');
+    return response.json();
+}
+
+export async function createCargo(nombre: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/personal/cargos`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre })
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error creating cargo');
+    }
+}
+
+export async function deleteCargo(id: number, reassignTo?: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/personal/cargos/${id}`, {
+        method: 'DELETE',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reassignTo })
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error deleting cargo');
+    }
+}
+
+// GET /api/personal/admin-por-local — Returns all active personal assigned to a local
+export interface PersonalAsignado { nombre: string; perfil: string; }
+
+export async function fetchAdminPorLocal(local: string): Promise<PersonalAsignado[]> {
+    try {
+        if (!local || local === 'Todos' || local === 'Corporativo') return [];
+        const response = await fetch(`${API_BASE}/personal/admin-por-local?local=${encodeURIComponent(local)}`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return [];
+        return await response.json();
+    } catch {
+        return [];
+    }
 }

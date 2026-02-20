@@ -44,10 +44,13 @@ const personalModule = require('./personal');
 const { ensureUberEatsTables } = require('./uberEatsDb');
 const uberEatsCron = require('./jobs/uberEatsCron');
 const registerUberEatsEndpoints = require('./uberEats_endpoints');
+const spEventsService = require('./services/sharepointEventsService');
+const { ensureKpiAdminTables } = require('./kpiAdminDb');
+const { registerKpiAdminEndpoints } = require('./kpiAdmin_endpoints');
 
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 80;
 
 app.use(cors());
 app.use(express.json());
@@ -61,8 +64,23 @@ app.use(express.json());
     try { await formsCron.start(); } catch (e) { console.error('Forms cron error:', e.message); }
     // Initialize Uber Eats DB and cron
     try { await ensureUberEatsTables(); } catch (e) { console.error('UberEats DB error:', e.message); }
+    // KPI Admin tables
+    try { await ensureKpiAdminTables(); } catch (e) { console.error('KPI Admin DB error:', e.message); }
     try { await uberEatsCron.start(); } catch (e) { console.error('UberEats cron error:', e.message); }
+    // SharePoint Eventos Rosti: initial sync + periodic refresh (every 60 min)
+    try {
+        await spEventsService.syncEventos();
+        setInterval(async () => {
+            try { await spEventsService.syncEventos(); }
+            catch (e) { console.error('SP Events periodic sync error:', e.message); }
+        }, 60 * 60 * 1000);
+    } catch (e) { console.error('SP Events initial sync error:', e.message); }
 })();
+
+// ==========================================
+// KPI ADMIN ENDPOINTS
+// ==========================================
+registerKpiAdminEndpoints(app, authMiddleware);
 
 // ==========================================
 // UBER EATS ENDPOINTS
@@ -72,6 +90,15 @@ registerUberEatsEndpoints(app, authMiddleware);
 // TEST ENDPOINT
 app.get('/api/test', (req, res) => {
     res.json({ message: 'Server is working!' });
+});
+
+app.get('/api/version-check', (req, res) => {
+    res.json({
+        version: 'v2.0 - FIX',
+        timestamp: new Date().toISOString(),
+        env: 'production',
+        db: dbManager.activeMode
+    });
 });
 
 // ==========================================
@@ -109,8 +136,45 @@ app.delete('/api/personal/:id', authMiddleware, async (req, res) => {
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ==========================================
+// PERSONAL ENDPOINTS
+// ==========================================
+
+app.get('/api/personal', authMiddleware, async (req, res) => {
+    try { res.json(await personalModule.getAllPersonal()); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/personal', authMiddleware, async (req, res) => {
+    try {
+        const { nombre, correo, cedula, telefono } = req.body;
+        if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
+        res.status(201).json(await personalModule.createPersona(nombre, correo, cedula, telefono));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/personal/:id', authMiddleware, async (req, res) => {
+    try {
+        const { nombre, correo, cedula, telefono, activo } = req.body;
+        res.json(await personalModule.updatePersona(parseInt(req.params.id), nombre, correo, cedula, telefono, activo));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/personal/:id', authMiddleware, async (req, res) => {
+    try { await personalModule.deletePersona(parseInt(req.params.id)); res.json({ ok: true }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Asignaciones
 app.get('/api/personal/asignaciones', authMiddleware, async (req, res) => {
-    try { res.json(await personalModule.getAsignaciones(req.query.personalId ? parseInt(req.query.personalId) : null)); }
+    try {
+        const { personalId, month, year } = req.query;
+        res.json(await personalModule.getAsignaciones(
+            personalId ? parseInt(personalId) : null,
+            month,
+            year
+        ));
+    }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -134,9 +198,53 @@ app.delete('/api/personal/asignaciones/:id', authMiddleware, async (req, res) =>
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Cobertura
 app.get('/api/personal/locales-sin-cobertura', authMiddleware, async (req, res) => {
-    try { res.json(await personalModule.getLocalesSinCobertura(req.query.perfil || null)); }
+    try {
+        const { perfil, month, year } = req.query;
+        res.json(await personalModule.getLocalesSinCobertura(perfil || null, month, year));
+    }
     catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Almacenes individuales (sin grupos)
+app.get('/api/personal/stores', authMiddleware, async (req, res) => {
+    try { res.json(await personalModule.getAllStores()); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Personal por local: retorna todos los asignados activos con su perfil
+app.get('/api/personal/admin-por-local', authMiddleware, async (req, res) => {
+    try {
+        const { local } = req.query;
+        if (!local) return res.json([]);
+        const personal = await personalModule.getPersonalPorLocal(local);
+        res.json(personal);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Cargos (Perfiles)
+app.get('/api/personal/cargos', authMiddleware, async (req, res) => {
+    try { res.json(await personalModule.getAllCargos()); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/personal/cargos', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { nombre } = req.body;
+        await personalModule.createCargo(nombre);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/personal/cargos/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { reassignTo } = req.body;
+        await personalModule.deleteCargo(parseInt(req.params.id), reassignTo);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 
@@ -164,13 +272,100 @@ app.post('/api/auth/login', async (req, res) => {
         if (!clave) {
             return res.status(400).json({ error: 'Clave es requerida' });
         }
-        const result = await loginUser(email.trim().toLowerCase(), clave.trim());
+
+        // Timeout to avoid hanging when DB is unreachable
+        const loginPromise = loginUser(email.trim().toLowerCase(), clave.trim());
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('DB_TIMEOUT')), 10000)
+        );
+
+        let result;
+        try {
+            result = await Promise.race([loginPromise, timeoutPromise]);
+        } catch (timeoutErr) {
+            if (timeoutErr.message === 'DB_TIMEOUT') {
+                return res.status(503).json({ error: 'No se pudo conectar a la base de datos. Verifique la conexión VPN o use Acceso Administrador.' });
+            }
+            throw timeoutErr;
+        }
+
         if (!result.success) {
             return res.status(401).json({ error: result.message });
         }
         res.json(result);
     } catch (err) {
         console.error('Error in /api/auth/login:', err);
+        res.status(500).json({ error: 'No se pudo conectar a la base de datos. Verifique la conexión VPN o use Acceso Administrador.' });
+    }
+});
+
+// POST /api/auth/admin-login - Login with admin password only (no DB required)
+app.post('/api/auth/admin-login', (req, res) => {
+    try {
+        const { password } = req.body;
+        if (!password) {
+            return res.status(400).json({ error: 'Clave de administrador es requerida' });
+        }
+        if (!verifyAdminPassword(password)) {
+            return res.status(401).json({ error: 'Clave de administrador incorrecta' });
+        }
+
+        // Generate JWT with offline admin identity (no DB lookup)
+        const jwt = require('jsonwebtoken');
+        const token = jwt.sign(
+            {
+                userId: 0,
+                email: 'admin@offline',
+                nombre: 'Administrador',
+                allowedStores: [],
+                allowedCanales: [],
+                accesoTendencia: false,
+                accesoTactica: false,
+                accesoEventos: true,
+                accesoPresupuesto: false,
+                accesoPresupuestoMensual: false,
+                accesoPresupuestoAnual: false,
+                accesoPresupuestoRangos: false,
+                accesoTiempos: false,
+                accesoEvaluaciones: false,
+                accesoInventarios: false,
+                accesoPersonal: false,
+                esAdmin: true,
+                esProtegido: false,
+                offlineAdmin: true
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        console.log('🔐 Offline admin login successful');
+        res.json({
+            success: true,
+            token,
+            user: {
+                id: 0,
+                email: 'admin@offline',
+                nombre: 'Administrador',
+                esAdmin: true,
+                offlineAdmin: true,
+                accesoTendencia: false,
+                accesoTactica: false,
+                accesoEventos: true,
+                accesoPresupuesto: false,
+                accesoPresupuestoMensual: false,
+                accesoPresupuestoAnual: false,
+                accesoPresupuestoRangos: false,
+                accesoTiempos: false,
+                accesoEvaluaciones: false,
+                accesoInventarios: false,
+                accesoPersonal: false,
+                esProtegido: false,
+                allowedStores: [],
+                allowedCanales: []
+            }
+        });
+    } catch (err) {
+        console.error('Error in /api/auth/admin-login:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -2165,7 +2360,8 @@ app.get('/api/eventos/por-mes', authMiddleware, async (req, res) => {
                     E.IDEVENTO,
                     E.EVENTO,
                     E.ESFERIADO,
-                    E.ESINTERNO
+                    E.ESINTERNO,
+                    E.USARENPRESUPUESTO
                 FROM DIM_EVENTOS_FECHAS EF
                 INNER JOIN DIM_EVENTOS E ON E.IDEVENTO = EF.IDEVENTO
                 WHERE YEAR(EF.FECHA) = @year AND MONTH(EF.FECHA) = @month
@@ -2182,7 +2378,8 @@ app.get('/api/eventos/por-mes', authMiddleware, async (req, res) => {
                 id: row.IDEVENTO,
                 evento: row.EVENTO,
                 esFeriado: row.ESFERIADO === 'S' || row.ESFERIADO === true || row.ESFERIADO === 1,
-                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1
+                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1,
+                usarEnPresupuesto: row.USARENPRESUPUESTO === 'S' || row.USARENPRESUPUESTO === true || row.USARENPRESUPUESTO === 1
             });
         }
         res.json({ byDate });
@@ -2206,7 +2403,8 @@ app.get('/api/eventos/por-ano', authMiddleware, async (req, res) => {
                     E.IDEVENTO,
                     E.EVENTO,
                     E.ESFERIADO,
-                    E.ESINTERNO
+                    E.ESINTERNO,
+                    E.USARENPRESUPUESTO
                 FROM DIM_EVENTOS_FECHAS EF
                 INNER JOIN DIM_EVENTOS E ON E.IDEVENTO = EF.IDEVENTO
                 WHERE YEAR(EF.FECHA) = @year
@@ -2222,12 +2420,52 @@ app.get('/api/eventos/por-ano', authMiddleware, async (req, res) => {
                 id: row.IDEVENTO,
                 evento: row.EVENTO,
                 esFeriado: row.ESFERIADO === 'S' || row.ESFERIADO === true || row.ESFERIADO === 1,
-                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1
+                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1,
+                usarEnPresupuesto: row.USARENPRESUPUESTO === 'S' || row.USARENPRESUPUESTO === true || row.USARENPRESUPUESTO === 1
             });
         }
         res.json({ byDate });
     } catch (err) {
         console.error('Error in /api/eventos/por-ano:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/eventos-ajuste/all - All adjustment events (USARENPRESUPUESTO='S') across all years, no year filter
+app.get('/api/eventos-ajuste/all', authMiddleware, async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .query(`
+                SELECT 
+                    EF.FECHA,
+                    E.IDEVENTO,
+                    E.EVENTO,
+                    E.ESFERIADO,
+                    E.ESINTERNO,
+                    E.USARENPRESUPUESTO
+                FROM DIM_EVENTOS_FECHAS EF
+                INNER JOIN DIM_EVENTOS E ON E.IDEVENTO = EF.IDEVENTO
+                WHERE E.USARENPRESUPUESTO = 'S'
+                ORDER BY EF.FECHA
+            `);
+
+        const byDate = {};
+        for (const row of result.recordset) {
+            const dateStr = (row.FECHA instanceof Date ? row.FECHA : new Date(row.FECHA))
+                .toISOString().substring(0, 10);
+            if (!byDate[dateStr]) byDate[dateStr] = [];
+            byDate[dateStr].push({
+                id: row.IDEVENTO,
+                evento: row.EVENTO,
+                esFeriado: row.ESFERIADO === 'S' || row.ESFERIADO === true || row.ESFERIADO === 1,
+                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1,
+                usarEnPresupuesto: true
+            });
+        }
+        res.json({ byDate });
+    } catch (err) {
+        console.error('Error in /api/eventos-ajuste/all:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -2694,6 +2932,149 @@ app.post('/api/invgate/test-connection', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
+// PERSONAL MODULE ENDPOINTS
+// ==========================================
+
+// Ensure Personal tables exist
+(async () => {
+    try {
+        const pool = await poolPromise;
+
+        // TABLE: APP_PERSONAL_CARGOS (Catalog of job titles)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_PERSONAL_CARGOS' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_PERSONAL_CARGOS (
+                    ID INT IDENTITY(1,1) PRIMARY KEY,
+                    NOMBRE NVARCHAR(100) NOT NULL UNIQUE,
+                    ACTIVO BIT DEFAULT 1
+                );
+                
+                -- Seed default values
+                INSERT INTO APP_PERSONAL_CARGOS (NOMBRE) VALUES 
+                ('Administrador'), ('Mercadeo'), ('Supervisor'), ('Auditor'), 
+                ('Encargado'), ('Entrenador'), ('Cajero'), ('Salonero'), 
+                ('Cocinero'), ('Motorizado'), ('Miscelaneo');
+            END
+        `);
+
+        // TABLE: APP_PERSONAL (Staff members)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_PERSONAL' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_PERSONAL (
+                    ID INT IDENTITY(1,1) PRIMARY KEY,
+                    NOMBRE NVARCHAR(200) NOT NULL,
+                    CORREO NVARCHAR(200),
+                    CEDULA NVARCHAR(50),
+                    TELEFONO NVARCHAR(50),
+                    ACTIVO BIT DEFAULT 1,
+                    FECHA_CREACION DATETIME DEFAULT GETDATE()
+                );
+            END
+        `);
+
+        // TABLE: APP_PERSONAL_ASIGNACIONES (Assignments)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_PERSONAL_ASIGNACIONES' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_PERSONAL_ASIGNACIONES (
+                    ID INT IDENTITY(1,1) PRIMARY KEY,
+                    PERSONAL_ID INT NOT NULL,
+                    LOCAL NVARCHAR(100) NOT NULL,
+                    PERFIL NVARCHAR(100) NOT NULL, -- Storing name for simplicity, or could be FK to APP_PERSONAL_CARGOS
+                    FECHA_INICIO DATE NOT NULL,
+                    FECHA_FIN DATE,
+                    NOTAS NVARCHAR(MAX),
+                    ACTIVO BIT DEFAULT 1,
+                    FECHA_CREACION DATETIME DEFAULT GETDATE(),
+                    CONSTRAINT FK_Asignacion_Personal FOREIGN KEY (PERSONAL_ID) REFERENCES APP_PERSONAL(ID)
+                );
+            END
+        `);
+
+        console.log('✅ Personal module tables checked/created');
+    } catch (err) {
+        console.error('❌ Error initializing Personal tables:', err);
+    }
+})();
+
+// --- CARGOS (PROFILES) ENDPOINTS ---
+
+// GET /api/personal/cargos - List active cargos
+app.get('/api/personal/cargos', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const pool = await poolPromise;
+        const result = await pool.request().query('SELECT * FROM APP_PERSONAL_CARGOS WHERE ACTIVO = 1 ORDER BY NOMBRE');
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/personal/cargos - Create new cargo
+app.post('/api/personal/cargos', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { nombre } = req.body;
+        const pool = await poolPromise;
+        await pool.request()
+            .input('nombre', sql.NVarChar, nombre)
+            .query('INSERT INTO APP_PERSONAL_CARGOS (NOMBRE) VALUES (@nombre)');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/personal/cargos/:id - Delete (deactivate) cargo, optionally creating a migration for existing assignments
+app.delete('/api/personal/cargos/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const id = parseInt(req.params.id);
+        const { reassignTo } = req.body; // Name of the target profile to reassign to
+
+        const pool = await poolPromise;
+
+        // Get name of cargo to be deleted
+        const cargoResult = await pool.request().input('id', sql.Int, id).query('SELECT NOMBRE FROM APP_PERSONAL_CARGOS WHERE ID = @id');
+        if (cargoResult.recordset.length === 0) return res.status(404).json({ error: 'Cargo no encontrado' });
+        const oldName = cargoResult.recordset[0].NOMBRE;
+
+        // Start transaction
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        try {
+            const request = new sql.Request(transaction);
+
+            // Reassign if requested
+            if (reassignTo) {
+                await request
+                    .input('oldDetails', sql.NVarChar, oldName)
+                    .input('newDetails', sql.NVarChar, reassignTo)
+                    .query('UPDATE APP_PERSONAL_ASIGNACIONES SET PERFIL = @newDetails WHERE PERFIL = @oldDetails');
+            }
+
+            // Deactivate cargo
+            await request.input('idCargo', sql.Int, id).query('UPDATE APP_PERSONAL_CARGOS SET ACTIVO = 0 WHERE ID = @idCargo');
+
+            await transaction.commit();
+            res.json({ success: true });
+        } catch (err) {
+            await transaction.rollback();
+            throw err;
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+
+
+// ==========================================
 // MICROSOFT FORMS ENDPOINTS (admin only)
 // ==========================================
 
@@ -3146,9 +3527,9 @@ app.post('/api/invgate/sync', authMiddleware, async (req, res) => {
         res.json({ success: true, message: 'Sincronización iniciada en segundo plano' });
         // Run sync in background
         if (syncType === 'full') {
-            invgateSyncService.syncFull(initiatedBy).catch(err => console.error('Sync error:', err));
+            invgateSyncService.fullSync(initiatedBy).catch(err => console.error('Sync error:', err));
         } else {
-            invgateSyncService.syncIncremental(initiatedBy).catch(err => console.error('Sync error:', err));
+            invgateSyncService.incrementalSync(initiatedBy).catch(err => console.error('Sync error:', err));
         }
     } catch (err) {
         console.error('Error triggering InvGate sync:', err);
@@ -3265,6 +3646,124 @@ app.get('/api/invgate/reports/by-priority', authMiddleware, async (req, res) => 
     }
 });
 
+// GET /api/invgate/helpdesks - List all helpdesks from InvGate API + local config
+app.get('/api/invgate/helpdesks', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+
+        // Get local config (these are the helpdesks already known to us)
+        const localConfigs = await invgateSyncService.getHelpdeskConfigs();
+        const localMap = {};
+        localConfigs.forEach(h => { localMap[h.HelpdeskID] = h; });
+
+        // Try fetching from InvGate API — if it fails, fall back to local only
+        let apiHelpdesks = [];
+        let apiError = null;
+        try {
+            apiHelpdesks = await invgateService.getHelpdesks();
+        } catch (apiErr) {
+            apiError = apiErr.message;
+            console.warn('⚠️ Could not fetch helpdesks from InvGate API:', apiErr.message);
+        }
+
+        // Merge: API items override local with current names
+        const merged = [];
+        const seenIds = new Set();
+
+        for (const h of apiHelpdesks) {
+            const id = h.id;
+            seenIds.add(id);
+            merged.push({
+                id,
+                name: h.name || h.nombre || `Helpdesk ${id}`,
+                syncEnabled: localMap[id] ? !!localMap[id].SyncEnabled : false,
+                totalTickets: localMap[id] ? (localMap[id].TotalTickets || 0) : 0
+            });
+        }
+
+        // Add any local helpdesks not returned by API
+        for (const local of localConfigs) {
+            if (!seenIds.has(local.HelpdeskID)) {
+                merged.push({
+                    id: local.HelpdeskID,
+                    name: local.Nombre || `Helpdesk ${local.HelpdeskID}`,
+                    syncEnabled: !!local.SyncEnabled,
+                    totalTickets: local.TotalTickets || 0
+                });
+            }
+        }
+
+        res.json({ helpdesks: merged, apiError });
+    } catch (err) {
+        console.error('Error getting InvGate helpdesks:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// PUT /api/invgate/helpdesks/:id/toggle - Enable/disable helpdesk for sync
+app.put('/api/invgate/helpdesks/:id/toggle', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const helpdeskId = parseInt(req.params.id);
+        const { enabled, name } = req.body;
+        const pool = await invgateDb.getInvgatePool();
+        // Ensure helpdesk exists in local table first
+        await pool.request()
+            .input('id', sql.Int, helpdeskId)
+            .input('nombre', sql.NVarChar, name || `Helpdesk ${helpdeskId}`)
+            .query(`
+                IF NOT EXISTS (SELECT 1 FROM InvgateHelpdesks WHERE HelpdeskID = @id)
+                    INSERT INTO InvgateHelpdesks (HelpdeskID, Nombre, SyncEnabled) VALUES (@id, @nombre, 0)
+            `);
+        await invgateSyncService.toggleHelpdesk(helpdeskId, enabled);
+        res.json({ success: true, helpdeskId, enabled });
+    } catch (err) {
+        console.error('Error toggling InvGate helpdesk:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/invgate/custom-fields?helpdeskId=X - Get custom field definitions
+app.get('/api/invgate/custom-fields', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const helpdeskId = req.query.helpdeskId ? parseInt(req.query.helpdeskId) : null;
+        const defs = await invgateSyncService.getCustomFieldDefs(helpdeskId);
+        res.json(defs);
+    } catch (err) {
+        console.error('Error getting InvGate custom fields:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/invgate/custom-fields - Save custom field definitions
+app.put('/api/invgate/custom-fields', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { defs } = req.body; // [{fieldId, helpdeskId, fieldName, fieldType, showInDashboard, displayOrder}]
+        if (!Array.isArray(defs)) return res.status(400).json({ error: 'defs debe ser un array' });
+        const result = await invgateSyncService.saveCustomFieldDefs(defs);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Error saving InvGate custom fields:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/invgate/detect-fields/:helpdeskId - Auto-detect custom fields from API
+app.post('/api/invgate/detect-fields/:helpdeskId', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const helpdeskId = parseInt(req.params.helpdeskId);
+        const detected = await invgateService.detectCustomFields(helpdeskId);
+        res.json(detected);
+    } catch (err) {
+        console.error('Error detecting InvGate custom fields:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Start InvGate cron job on server startup
 (async () => {
     try {
@@ -3278,13 +3777,84 @@ app.get('/api/invgate/reports/by-priority', authMiddleware, async (req, res) => 
 
 
 // ==========================================
+// SHAREPOINT EVENTOS ROSTI ENDPOINTS
+// ==========================================
+
+// GET /api/sp-eventos/por-mes?year=2026&month=2 - Cached SP events for a month
+app.get('/api/sp-eventos/por-mes', authMiddleware, async (req, res) => {
+    try {
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+        const byDate = await spEventsService.getEventosPorMes(year, month);
+        res.json({ byDate });
+    } catch (err) {
+        console.error('Error in /api/sp-eventos/por-mes:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/sp-eventos/por-ano?year=2026 - Cached SP events for a year
+app.get('/api/sp-eventos/por-ano', authMiddleware, async (req, res) => {
+    try {
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const byDate = await spEventsService.getEventosPorAno(year);
+        res.json({ byDate });
+    } catch (err) {
+        console.error('Error in /api/sp-eventos/por-ano:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/sp-eventos/sync - Force sync from SharePoint (admin only)
+app.post('/api/sp-eventos/sync', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'Solo administradores pueden forzar sincronización' });
+        }
+        const result = await spEventsService.syncEventos();
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Error in /api/sp-eventos/sync:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/sp-eventos/debug-fields - Show SP list field names (admin only)
+app.get('/api/sp-eventos/debug-fields', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'Solo administradores' });
+        }
+        const result = await spEventsService.debugListFields();
+        res.json(result);
+    } catch (err) {
+        console.error('Error in /api/sp-eventos/debug-fields:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
 // SERVE FRONTEND STATIC FILES
 // ==========================================
 const distPath = path.join(__dirname, '../web-app/dist');
-app.use(express.static(distPath));
 
-// SPA fallback - todas las rutas no-API devuelven index.html
+// Serve static assets WITH cache (JS/CSS have hashes in filenames)
+app.use(express.static(distPath, {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+            // NEVER cache HTML - forces browser to always get latest
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+}));
+
+// SPA fallback - todas las rutas no-API devuelven index.html (SIN CACHE)
 app.get(/(.*)/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(distPath, 'index.html'));
 });
 

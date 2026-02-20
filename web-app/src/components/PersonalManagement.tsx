@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { API_BASE, getToken, fetchAllStores, fetchLocalesSinCobertura } from '../api';
-import { Plus, Edit2, Trash2, UserCheck, MapPin, RefreshCw, X, ChevronDown, ChevronUp, Calendar, AlertTriangle, Shield, Search } from 'lucide-react';
+import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchCargos, createCargo, deleteCargo, fetchAsignaciones } from '../api';
+import { Plus, Edit2, Trash2, UserCheck, MapPin, RefreshCw, X, ChevronDown, ChevronUp, Calendar, AlertTriangle, Shield, Search, Briefcase, Settings } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,13 +26,20 @@ interface Asignacion {
     ACTIVO: boolean;
 }
 
+interface Cargo {
+    ID: number;
+    NOMBRE: string;
+    ACTIVO: boolean;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const PersonalManagement: React.FC = () => {
     const [personas, setPersonas] = useState<Persona[]>([]);
     const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
+    const [cargos, setCargos] = useState<Cargo[]>([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'personas' | 'asignaciones' | 'cobertura'>('asignaciones');
+    const [activeTab, setActiveTab] = useState<'personas' | 'asignaciones' | 'gestionar' | 'cobertura'>('asignaciones');
     const [allStores, setAllStores] = useState<string[]>([]);
     const [localesSinCobertura, setLocalesSinCobertura] = useState<{ Local: string, PerfilesFaltantes: string }[]>([]);
     const [loadingCobertura, setLoadingCobertura] = useState(false);
@@ -57,6 +64,13 @@ export const PersonalManagement: React.FC = () => {
     const [aNotas, setANotas] = useState('');
     const [savingAsig, setSavingAsig] = useState(false);
 
+    // Cargos Manager
+    const [showCargosModal, setShowCargosModal] = useState(false);
+    const [newCargoName, setNewCargoName] = useState('');
+    const [showDeleteCargoModal, setShowDeleteCargoModal] = useState(false);
+    const [cargoToDelete, setCargoToDelete] = useState<Cargo | null>(null);
+    const [cargoReassignTo, setCargoReassignTo] = useState('');
+
     // Filters
     const [filterPersona, setFilterPersona] = useState('');
     const [filterLocal, setFilterLocal] = useState('');
@@ -64,18 +78,24 @@ export const PersonalManagement: React.FC = () => {
     const [filterDateStart, setFilterDateStart] = useState('');
     const [filterDateEnd, setFilterDateEnd] = useState('');
     const [coberturaPerfil, setCoberturaPerfil] = useState('Supervisor');
+    const [coberturaMonth, setCoberturaMonth] = useState(new Date().getMonth() + 1);
+    const [coberturaYear, setCoberturaYear] = useState(new Date().getFullYear());
     const [expandedPersona, setExpandedPersona] = useState<number | null>(null);
 
-    const PERFILES_CATALOGO = [
-        'Administrador', 'Mercadeo', 'Supervisor', 'Auditor', 'Encargado',
-        'Entrenador', 'Cajero', 'Salonero', 'Cocinero', 'Motorizado', 'Miscelaneo'
-    ];
-
     const [error, setError] = useState<string | null>(null);
+
+    const activeCargos = cargos.map(c => c.NOMBRE);
 
     const headers = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
 
     // ─── Load ─────────────────────────────────────────────────────────────────
+
+    const loadCargos = useCallback(async () => {
+        try {
+            const data = await fetchCargos();
+            setCargos(data);
+        } catch (e: any) { console.error('Error loading cargos', e); }
+    }, []);
 
     const loadPersonas = useCallback(async () => {
         setLoading(true);
@@ -89,15 +109,15 @@ export const PersonalManagement: React.FC = () => {
 
     const loadAsignaciones = useCallback(async () => {
         try {
-            const r = await fetch(`${API_BASE}/personal/asignaciones`, { headers: headers() });
-            const d = await r.json();
-            setAsignaciones(Array.isArray(d) ? d : []);
+            // Can pass month/year here later if needed
+            const d = await fetchAsignaciones();
+            setAsignaciones(d);
         } catch (e: any) { setError(e.message); }
     }, []);
 
     const loadStores = useCallback(async () => {
         try {
-            const stores = await fetchAllStores();
+            const stores = await fetchPersonalStores();
             setAllStores(stores);
         } catch (e: any) { console.error('Error loading stores', e); }
     }, []);
@@ -105,18 +125,24 @@ export const PersonalManagement: React.FC = () => {
     const loadCobertura = useCallback(async () => {
         if (activeTab !== 'cobertura') return;
         setLoadingCobertura(true);
+        setError(null);
         try {
-            const data = await fetchLocalesSinCobertura(coberturaPerfil);
+            const data = await fetchLocalesSinCobertura(coberturaPerfil, coberturaMonth, coberturaYear);
             setLocalesSinCobertura(data);
-        } catch (e: any) { setError(e.message); }
+        } catch (e: any) {
+            console.error(e);
+            setError(e.message);
+            setLocalesSinCobertura([]);
+        }
         finally { setLoadingCobertura(false); }
-    }, [activeTab, coberturaPerfil]);
+    }, [activeTab, coberturaPerfil, coberturaMonth, coberturaYear]);
 
     useEffect(() => {
+        loadCargos();
         loadPersonas();
         loadAsignaciones();
         loadStores();
-    }, [loadPersonas, loadAsignaciones, loadStores]);
+    }, [loadCargos, loadPersonas, loadAsignaciones, loadStores]);
 
     useEffect(() => {
         loadCobertura();
@@ -232,9 +258,11 @@ export const PersonalManagement: React.FC = () => {
                     <h2 className="text-xl font-bold text-gray-800">👥 Control de Personal</h2>
                     <p className="text-sm text-gray-500 mt-0.5">Asignaciones de personal a locales por perfil</p>
                 </div>
-                <button onClick={() => { loadPersonas(); loadAsignaciones(); }} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" title="Actualizar">
-                    <RefreshCw className="w-4 h-4" />
-                </button>
+                <div className="flex gap-2">
+                    <button onClick={() => { loadPersonas(); loadAsignaciones(); loadCargos(); }} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" title="Actualizar">
+                        <RefreshCw className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
 
             {error && (
@@ -244,12 +272,11 @@ export const PersonalManagement: React.FC = () => {
                 </div>
             )}
 
-            {/* Tabs */}
-            <div className="flex gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
-                {(['asignaciones', 'personas', 'cobertura'] as const).map(tab => (
+            <div className="flex items-center gap-1 sm:gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
+                {(['asignaciones', 'personas', 'gestionar', 'cobertura'] as const).map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : tab === 'personas' ? `👤 Personal (${personas.length})` : '🛡️ Cobertura'}
+                        className={`px-3 sm:px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : tab === 'personas' ? `👤 Personal (${personas.length})` : tab === 'gestionar' ? `⚙️ Perfiles (${cargos.length})` : '🛡️ Cobertura'}
                     </button>
                 ))}
             </div>
@@ -269,7 +296,7 @@ export const PersonalManagement: React.FC = () => {
                         </select>
                         <select value={filterPerfil} onChange={e => setFilterPerfil(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
                             <option value="">Todos los perfiles</option>
-                            {PERFILES_CATALOGO.map(p => <option key={p} value={p}>{p}</option>)}
+                            {activeCargos.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
                         <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2">
                             <Calendar className="w-4 h-4 text-gray-400" />
@@ -400,7 +427,31 @@ export const PersonalManagement: React.FC = () => {
                                 onChange={e => setCoberturaPerfil(e.target.value)}
                                 className="w-full px-4 py-2 border-2 border-orange-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 bg-white text-orange-900 font-semibold"
                             >
-                                {PERFILES_CATALOGO.map(p => <option key={p} value={p}>{p}</option>)}
+                                {activeCargos.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                        </div>
+                        <div className="w-32">
+                            <label className="block text-xs font-bold text-orange-800 uppercase mb-2">Mes</label>
+                            <select
+                                value={coberturaMonth}
+                                onChange={e => setCoberturaMonth(parseInt(e.target.value))}
+                                className="w-full px-4 py-2 border-2 border-orange-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 bg-white text-orange-900 font-semibold"
+                            >
+                                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                                    <option key={m} value={m}>{new Date(0, m - 1).toLocaleString('es-CR', { month: 'long' })}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="w-24">
+                            <label className="block text-xs font-bold text-orange-800 uppercase mb-2">Año</label>
+                            <select
+                                value={coberturaYear}
+                                onChange={e => setCoberturaYear(parseInt(e.target.value))}
+                                className="w-full px-4 py-2 border-2 border-orange-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 bg-white text-orange-900 font-semibold"
+                            >
+                                {[2024, 2025, 2026, 2027].map(y => (
+                                    <option key={y} value={y}>{y}</option>
+                                ))}
                             </select>
                         </div>
                         <div className="flex items-end">
@@ -410,12 +461,12 @@ export const PersonalManagement: React.FC = () => {
                                 className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-bold shadow-sm transition-all flex items-center gap-2 disabled:opacity-50"
                             >
                                 <RefreshCw className={`w-4 h-4 ${loadingCobertura ? 'animate-spin' : ''}`} />
-                                Analizar Cobertura
+                                Analizar
                             </button>
                         </div>
                     </div>
 
-                    {localesSinCobertura.length === 0 && !loadingCobertura ? (
+                    {localesSinCobertura.length === 0 && !loadingCobertura && !error ? (
                         <div className="text-center py-12 bg-green-50 rounded-xl border border-green-100">
                             <Shield className="w-12 h-12 text-green-500 mx-auto mb-4" />
                             <h3 className="text-lg font-bold text-green-800">¡Cobertura Completa!</h3>
@@ -450,6 +501,74 @@ export const PersonalManagement: React.FC = () => {
                 </div>
             )}
 
+            {/* ── TAB: Gestionar Perfiles ── */}
+            {activeTab === 'gestionar' && (
+                <div>
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 max-w-lg">
+                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <Briefcase className="w-5 h-5 text-indigo-600" /> Gestión de Perfiles
+                        </h3>
+                        <p className="text-sm text-gray-500 mb-4">Administra los perfiles disponibles para asignar al personal.</p>
+
+                        <div className="flex gap-2 mb-4">
+                            <input
+                                type="text"
+                                value={newCargoName}
+                                onChange={e => setNewCargoName(e.target.value)}
+                                placeholder="Nuevo perfil..."
+                                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && newCargoName.trim()) {
+                                        (async () => {
+                                            try { await createCargo(newCargoName); setNewCargoName(''); loadCargos(); } catch (err: any) { setError(err.message); }
+                                        })();
+                                    }
+                                }}
+                            />
+                            <button
+                                onClick={async () => {
+                                    if (!newCargoName.trim()) return;
+                                    try { await createCargo(newCargoName); setNewCargoName(''); loadCargos(); } catch (e: any) { setError(e.message); }
+                                }}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1.5 text-sm font-medium"
+                            >
+                                <Plus className="w-4 h-4" /> Agregar
+                            </button>
+                        </div>
+
+                        {cargos.length === 0 ? (
+                            <div className="text-center py-8 text-gray-400">
+                                <Briefcase className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                                <p className="text-sm">No hay perfiles definidos.</p>
+                                <p className="text-xs mt-1">Agrega uno usando el campo de arriba.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {cargos.map(c => (
+                                    <div key={c.ID} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                                            <span className="font-medium text-gray-700">{c.NOMBRE}</span>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                setCargoToDelete(c);
+                                                setCargoReassignTo('');
+                                                setShowDeleteCargoModal(true);
+                                            }}
+                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                            title={`Eliminar ${c.NOMBRE}`}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* ── Modal: Persona ── */}
             {showPersonaForm && (
                 <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowPersonaForm(false)}>
@@ -465,11 +584,11 @@ export const PersonalManagement: React.FC = () => {
                                 <input type="email" value={pCorreo} onChange={e => setPCorreo(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="correo@empresa.com" />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
-                                <div>
+                                <div className='col-span-1'>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Cédula</label>
                                     <input type="text" value={pCedula} onChange={e => setPCedula(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                                 </div>
-                                <div>
+                                <div className='col-span-1'>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Teléfono</label>
                                     <input type="text" value={pTelefono} onChange={e => setPTelefono(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                                 </div>
@@ -509,7 +628,7 @@ export const PersonalManagement: React.FC = () => {
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">Perfil *</label>
                                 <select value={aPerfil} onChange={e => setAPerfil(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
                                     <option value="">Seleccionar perfil...</option>
-                                    {PERFILES_CATALOGO.map(p => <option key={p} value={p}>{p}</option>)}
+                                    {activeCargos.map(p => <option key={p} value={p}>{p}</option>)}
                                 </select>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
@@ -532,6 +651,63 @@ export const PersonalManagement: React.FC = () => {
                                 {savingAsig ? 'Guardando...' : '💾 Guardar'}
                             </button>
                             <button onClick={() => setShowAsigForm(false)} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50 transition-colors">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+
+
+            {/* ── Modal: Eliminar Cargo ── */}
+            {showDeleteCargoModal && cargoToDelete && (
+                <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4 mx-auto">
+                            <AlertTriangle className="w-6 h-6 text-red-600" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-800 text-center mb-2">¿Eliminar perfil?</h3>
+                        <p className="text-sm text-gray-500 text-center mb-6">
+                            Estás a punto de eliminar el perfil <strong>"{cargoToDelete.NOMBRE}"</strong>.
+                            Si hay asignaciones activas con este perfil, debes reasignarlas.
+                        </p>
+
+                        <div className="mb-6">
+                            <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Reasignar a (Opcional)</label>
+                            <select
+                                value={cargoReassignTo}
+                                onChange={e => setCargoReassignTo(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                            >
+                                <option value="">-- No reasignar (Mantener historial) --</option>
+                                {cargos.filter(c => c.ID !== cargoToDelete.ID).map(c => (
+                                    <option key={c.ID} value={c.NOMBRE}>{c.NOMBRE}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        await deleteCargo(cargoToDelete.ID, cargoReassignTo || undefined);
+                                        setShowDeleteCargoModal(false);
+                                        setShowCargosModal(false); // Close parent too to refresh
+                                        loadCargos();
+                                        loadAsignaciones(); // Refresh assignments too as they might have changed
+                                    } catch (e: any) {
+                                        alert(e.message);
+                                    }
+                                }}
+                                className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors"
+                            >
+                                Eliminar
+                            </button>
+                            <button
+                                onClick={() => setShowDeleteCargoModal(false)}
+                                className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors"
+                            >
+                                Cancelar
+                            </button>
                         </div>
                     </div>
                 </div>

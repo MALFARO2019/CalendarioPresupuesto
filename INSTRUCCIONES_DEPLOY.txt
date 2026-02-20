@@ -1,17 +1,18 @@
-# Instrucciones de Despliegue - KPIs Rosti (Simplificado)
+# Instrucciones de Despliegue - KPIs Rosti (Sencillo y Definitivo)
 
 ## 1. Copiar Archivos
-Copie **toda la carpeta del proyecto** (`CalendarioPresupuesto`) al servidor de destino.
+Copie **toda la carpeta del proyecto** (`CalendarioPresupuesto`) al servidor de destino. (Sobrescriba lo que haya).
 
 ## 2. Iniciar Sistema
-Dentro de la carpeta copiada, haga doble clic en el archivo:
+Dentro de la carpeta copiada, haga doble clic en el nuevo archivo:
 
-👉 **`START_APP.bat`**
+👉 **`INICIAR_SISTEMA_V2.bat`**
 
-Este script se encargará automáticamente de:
-1.  Instalar las librerías necesarias (si es la primera vez).
-2.  Construir la aplicación web (si no está lista).
-3.  Iniciar el servidor y abrir el navegador.
+Este es un **super script** que hace todo:
+1.  **Configura las credenciales** automáticamente (crea el archivo `.env`).
+2.  **Limpia la versión vieja** de la página web.
+3.  **Construye la nueva versión** desde cero.
+4.  **Inicia el servidor** y abre el navegador.
 
 ---
-**Nota:** El proceso de instalación inicial puede tardar unos minutos dependiendo de la velocidad de intenet del servidor. Las siguientes veces será instantáneo.
+**Nota Importante:** La primera vez que lo corras (o cuando copies cambios nuevos), tardará unos minutos en el paso 4 ("CONSTRUYENDO NUEVA VERSION WEB"). ¡Ten paciencia! Es necesario para que se vean los cambios.

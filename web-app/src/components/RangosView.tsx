@@ -524,7 +524,7 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
                                         <div>
                                             <h4 className="text-md font-bold text-green-700 mb-3 flex items-center gap-2">
                                                 <TrendingUp className="w-5 h-5" />
-                                                Top 5 Mejores (% Ppto)
+                                                Top 5 Mejores
                                             </h4>
                                             <div className="space-y-2">
                                                 {top5.best.map((period, idx) => (
@@ -545,7 +545,7 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
                                         <div>
                                             <h4 className="text-md font-bold text-red-700 mb-3 flex items-center gap-2">
                                                 <TrendingDown className="w-5 h-5" />
-                                                Top 5 Peores (% Ppto)
+                                                Top 5 Peores
                                             </h4>
                                             <div className="space-y-2">
                                                 {top5.worst.map((period, idx) => (
