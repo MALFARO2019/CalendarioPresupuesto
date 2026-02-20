@@ -1091,3 +1091,79 @@ export async function fetchAdminPorLocal(local: string): Promise<PersonalAsignad
         return [];
     }
 }
+
+// ==========================================
+// DEPLOY MANAGEMENT API
+// ==========================================
+
+export interface DeployLogEntry {
+    id: number;
+    version: string;
+    date: string;
+    notes: string;
+    servers: string[];
+    deployedBy: string;
+    status: 'pending' | 'deploying' | 'success' | 'error';
+    steps?: { step: string; status: string; detail?: string }[];
+}
+
+export interface DeployLog {
+    entries: DeployLogEntry[];
+}
+
+export interface SetupGuideSection {
+    title: string;
+    description: string;
+    commands: { label: string; command: string }[];
+}
+
+export interface SetupGuide {
+    title: string;
+    sections: SetupGuideSection[];
+}
+
+export async function fetchDeployLog(): Promise<DeployLog> {
+    const response = await fetch(`${API_BASE}/deploy/log`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error al obtener bitácora');
+    return response.json();
+}
+
+export async function addDeployLogEntry(version: string, notes: string, servers: string[]): Promise<{ success: boolean; entry: DeployLogEntry }> {
+    const response = await fetch(`${API_BASE}/deploy/log`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ version, notes, servers })
+    });
+    if (!response.ok) throw new Error('Error al guardar entrada');
+    return response.json();
+}
+
+export async function deployToServer(
+    serverIp: string,
+    user: string,
+    password: string,
+    appDir: string,
+    version: string,
+    notes: string
+): Promise<{ success: boolean; steps: { step: string; status: string; detail?: string }[]; entryId: number }> {
+    const response = await fetch(`${API_BASE}/deploy/publish`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ serverIp, user, password, appDir, version, notes })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Error al publicar');
+    }
+    return response.json();
+}
+
+export async function fetchSetupGuide(): Promise<SetupGuide> {
+    const response = await fetch(`${API_BASE}/deploy/setup-guide`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error al obtener guía');
+    return response.json();
+}

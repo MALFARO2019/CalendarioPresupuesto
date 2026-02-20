@@ -26,6 +26,7 @@ interface CustomFieldDef {
     FieldID?: number; fieldId: number; helpdeskId: number;
     fieldName: string; fieldType: string; showInDashboard: boolean;
     DisplayOrder?: number; displayOrder: number;
+    sampleValues?: string[];
 }
 
 // ─── Tab enum ─────────────────────────────────────────────────────
@@ -162,7 +163,8 @@ export const InvgateAdmin: React.FC = () => {
                         fieldName: (!existing || nameIsGeneric) ? (d.fieldName || `Campo ${d.fieldId}`) : existing.fieldName,
                         fieldType: existing && !nameIsGeneric ? existing.fieldType : (d.fieldType || 'text'),
                         showInDashboard: existing?.showInDashboard ?? false,
-                        displayOrder: existing?.displayOrder ?? i
+                        displayOrder: existing?.displayOrder ?? i,
+                        sampleValues: d.sampleValues || []
                     };
                 });
                 return [...others, ...merged];
@@ -429,10 +431,11 @@ export const InvgateAdmin: React.FC = () => {
                                         <table className="custom-fields-table">
                                             <thead>
                                                 <tr>
-                                                    <th>ID</th>
+                                                    <th style={{ width: '50px' }}>ID</th>
                                                     <th>Nombre del Campo</th>
-                                                    <th>Tipo</th>
-                                                    <th>Mostrar en Dashboard</th>
+                                                    <th style={{ width: '200px' }}>Valores de Ejemplo</th>
+                                                    <th style={{ width: '110px' }}>Tipo</th>
+                                                    <th style={{ width: '80px', textAlign: 'center' }}>Dashboard</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -447,6 +450,26 @@ export const InvgateAdmin: React.FC = () => {
                                                                 onChange={e => updateField(selectedHelpdeskTab, f.fieldId, { fieldName: e.target.value })}
                                                                 placeholder={`Campo ${f.fieldId}`}
                                                             />
+                                                        </td>
+                                                        <td>
+                                                            {f.sampleValues && f.sampleValues.length > 0 ? (
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                                    {f.sampleValues.map((sv, i) => (
+                                                                        <span key={i} style={{
+                                                                            background: '#f1f5f9', border: '1px solid #e2e8f0',
+                                                                            borderRadius: '4px', padding: '2px 8px',
+                                                                            fontSize: '11px', color: '#475569',
+                                                                            maxWidth: '180px', overflow: 'hidden',
+                                                                            textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                                            display: 'inline-block'
+                                                                        }}>
+                                                                            {sv}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <span style={{ color: '#9ca3af', fontSize: '12px' }}>—</span>
+                                                            )}
                                                         </td>
                                                         <td>
                                                             <select

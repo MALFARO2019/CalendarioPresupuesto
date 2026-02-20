@@ -47,6 +47,7 @@ const registerUberEatsEndpoints = require('./uberEats_endpoints');
 const spEventsService = require('./services/sharepointEventsService');
 const { ensureKpiAdminTables } = require('./kpiAdminDb');
 const { registerKpiAdminEndpoints } = require('./kpiAdmin_endpoints');
+const deployModule = require('./deploy');
 
 
 const app = express();
@@ -86,6 +87,70 @@ registerKpiAdminEndpoints(app, authMiddleware);
 // UBER EATS ENDPOINTS
 // ==========================================
 registerUberEatsEndpoints(app, authMiddleware);
+
+// ==========================================
+// DEPLOY MANAGEMENT ENDPOINTS
+// ==========================================
+
+// GET deploy log (changelog)
+app.get('/api/deploy/log', authMiddleware, (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        res.json(deployModule.getDeployLog());
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST new deploy log entry
+app.post('/api/deploy/log', authMiddleware, (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const { version, notes, servers } = req.body;
+        if (!version) return res.status(400).json({ error: 'Versión es requerida' });
+        const entry = deployModule.addDeployEntry(version, notes || '', servers || [], req.user.email || 'admin');
+        res.json({ success: true, entry });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST deploy to server
+app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const { serverIp, user, password, appDir, version, notes } = req.body;
+        if (!serverIp || !user || !password || !appDir) {
+            return res.status(400).json({ error: 'Faltan parámetros: serverIp, user, password, appDir' });
+        }
+
+        // Create log entry
+        const entry = deployModule.addDeployEntry(
+            version || 'sin versión',
+            notes || '',
+            [serverIp],
+            req.user.email || 'admin',
+            'deploying'
+        );
+
+        // Execute deploy
+        const result = await deployModule.deployToServer(serverIp, user, password, appDir);
+
+        // Update log entry with result
+        deployModule.updateDeployEntry(entry.id, {
+            status: result.success ? 'success' : 'error',
+            steps: result.steps
+        });
+
+        res.json({ success: result.success, steps: result.steps, entryId: entry.id });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET server setup guide
+app.get('/api/deploy/setup-guide', authMiddleware, (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        res.json(deployModule.getServerSetupGuide());
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // TEST ENDPOINT
 app.get('/api/test', (req, res) => {
@@ -3858,9 +3923,36 @@ app.get(/(.*)/, (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
 });
 
+// ==========================================
+// CRASH PROTECTION
+// ==========================================
+
+// Express error-catching middleware (must be last middleware)
+app.use((err, req, res, next) => {
+    console.error('❌ [Express Error]', new Date().toISOString(), err.stack || err.message || err);
+    if (!res.headersSent) {
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Global crash handlers — prevent process from dying
+process.on('uncaughtException', (err) => {
+    console.error('🔥 [UNCAUGHT EXCEPTION]', new Date().toISOString());
+    console.error(err.stack || err.message || err);
+    // Do NOT exit — keep the server alive
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️ [UNHANDLED REJECTION]', new Date().toISOString());
+    console.error('Promise:', promise);
+    console.error('Reason:', reason);
+    // Do NOT exit — keep the server alive
+});
+
 app.listen(port, '0.0.0.0', () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
     console.log(`🌐 Frontend served from: ${distPath}`);
     const dbStatus = dbManager.getCurrentStatus();
     console.log(`📊 Database mode: ${dbStatus.activeMode}`);
+    console.log(`🛡️ Crash protection: ACTIVE`);
 });
