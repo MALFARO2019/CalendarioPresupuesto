@@ -323,7 +323,8 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
     app.post('/api/forms/sources/:id/sync', authMiddleware, async (req, res) => {
         try {
             if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
-            const result = await formsSyncService.syncSource(parseInt(req.params.id), req.user.email);
+            const { type = 'FULL' } = req.body;
+            const result = await formsSyncService.syncSource(parseInt(req.params.id), req.user.email, type);
             res.json(result);
         } catch (err) {
             res.status(500).json({ error: err.message });
