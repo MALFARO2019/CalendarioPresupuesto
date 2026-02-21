@@ -1,6 +1,7 @@
 const formsService = require('./formsService');
 const { getFormsPool, sql } = require('../formsDb');
 const { ensureFormTable, upsertFormRow, getTableName } = require('./formsDynamicTable');
+const formsMappingService = require('./formsMappingService');
 
 /**
  * Forms Sync Service - Handles synchronization of Microsoft Forms responses
@@ -232,6 +233,15 @@ class FormsSyncService {
 
             } catch (error) {
                 console.error(`Error saving response ${response.id}:`, error.message.substring(0, 200));
+            }
+        }
+
+        // ── Step 3: Resolve mappings (CODALMACEN / PersonalID) ───────────────────
+        if (tableName) {
+            try {
+                await formsMappingService.resolveAfterSync(source.SourceID, tableName);
+            } catch (mapErr) {
+                console.warn(`  ⚠️ Mapping resolution error: ${mapErr.message.substring(0, 100)}`);
             }
         }
 

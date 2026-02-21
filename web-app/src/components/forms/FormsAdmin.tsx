@@ -109,6 +109,19 @@ export const FormsAdmin: React.FC = () => {
 
     const [activeTab, setActiveTab] = useState<'sources' | 'responses' | 'config' | 'logs'>('sources');
 
+    // Mapping modal state
+    const [mappingSource, setMappingSource] = useState<FormSource | null>(null);
+    const [mappingLoading, setMappingLoading] = useState(false);
+    const [mappingColumns, setMappingColumns] = useState<string[]>([]);
+    const [mappingPersona, setMappingPersona] = useState('');
+    const [mappingAlmacen, setMappingAlmacen] = useState('');
+    const [mappingSaving, setMappingSaving] = useState(false);
+    const [mappingStats, setMappingStats] = useState<any>(null);
+    const [mappingResolving, setMappingResolving] = useState(false);
+    const [mappingUnmapped, setMappingUnmapped] = useState<any[]>([]);
+    const [mappingUnmappedCount, setMappingUnmappedCount] = useState(0);
+    const [showUnmapped, setShowUnmapped] = useState(false);
+
     const headers = () => ({ Authorization: `Bearer ${getToken()}` });
 
     // ─── Load ─────────────────────────────────────────────────────────────────
@@ -383,6 +396,73 @@ export const FormsAdmin: React.FC = () => {
         finally { setGlobalSyncing(false); }
     };
 
+    // ─── Mappings ─────────────────────────────────────────────────────────────
+
+    const openMappingModal = async (src: FormSource) => {
+        setMappingSource(src);
+        setMappingLoading(true);
+        setShowUnmapped(false);
+        setMappingUnmapped([]);
+        try {
+            const r = await axios.get(`${API_BASE}/forms/sources/${src.SourceID}/mappings`, { headers: headers() });
+            setMappingColumns(r.data.availableColumns || []);
+            const persona = r.data.mappings?.find((m: any) => m.fieldType === 'PERSONA');
+            const almacen = r.data.mappings?.find((m: any) => m.fieldType === 'CODALMACEN');
+            setMappingPersona(persona?.columnName || '');
+            setMappingAlmacen(almacen?.columnName || '');
+            setMappingStats(r.data.stats);
+        } catch (e: any) {
+            console.error('Error loading mappings:', e.message);
+        } finally {
+            setMappingLoading(false);
+        }
+    };
+
+    const saveMappings = async () => {
+        if (!mappingSource) return;
+        setMappingSaving(true);
+        try {
+            await axios.put(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, {
+                personaColumn: mappingPersona || null,
+                almacenColumn: mappingAlmacen || null
+            }, { headers: headers() });
+            alert('✅ Mapeos guardados');
+            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, { headers: headers() });
+            setMappingStats(r.data.stats);
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        } finally {
+            setMappingSaving(false);
+        }
+    };
+
+    const resolveMappings = async () => {
+        if (!mappingSource) return;
+        setMappingResolving(true);
+        try {
+            const r = await axios.post(`${API_BASE}/forms/sources/${mappingSource.SourceID}/resolve-mappings`, {}, { headers: headers() });
+            alert(`✅ ${r.data.message}`);
+            const stats = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, { headers: headers() });
+            setMappingStats(stats.data.stats);
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        } finally {
+            setMappingResolving(false);
+        }
+    };
+
+    const loadUnmapped = async () => {
+        if (!mappingSource) return;
+        try {
+            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/unmapped`, { headers: headers() });
+            setMappingUnmapped(r.data.unmapped || []);
+            setMappingUnmappedCount(r.data.unmappedCount || 0);
+            setShowUnmapped(true);
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     const fmtDate = (d: string | null) => !d ? '—' : new Date(d).toLocaleString('es-CR');
@@ -606,6 +686,7 @@ export const FormsAdmin: React.FC = () => {
                                                             {syncingId === src.SourceID ? '⏳' : '🔄'}
                                                         </button>
                                                     )}
+                                                    <button className="btn-mapping btn-icon" onClick={() => openMappingModal(src)} title="Mapeos (Local/Persona)">🔗</button>
                                                     <button className="btn-edit btn-icon" onClick={() => openEdit(src)} title="Editar">✏️</button>
                                                     <button className={`btn-toggle btn-icon ${src.Activo ? 'deactivate' : 'activate'}`} onClick={() => toggleActive(src)} title={src.Activo ? 'Desactivar' : 'Activar'}>
                                                         {src.Activo ? '⏸' : '▶️'}
@@ -870,6 +951,140 @@ export const FormsAdmin: React.FC = () => {
                                 ));
                             })()}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Mapping Modal ── */}
+            {mappingSource && (
+                <div className="modal-overlay" onClick={() => { setMappingSource(null); setShowUnmapped(false); }}>
+                    <div className="modal-box modal-mapping" onClick={e => e.stopPropagation()}>
+                        <div className="detail-header">
+                            <h3>🔗 Mapeos — {mappingSource.Alias}</h3>
+                            <button className="btn-close" onClick={() => { setMappingSource(null); setShowUnmapped(false); }}>✕</button>
+                        </div>
+
+                        {mappingLoading ? (
+                            <div className="forms-loading">Cargando columnas...</div>
+                        ) : (
+                            <>
+                                <p style={{ color: '#6b7280', fontSize: 13, margin: '0 0 16px' }}>
+                                    Configure qué campo del formulario corresponde a un <strong>Local (CodAlmacen)</strong> y cuál a una <strong>Persona del Personal</strong>.
+                                    Al sincronizar, el sistema intentará resolver estos campos automáticamente.
+                                </p>
+
+                                {mappingColumns.length === 0 ? (
+                                    <div className="forms-empty" style={{ padding: '12px 0' }}>
+                                        <p>⚠️ La tabla aún no tiene columnas de datos. Realice un <strong>Sync</strong> primero para que se creen las columnas.</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="mapping-fields">
+                                            <div className="form-group">
+                                                <label>🏪 Campo de Local (CodAlmacen)</label>
+                                                <select value={mappingAlmacen} onChange={e => setMappingAlmacen(e.target.value)} className="config-select">
+                                                    <option value="">— Sin mapear —</option>
+                                                    {mappingColumns.map(col => (
+                                                        <option key={col} value={col}>{col}</option>
+                                                    ))}
+                                                </select>
+                                                <small>Se buscará en APP_STORE_ALIAS para encontrar el código del local</small>
+                                            </div>
+                                            <div className="form-group">
+                                                <label>👤 Campo de Persona</label>
+                                                <select value={mappingPersona} onChange={e => setMappingPersona(e.target.value)} className="config-select">
+                                                    <option value="">— Sin mapear —</option>
+                                                    {mappingColumns.map(col => (
+                                                        <option key={col} value={col}>{col}</option>
+                                                    ))}
+                                                </select>
+                                                <small>Se buscará en DIM_PERSONAL para encontrar el ID de la persona</small>
+                                            </div>
+                                        </div>
+
+                                        <div className="mapping-actions">
+                                            <button className="btn-save" onClick={saveMappings} disabled={mappingSaving}>
+                                                {mappingSaving ? '⏳ Guardando...' : '💾 Guardar Mapeos'}
+                                            </button>
+                                            <button className="btn-resolve-mapping" onClick={resolveMappings} disabled={mappingResolving}>
+                                                {mappingResolving ? '⏳ Resolviendo...' : '🔄 Resolver Pendientes'}
+                                            </button>
+                                            <button className="btn-unmapped" onClick={loadUnmapped}>
+                                                🔍 Ver Sin Mapear
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* Stats */}
+                                {mappingStats?.hasMappingColumns && mappingStats.stats && (
+                                    <div className="mapping-stats">
+                                        <h4>📊 Estado de Mapeos</h4>
+                                        <div className="stats-grid">
+                                            <div className="stat-item">
+                                                <span className="stat-label">Total registros</span>
+                                                <span className="stat-value">{mappingStats.stats.total}</span>
+                                            </div>
+                                            <div className="stat-item success">
+                                                <span className="stat-label">Con Local</span>
+                                                <span className="stat-value">{mappingStats.stats.withCodAlmacen}</span>
+                                            </div>
+                                            <div className="stat-item warning">
+                                                <span className="stat-label">Sin Local</span>
+                                                <span className="stat-value">{mappingStats.stats.withoutCodAlmacen}</span>
+                                            </div>
+                                            <div className="stat-item success">
+                                                <span className="stat-label">Con Persona</span>
+                                                <span className="stat-value">{mappingStats.stats.withPersonalId}</span>
+                                            </div>
+                                            <div className="stat-item warning">
+                                                <span className="stat-label">Sin Persona</span>
+                                                <span className="stat-value">{mappingStats.stats.withoutPersonalId}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Unmapped records */}
+                                {showUnmapped && (
+                                    <div className="unmapped-section">
+                                        <h4>⚠️ Registros Sin Mapear ({mappingUnmappedCount})</h4>
+                                        {mappingUnmapped.length === 0 ? (
+                                            <p style={{ color: '#059669', fontSize: 13 }}>✅ Todos los registros están mapeados correctamente</p>
+                                        ) : (
+                                            <div className="unmapped-table-wrap">
+                                                <table className="unmapped-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>ID</th>
+                                                            <th>Correo</th>
+                                                            <th>Fecha</th>
+                                                            {mappingAlmacen && <th>Valor Local</th>}
+                                                            {mappingPersona && <th>Valor Persona</th>}
+                                                            <th>CodAlmacen</th>
+                                                            <th>PersonalID</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {mappingUnmapped.slice(0, 50).map((row: any) => (
+                                                            <tr key={row.ID}>
+                                                                <td>{row.ID}</td>
+                                                                <td>{row.RespondentEmail || '—'}</td>
+                                                                <td>{row.SubmittedAt ? new Date(row.SubmittedAt).toLocaleDateString('es-CR') : '—'}</td>
+                                                                {mappingAlmacen && <td className="unmapped-value">{row._SourceLocal || '—'}</td>}
+                                                                {mappingPersona && <td className="unmapped-value">{row._SourcePersona || '—'}</td>}
+                                                                <td>{row._CODALMACEN || <span className="no-map">❌</span>}</td>
+                                                                <td>{row._PERSONAL_ID ? `✅ ${row._PERSONAL_NOMBRE || row._PERSONAL_ID}` : <span className="no-map">❌</span>}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 </div>
             )}

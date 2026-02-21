@@ -9,6 +9,7 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
     const formsCron = require('./jobs/formsCron');
     const { getFormsPool, sql } = require('./formsDb');
     const { getTableColumns, getTableKpis, getTableName } = require('./services/formsDynamicTable');
+    const formsMappingService = require('./services/formsMappingService');
 
     // ─── Azure AD Config ──────────────────────────────────────────────────────
 
@@ -664,9 +665,154 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
         }
     });
 
+    // ─── Field Mappings (CODALMACEN & Persona) ─────────────────────────────────
+
+    // GET /api/forms/sources/:id/mappings — get field mappings for a source
+    app.get('/api/forms/sources/:id/mappings', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            const sourceId = parseInt(req.params.id);
+            const pool = await getFormsPool();
+
+            const src = await pool.request()
+                .input('id', sql.Int, sourceId)
+                .query('SELECT SourceID, Alias, TableName FROM FormsSources WHERE SourceID = @id');
+            if (src.recordset.length === 0) return res.status(404).json({ error: 'Formulario no encontrado' });
+
+            const { TableName } = src.recordset[0];
+            const tableName = TableName || getTableName(sourceId, src.recordset[0].Alias);
+
+            const mappings = await formsMappingService.getMappings(sourceId);
+
+            let columns = [];
+            try {
+                const exists = await pool.request().input('tbl', sql.NVarChar, tableName)
+                    .query('SELECT 1 FROM sys.tables WHERE name = @tbl');
+                if (exists.recordset.length > 0) {
+                    columns = await getTableColumns(tableName);
+                    const systemCols = new Set(['id', 'responseid', 'respondentemail', 'respondentname', 'submittedat', 'syncedat', '_codalmacen', '_personal_id', '_personal_nombre']);
+                    columns = columns.filter(c => !systemCols.has(c.COLUMN_NAME.toLowerCase()));
+                }
+            } catch (e) { /* table doesn't exist yet */ }
+
+            let stats = null;
+            try {
+                stats = await formsMappingService.getMappingStats(sourceId, tableName);
+            } catch (e) { /* ignore */ }
+
+            res.json({
+                mappings: mappings.map(m => ({ fieldType: m.FieldType, columnName: m.ColumnName })),
+                availableColumns: columns.map(c => c.COLUMN_NAME),
+                tableName,
+                stats
+            });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // PUT /api/forms/sources/:id/mappings — save field mappings
+    app.put('/api/forms/sources/:id/mappings', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            const sourceId = parseInt(req.params.id);
+            const { personaColumn, almacenColumn } = req.body;
+
+            const pool = await getFormsPool();
+            const src = await pool.request()
+                .input('id', sql.Int, sourceId)
+                .query('SELECT SourceID, Alias, TableName FROM FormsSources WHERE SourceID = @id');
+            if (src.recordset.length === 0) return res.status(404).json({ error: 'Formulario no encontrado' });
+
+            const tableName = src.recordset[0].TableName || getTableName(sourceId, src.recordset[0].Alias);
+
+            try {
+                const exists = await pool.request().input('tbl', sql.NVarChar, tableName)
+                    .query('SELECT 1 FROM sys.tables WHERE name = @tbl');
+                if (exists.recordset.length > 0) {
+                    await formsMappingService.ensureMappingColumns(tableName);
+                }
+            } catch (e) { /* table doesn't exist yet */ }
+
+            if (personaColumn) {
+                await formsMappingService.setMapping(sourceId, 'PERSONA', personaColumn, req.user.email);
+            } else {
+                await formsMappingService.deleteMapping(sourceId, 'PERSONA');
+            }
+
+            if (almacenColumn) {
+                await formsMappingService.setMapping(sourceId, 'CODALMACEN', almacenColumn, req.user.email);
+            } else {
+                await formsMappingService.deleteMapping(sourceId, 'CODALMACEN');
+            }
+
+            res.json({ success: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // POST /api/forms/sources/:id/resolve-mappings — try to resolve unmapped records
+    app.post('/api/forms/sources/:id/resolve-mappings', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            const sourceId = parseInt(req.params.id);
+
+            const pool = await getFormsPool();
+            const src = await pool.request()
+                .input('id', sql.Int, sourceId)
+                .query('SELECT SourceID, Alias, TableName FROM FormsSources WHERE SourceID = @id');
+            if (src.recordset.length === 0) return res.status(404).json({ error: 'Formulario no encontrado' });
+
+            const tableName = src.recordset[0].TableName || getTableName(sourceId, src.recordset[0].Alias);
+
+            const exists = await pool.request().input('tbl', sql.NVarChar, tableName)
+                .query('SELECT 1 FROM sys.tables WHERE name = @tbl');
+            if (exists.recordset.length === 0) {
+                return res.json({ success: false, message: 'La tabla aún no existe. Realice un sync primero.' });
+            }
+
+            await formsMappingService.ensureMappingColumns(tableName);
+            const result = await formsMappingService.resolveAllMappings(sourceId, tableName);
+            res.json({ success: true, ...result });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // GET /api/forms/sources/:id/unmapped — get unmapped records
+    app.get('/api/forms/sources/:id/unmapped', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            const sourceId = parseInt(req.params.id);
+
+            const pool = await getFormsPool();
+            const src = await pool.request()
+                .input('id', sql.Int, sourceId)
+                .query('SELECT SourceID, Alias, TableName FROM FormsSources WHERE SourceID = @id');
+            if (src.recordset.length === 0) return res.status(404).json({ error: 'Formulario no encontrado' });
+
+            const tableName = src.recordset[0].TableName || getTableName(sourceId, src.recordset[0].Alias);
+
+            const exists = await pool.request().input('tbl', sql.NVarChar, tableName)
+                .query('SELECT 1 FROM sys.tables WHERE name = @tbl');
+            if (exists.recordset.length === 0) {
+                return res.json({ unmapped: [], unmappedCount: 0, totalCount: 0, mappingsConfigured: false });
+            }
+
+            const result = await formsMappingService.getUnmappedRecords(sourceId, tableName);
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // Start cron on startup
     (async () => {
-        try { await formsCron.start(); }
+        try {
+            await formsMappingService.ensureMappingTable();
+            await formsCron.start();
+        }
         catch (error) { console.error('❌ Error starting Forms cron:', error.message); }
     })();
 
