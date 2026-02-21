@@ -37,6 +37,17 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
         accesoEvaluaciones: false,
         accesoInventarios: false,
         accesoPersonal: false,
+        accesoModeloPresupuesto: false,
+        verConfigModelo: false,
+        verConsolidadoMensual: false,
+        verAjustePresupuesto: false,
+        verVersiones: false,
+        verBitacora: false,
+        verReferencias: false,
+        editarConsolidado: false,
+        ejecutarRecalculo: false,
+        ajustarCurva: false,
+        restaurarVersiones: false,
         esAdmin: false,
         permitirEnvioClave: true,
     });
@@ -75,6 +86,17 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     accesoEvaluaciones: formData.accesoEvaluaciones,
                     accesoInventarios: formData.accesoInventarios,
                     accesoPersonal: formData.accesoPersonal,
+                    accesoModeloPresupuesto: formData.accesoModeloPresupuesto,
+                    verConfigModelo: formData.verConfigModelo,
+                    verConsolidadoMensual: formData.verConsolidadoMensual,
+                    verAjustePresupuesto: formData.verAjustePresupuesto,
+                    verVersiones: formData.verVersiones,
+                    verBitacora: formData.verBitacora,
+                    verReferencias: formData.verReferencias,
+                    editarConsolidado: formData.editarConsolidado,
+                    ejecutarRecalculo: formData.ejecutarRecalculo,
+                    ajustarCurva: formData.ajustarCurva,
+                    restaurarVersiones: formData.restaurarVersiones,
                     esAdmin: formData.esAdmin,
                     permitirEnvioClave: formData.permitirEnvioClave,
                 }
@@ -105,6 +127,17 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     accesoEvaluaciones: formData.accesoEvaluaciones,
                     accesoInventarios: formData.accesoInventarios,
                     accesoPersonal: formData.accesoPersonal,
+                    accesoModeloPresupuesto: formData.accesoModeloPresupuesto,
+                    verConfigModelo: formData.verConfigModelo,
+                    verConsolidadoMensual: formData.verConsolidadoMensual,
+                    verAjustePresupuesto: formData.verAjustePresupuesto,
+                    verVersiones: formData.verVersiones,
+                    verBitacora: formData.verBitacora,
+                    verReferencias: formData.verReferencias,
+                    editarConsolidado: formData.editarConsolidado,
+                    ejecutarRecalculo: formData.ejecutarRecalculo,
+                    ajustarCurva: formData.ajustarCurva,
+                    restaurarVersiones: formData.restaurarVersiones,
                     esAdmin: formData.esAdmin,
                     permitirEnvioClave: formData.permitirEnvioClave,
                 }
@@ -167,6 +200,17 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             accesoEvaluaciones: false,
             accesoInventarios: false,
             accesoPersonal: false,
+            accesoModeloPresupuesto: false,
+            verConfigModelo: false,
+            verConsolidadoMensual: false,
+            verAjustePresupuesto: false,
+            verVersiones: false,
+            verBitacora: false,
+            verReferencias: false,
+            editarConsolidado: false,
+            ejecutarRecalculo: false,
+            ajustarCurva: false,
+            restaurarVersiones: false,
             esAdmin: false,
             permitirEnvioClave: true,
         });
@@ -188,6 +232,17 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             accesoEvaluaciones: profile.accesoEvaluaciones,
             accesoInventarios: profile.accesoInventarios,
             accesoPersonal: profile.accesoPersonal,
+            accesoModeloPresupuesto: profile.accesoModeloPresupuesto || false,
+            verConfigModelo: profile.verConfigModelo || false,
+            verConsolidadoMensual: profile.verConsolidadoMensual || false,
+            verAjustePresupuesto: profile.verAjustePresupuesto || false,
+            verVersiones: profile.verVersiones || false,
+            verBitacora: profile.verBitacora || false,
+            verReferencias: profile.verReferencias || false,
+            editarConsolidado: profile.editarConsolidado || false,
+            ejecutarRecalculo: profile.ejecutarRecalculo || false,
+            ajustarCurva: profile.ajustarCurva || false,
+            restaurarVersiones: profile.restaurarVersiones || false,
             esAdmin: profile.esAdmin,
             permitirEnvioClave: profile.permitirEnvioClave,
         });
@@ -250,6 +305,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                                     {profile.accesoEvaluaciones && <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded">Evaluaciones</span>}
                                     {profile.accesoInventarios && <span className="px-2 py-1 bg-teal-100 text-teal-700 text-xs rounded">Inventarios</span>}
                                     {profile.accesoPersonal && <span className="px-2 py-1 bg-rose-100 text-rose-700 text-xs rounded">Personal</span>}
+                                    {profile.accesoModeloPresupuesto && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded">Modelo P.</span>}
                                     {profile.esAdmin && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded font-bold">Admin</span>}
                                     {!profile.permitirEnvioClave && <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">Sin envío de clave</span>}
                                 </div>
@@ -345,6 +401,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                                         { key: 'accesoEvaluaciones', label: 'Evaluaciones' },
                                         { key: 'accesoInventarios', label: 'Inventarios' },
                                         { key: 'accesoPersonal', label: 'Personal' },
+                                        { key: 'accesoModeloPresupuesto', label: 'Modelo Presupuesto' },
                                         { key: 'esAdmin', label: 'Administrador' },
                                         { key: 'permitirEnvioClave', label: 'Envío de clave' },
                                     ].map(({ key, label }) => (
@@ -387,6 +444,30 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                                                 />
                                                 <span className="text-sm font-medium text-orange-800">Rangos</span>
                                             </label>
+                                        </>
+                                    )}
+                                    {formData.accesoModeloPresupuesto && (
+                                        <>
+                                            {[
+                                                { key: 'verConfigModelo', label: 'Ver Config' },
+                                                { key: 'verConsolidadoMensual', label: 'Ver Consolidado' },
+                                                { key: 'verAjustePresupuesto', label: 'Ver Ajustes' },
+                                                { key: 'verVersiones', label: 'Ver Versiones' },
+                                                { key: 'verBitacora', label: 'Ver Bitácora' },
+                                                { key: 'verReferencias', label: 'Ver Referencias' },
+                                                { key: 'editarConsolidado', label: 'Editar Consolidado' },
+                                                { key: 'ejecutarRecalculo', label: 'Ejecutar Recálculo' },
+                                                { key: 'ajustarCurva', label: 'Ajustar Curva' },
+                                                { key: 'restaurarVersiones', label: 'Restaurar Versiones' },
+                                            ].map(({ key, label }) => (
+                                                <label key={key} className="flex items-center gap-2 p-3 bg-emerald-50 rounded-lg cursor-pointer hover:bg-emerald-100 ml-4 border-l-2 border-emerald-300">
+                                                    <input type="checkbox"
+                                                        checked={formData[key as keyof typeof formData] as boolean}
+                                                        onChange={e => setFormData({ ...formData, [key]: e.target.checked })}
+                                                        className="w-4 h-4 text-emerald-600" />
+                                                    <span className="text-sm font-medium text-emerald-800">{label}</span>
+                                                </label>
+                                            ))}
                                         </>
                                     )}
                                 </div>

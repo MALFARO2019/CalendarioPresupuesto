@@ -17,7 +17,9 @@ const {
     updateProfile,
     deleteProfile,
     assignProfileToUsers,
-    syncProfilePermissions
+    syncProfilePermissions,
+    logLoginEvent,
+    getLoginAudit
 } = require('./auth');
 const { sendPasswordEmail, sendReportEmail, verifyEmailService } = require('./emailService');
 const { getTendenciaData, getResumenCanal, getResumenGrupos } = require('./tendencia');
@@ -351,7 +353,7 @@ app.post('/api/auth/login', async (req, res) => {
         }
 
         // Timeout to avoid hanging when DB is unreachable
-        const loginPromise = loginUser(email.trim().toLowerCase(), clave.trim());
+        const loginPromise = loginUser(email.trim().toLowerCase(), clave.trim(), req.ip, req.headers['user-agent']);
         const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('DB_TIMEOUT')), 10000)
         );
@@ -428,6 +430,7 @@ app.post('/api/auth/admin-login', (req, res) => {
         );
 
         console.log('🔐 Offline admin login successful');
+        logLoginEvent('admin@offline', 'Administrador', true, 'Admin login (offline)', req.ip, req.headers['user-agent']);
         res.json({
             success: true,
             token,
@@ -466,6 +469,7 @@ app.post('/api/auth/admin-login', (req, res) => {
             }
         });
     } catch (err) {
+        logLoginEvent('admin@offline', null, false, 'Error: ' + err.message, req.ip, req.headers['user-agent']);
         console.error('Error in /api/auth/admin-login:', err);
         res.status(500).json({ error: err.message });
     }
@@ -537,6 +541,21 @@ app.post('/api/admin/verify', (req, res) => {
     }
 });
 
+// GET /api/admin/login-log - Get login audit log (admin only)
+app.get('/api/admin/login-log', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos de administrador' });
+        }
+        const { desde, hasta, email } = req.query;
+        const records = await getLoginAudit(desde || null, hasta || null, email || null);
+        res.json(records);
+    } catch (err) {
+        console.error('Error in /api/admin/login-log:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/admin/users - List all users (admin only)
 app.get('/api/admin/users', authMiddleware, async (req, res) => {
     try {
@@ -557,8 +576,9 @@ app.post('/api/admin/users', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin } = req.body;
-        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin);
+        const { email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones } = req.body;
+        const modeloPresupuestoPerms = { accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones };
+        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, modeloPresupuestoPerms);
         res.json({ success: true, userId: result.userId, clave: result.clave });
     } catch (err) {
         console.error('Error creating user:', err);
@@ -576,8 +596,8 @@ app.put('/api/admin/users/:id', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId } = req.body;
-        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId);
+        const { email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones } = req.body;
+        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones);
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating user:', err);

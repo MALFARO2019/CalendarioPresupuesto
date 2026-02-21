@@ -9,14 +9,16 @@ const { sql, poolPromise } = require('./db');
 // ------------------------------------------
 
 /**
- * Get the active budget model configuration
+ * Get the first active budget model configuration
  */
 async function getConfig() {
     const pool = await poolPromise;
     const result = await pool.request()
         .query(`
-            SELECT Id, NombrePresupuesto, AnoModelo, TablaDestino, HoraCalculo,
-                   UltimoCalculo, UltimoUsuario, Activo, FechaCreacion, FechaModificacion
+            SELECT Id as id, NombrePresupuesto as nombrePresupuesto, AnoModelo as anoModelo,
+                   TablaDestino as tablaDestino, HoraCalculo as horaCalculo,
+                   UltimoCalculo as ultimoCalculo, UltimoUsuario as ultimoUsuario,
+                   Activo as activo, FechaCreacion as fechaCreacion, FechaModificacion as fechaModificacion
             FROM MODELO_PRESUPUESTO_CONFIG
             WHERE Activo = 1
             ORDER BY Id DESC
@@ -25,25 +27,89 @@ async function getConfig() {
 }
 
 /**
- * Save (update) budget model configuration
+ * Get ALL configurations (active and inactive)
+ */
+async function getAllConfigs() {
+    const pool = await poolPromise;
+    const result = await pool.request()
+        .query(`
+            SELECT Id as id, NombrePresupuesto as nombrePresupuesto, AnoModelo as anoModelo,
+                   TablaDestino as tablaDestino, HoraCalculo as horaCalculo,
+                   UltimoCalculo as ultimoCalculo, UltimoUsuario as ultimoUsuario,
+                   Activo as activo, ISNULL(EjecutarEnJob, 0) as ejecutarEnJob,
+                   FechaCreacion as fechaCreacion, FechaModificacion as fechaModificacion
+            FROM MODELO_PRESUPUESTO_CONFIG
+            ORDER BY Activo DESC, AnoModelo DESC, Id DESC
+        `);
+    return result.recordset;
+}
+
+/**
+ * Save (upsert) budget model configuration
+ * Prevents duplicates by NombrePresupuesto (case-insensitive)
  */
 async function saveConfig(id, data) {
     const pool = await poolPromise;
+
+    // Check for duplicate name (different id)
+    const dupCheck = await pool.request()
+        .input('nombre', sql.NVarChar(100), data.nombrePresupuesto)
+        .input('excludeId', sql.Int, id || 0)
+        .query(`
+            SELECT Id FROM MODELO_PRESUPUESTO_CONFIG
+            WHERE LOWER(NombrePresupuesto) = LOWER(@nombre)
+              AND Id != @excludeId
+        `);
+    if (dupCheck.recordset.length > 0) {
+        throw new Error(`Ya existe una configuración con el nombre "${data.nombrePresupuesto}"`);
+    }
+
+    if (id) {
+        // Update existing
+        await pool.request()
+            .input('id', sql.Int, id)
+            .input('nombrePresupuesto', sql.NVarChar(100), data.nombrePresupuesto)
+            .input('anoModelo', sql.Int, data.anoModelo)
+            .input('tablaDestino', sql.NVarChar(100), data.tablaDestino)
+            .input('horaCalculo', sql.NVarChar(5), data.horaCalculo)
+            .input('ejecutarEnJob', sql.Bit, data.ejecutarEnJob ? 1 : 0)
+            .query(`
+                UPDATE MODELO_PRESUPUESTO_CONFIG
+                SET NombrePresupuesto = @nombrePresupuesto,
+                    AnoModelo = @anoModelo,
+                    TablaDestino = @tablaDestino,
+                    HoraCalculo = @horaCalculo,
+                    EjecutarEnJob = @ejecutarEnJob,
+                    FechaModificacion = GETDATE()
+                WHERE Id = @id
+            `);
+        return id;
+    } else {
+        // Insert new config
+        const result = await pool.request()
+            .input('nombrePresupuesto', sql.NVarChar(100), data.nombrePresupuesto)
+            .input('anoModelo', sql.Int, data.anoModelo)
+            .input('tablaDestino', sql.NVarChar(100), data.tablaDestino)
+            .input('horaCalculo', sql.NVarChar(5), data.horaCalculo)
+            .input('ejecutarEnJob', sql.Bit, data.ejecutarEnJob ? 1 : 0)
+            .query(`
+                INSERT INTO MODELO_PRESUPUESTO_CONFIG
+                    (NombrePresupuesto, AnoModelo, TablaDestino, HoraCalculo, Activo, EjecutarEnJob)
+                OUTPUT INSERTED.Id
+                VALUES (@nombrePresupuesto, @anoModelo, @tablaDestino, @horaCalculo, 1, @ejecutarEnJob)
+            `);
+        return result.recordset[0].Id;
+    }
+}
+
+/**
+ * Delete (soft) a configuration by id
+ */
+async function deleteConfig(id) {
+    const pool = await poolPromise;
     await pool.request()
         .input('id', sql.Int, id)
-        .input('nombrePresupuesto', sql.NVarChar(100), data.nombrePresupuesto)
-        .input('anoModelo', sql.Int, data.anoModelo)
-        .input('tablaDestino', sql.NVarChar(100), data.tablaDestino)
-        .input('horaCalculo', sql.NVarChar(5), data.horaCalculo)
-        .query(`
-            UPDATE MODELO_PRESUPUESTO_CONFIG
-            SET NombrePresupuesto = @nombrePresupuesto,
-                AnoModelo = @anoModelo,
-                TablaDestino = @tablaDestino,
-                HoraCalculo = @horaCalculo,
-                FechaModificacion = GETDATE()
-            WHERE Id = @id
-        `);
+        .query(`DELETE FROM MODELO_PRESUPUESTO_CONFIG WHERE Id = @id`);
 }
 
 // ------------------------------------------
@@ -56,27 +122,31 @@ async function saveConfig(id, data) {
  * @param {string|null} codAlmacen - Optional store filter
  * @param {number|null} mes - Optional month filter
  */
-async function ejecutarCalculo(usuario, codAlmacen = null, mes = null) {
+async function ejecutarCalculo(usuario, codAlmacen = null, mes = null, nombrePresupuesto = null) {
     const pool = await poolPromise;
     const request = pool.request()
-        .input('usuario', sql.NVarChar(200), usuario);
+        .input('Usuario', sql.NVarChar(200), usuario);
 
-    if (codAlmacen) request.input('codAlmacen', sql.NVarChar(10), codAlmacen);
-    if (mes) request.input('mes', sql.Int, mes);
+    if (nombrePresupuesto) request.input('NombrePresupuesto', sql.NVarChar(100), nombrePresupuesto);
+    if (codAlmacen) request.input('CodAlmacen', sql.NVarChar(10), codAlmacen);
+    if (mes) request.input('Mes', sql.Int, mes);
 
     // Execute the stored procedure
     const result = await request.execute('SP_CALCULAR_PRESUPUESTO');
 
-    // Update config with last calculation info
-    await pool.request()
-        .input('usuario', sql.NVarChar(200), usuario)
-        .query(`
-            UPDATE MODELO_PRESUPUESTO_CONFIG
-            SET UltimoCalculo = GETDATE(),
-                UltimoUsuario = @usuario,
-                FechaModificacion = GETDATE()
-            WHERE Activo = 1
-        `);
+    // The SP already updates the config, but ensure it's done
+    if (nombrePresupuesto) {
+        await pool.request()
+            .input('usuario', sql.NVarChar(200), usuario)
+            .input('nombre', sql.NVarChar(100), nombrePresupuesto)
+            .query(`
+                UPDATE MODELO_PRESUPUESTO_CONFIG
+                SET UltimoCalculo = GETDATE(),
+                    UltimoUsuario = @usuario,
+                    FechaModificacion = GETDATE()
+                WHERE NombrePresupuesto = @nombre
+            `);
+    }
 
     return result;
 }
@@ -91,29 +161,88 @@ async function ejecutarCalculo(usuario, codAlmacen = null, mes = null) {
 async function getConsolidadoMensual(ano, codAlmacen = null, tipo = null) {
     const pool = await poolPromise;
     let query = `
-        SELECT *
+        SELECT 
+            ANO as ano, MES as mes, TIPO as tipo,
+            RESTAURANTE as local, CODALMACEN as codAlmacen,
+            SALON as salon, LLEVAR as llevar, AUTO as auto,
+            EXPRESS as express, ECOMMERCE as ecommerce,
+            UBEREATS as ubereats, TOTAL as total
         FROM KpisRosti_Consolidado_Mensual
-        WHERE Ano = @ano
+        WHERE ANO = @ano
     `;
     const request = pool.request().input('ano', sql.Int, ano);
 
     if (codAlmacen) {
-        query += ' AND CodAlmacen = @codAlmacen';
+        query += ' AND CODALMACEN = @codAlmacen';
         request.input('codAlmacen', sql.NVarChar(10), codAlmacen);
     }
     if (tipo) {
-        query += ' AND Tipo = @tipo';
+        query += ' AND TIPO = @tipo';
         request.input('tipo', sql.NVarChar(100), tipo);
     }
 
-    query += ' ORDER BY CodAlmacen, Canal, Mes';
+    query += ' ORDER BY CODALMACEN, MES';
     const result = await request.query(query);
     return result.recordset;
 }
 
 /**
- * Save consolidado mensual rows (batch update)
+ * Initialize consolidado data for a new year by copying stores from previous year
+ * Creates empty rows (all zeros) for each store × month × tipo combination
  */
+async function initializeYear(ano) {
+    const pool = await poolPromise;
+
+    // Check if year already has data
+    const existing = await pool.request()
+        .input('ano', sql.Int, ano)
+        .query(`SELECT COUNT(*) as cnt FROM KpisRosti_Consolidado_Mensual WHERE ANO = @ano`);
+    if (existing.recordset[0].cnt > 0) {
+        throw new Error(`El año ${ano} ya tiene ${existing.recordset[0].cnt} registros. Use el grid para editarlos.`);
+    }
+
+    // Get stores from previous year
+    const prevYear = await pool.request()
+        .input('ano', sql.Int, ano - 1)
+        .query(`SELECT DISTINCT CODALMACEN, RESTAURANTE FROM KpisRosti_Consolidado_Mensual WHERE ANO = @ano`);
+
+    if (prevYear.recordset.length === 0) {
+        throw new Error(`No se encontraron locales en el año ${ano - 1} para copiar la estructura.`);
+    }
+
+    const tipos = ['VENTA', 'TRANSACCIONES', 'TQP'];
+    let inserted = 0;
+
+    const transaction = pool.transaction();
+    await transaction.begin();
+    try {
+        for (const store of prevYear.recordset) {
+            for (const tipo of tipos) {
+                for (let mes = 1; mes <= 12; mes++) {
+                    await transaction.request()
+                        .input('ano', sql.Int, ano)
+                        .input('mes', sql.Int, mes)
+                        .input('tipo', sql.NVarChar(100), tipo)
+                        .input('restaurante', sql.NVarChar(200), store.RESTAURANTE)
+                        .input('codAlmacen', sql.NVarChar(10), store.CODALMACEN)
+                        .query(`
+                            INSERT INTO KpisRosti_Consolidado_Mensual
+                                (ANO, MES, TIPO, RESTAURANTE, CODALMACEN, SALON, LLEVAR, AUTO, EXPRESS, ECOMMERCE, UBEREATS, TOTAL)
+                            VALUES (@ano, @mes, @tipo, @restaurante, @codAlmacen, 0, 0, 0, 0, 0, 0, 0)
+                        `);
+                    inserted++;
+                }
+            }
+        }
+        await transaction.commit();
+    } catch (err) {
+        await transaction.rollback();
+        throw err;
+    }
+
+    return { success: true, inserted, stores: prevYear.recordset.length, tipos: tipos.length };
+}
+
 async function saveConsolidadoMensual(rows, usuario) {
     const pool = await poolPromise;
     const transaction = pool.transaction();
@@ -123,12 +252,23 @@ async function saveConsolidadoMensual(rows, usuario) {
 
         for (const row of rows) {
             await transaction.request()
-                .input('id', sql.Int, row.Id)
-                .input('valor', sql.Decimal(18, 4), row.Valor)
+                .input('ano', sql.Int, row.ano)
+                .input('mes', sql.Int, row.mes)
+                .input('tipo', sql.NVarChar(100), row.tipo)
+                .input('codAlmacen', sql.NVarChar(10), row.codAlmacen)
+                .input('salon', sql.Decimal(18, 4), row.salon || 0)
+                .input('llevar', sql.Decimal(18, 4), row.llevar || 0)
+                .input('auto', sql.Decimal(18, 4), row.auto || 0)
+                .input('express', sql.Decimal(18, 4), row.express || 0)
+                .input('ecommerce', sql.Decimal(18, 4), row.ecommerce || 0)
+                .input('ubereats', sql.Decimal(18, 4), row.ubereats || 0)
+                .input('total', sql.Decimal(18, 4), row.total || 0)
                 .query(`
                     UPDATE KpisRosti_Consolidado_Mensual
-                    SET Valor = @valor
-                    WHERE Id = @id
+                    SET SALON = @salon, LLEVAR = @llevar, AUTO = @auto,
+                        EXPRESS = @express, ECOMMERCE = @ecommerce, UBEREATS = @ubereats,
+                        TOTAL = @total
+                    WHERE ANO = @ano AND MES = @mes AND TIPO = @tipo AND CODALMACEN = @codAlmacen
                 `);
         }
 
@@ -392,19 +532,26 @@ async function getBitacora(filtros = {}) {
 
 /**
  * Get all store reference mappings
+ * @param {string} nombrePresupuesto
+ * @param {number|null} ano - Optional year filter
  */
-async function getReferencias(nombrePresupuesto) {
+async function getReferencias(nombrePresupuesto, ano = null) {
     const pool = await poolPromise;
-    const result = await pool.request()
-        .input('nombrePresupuesto', sql.NVarChar(100), nombrePresupuesto)
-        .query(`
-            SELECT Id, CodAlmacenNuevo, NombreAlmacenNuevo,
-                   CodAlmacenReferencia, NombreAlmacenReferencia,
-                   Canal, NombrePresupuesto, FechaCreacion, Usuario, Activo
+    const req = pool.request()
+        .input('nombrePresupuesto', sql.NVarChar(100), nombrePresupuesto);
+    let whereClause = 'WHERE NombrePresupuesto = @nombrePresupuesto AND Activo = 1';
+    if (ano) {
+        req.input('ano', sql.Int, ano);
+        whereClause += ' AND Ano = @ano';
+    }
+    const result = await req.query(`
+            SELECT Id as id, CodAlmacenNuevo as codAlmacenNuevo, NombreAlmacenNuevo as nombreAlmacenNuevo,
+                   CodAlmacenReferencia as codAlmacenReferencia, NombreAlmacenReferencia as nombreAlmacenReferencia,
+                   Canal as canal, Ano as ano, NombrePresupuesto as nombrePresupuesto,
+                   FechaCreacion as fechaCreacion, Usuario as usuario, Activo as activo
             FROM DIM_MAPEO_PRESUPUESTO_LOCALES
-            WHERE NombrePresupuesto = @nombrePresupuesto
-              AND Activo = 1
-            ORDER BY CodAlmacenNuevo
+            ${whereClause}
+            ORDER BY Ano DESC, CodAlmacenNuevo
         `);
     return result.recordset;
 }
@@ -424,6 +571,7 @@ async function saveReferencia(data) {
             .input('codAlmacenReferencia', sql.NVarChar(10), data.codAlmacenReferencia)
             .input('nombreAlmacenReferencia', sql.NVarChar(255), data.nombreAlmacenReferencia || '')
             .input('canal', sql.NVarChar(200), data.canal || null)
+            .input('ano', sql.Int, data.ano || new Date().getFullYear())
             .input('usuario', sql.NVarChar(200), data.usuario || '')
             .query(`
                 UPDATE DIM_MAPEO_PRESUPUESTO_LOCALES
@@ -432,6 +580,7 @@ async function saveReferencia(data) {
                     CodAlmacenReferencia = @codAlmacenReferencia,
                     NombreAlmacenReferencia = @nombreAlmacenReferencia,
                     Canal = @canal,
+                    Ano = @ano,
                     Usuario = @usuario
                 WHERE Id = @id
             `);
@@ -444,15 +593,16 @@ async function saveReferencia(data) {
             .input('codAlmacenReferencia', sql.NVarChar(10), data.codAlmacenReferencia)
             .input('nombreAlmacenReferencia', sql.NVarChar(255), data.nombreAlmacenReferencia || '')
             .input('canal', sql.NVarChar(200), data.canal || null)
+            .input('ano', sql.Int, data.ano || new Date().getFullYear())
             .input('nombrePresupuesto', sql.NVarChar(100), data.nombrePresupuesto)
             .input('usuario', sql.NVarChar(200), data.usuario || '')
             .query(`
                 INSERT INTO DIM_MAPEO_PRESUPUESTO_LOCALES
                     (CodAlmacenNuevo, NombreAlmacenNuevo, CodAlmacenReferencia,
-                     NombreAlmacenReferencia, Canal, NombrePresupuesto, Usuario)
+                     NombreAlmacenReferencia, Canal, Ano, NombrePresupuesto, Usuario)
                 OUTPUT INSERTED.Id
                 VALUES (@codAlmacenNuevo, @nombreAlmacenNuevo, @codAlmacenReferencia,
-                        @nombreAlmacenReferencia, @canal, @nombrePresupuesto, @usuario)
+                        @nombreAlmacenReferencia, @canal, @ano, @nombrePresupuesto, @usuario)
             `);
         return result.recordset[0].Id;
     }
@@ -481,35 +631,64 @@ async function deleteReferencia(id) {
  */
 async function getValidacion(nombrePresupuesto) {
     const pool = await poolPromise;
-    const config = await getConfig();
-    if (!config) return [];
+    // Get config for this specific presupuesto
+    const configResult = await pool.request()
+        .input('nombre', sql.NVarChar(100), nombrePresupuesto)
+        .query(`SELECT TOP 1 AnoModelo, TablaDestino FROM MODELO_PRESUPUESTO_CONFIG WHERE NombrePresupuesto = @nombre`);
+    if (configResult.recordset.length === 0) return [];
+    const cfg = configResult.recordset[0];
 
-    const result = await pool.request()
-        .input('nombrePresupuesto', sql.NVarChar(100), nombrePresupuesto)
-        .input('ano', sql.Int, config.AnoModelo)
-        .query(`
-            SELECT 
-                d.CodAlmacen,
-                d.Canal,
-                d.Tipo,
-                MONTH(d.Fecha) AS Mes,
-                SUM(d.Presupuesto) AS SumaDiaria,
-                c.Valor AS ValorConsolidado,
-                SUM(d.Presupuesto) - c.Valor AS Diferencia
-            FROM ${config.TablaDestino} d
-            LEFT JOIN KpisRosti_Consolidado_Mensual c
-                ON d.CodAlmacen = c.CodAlmacen
-                AND d.Canal = c.Canal
-                AND d.Tipo = c.Tipo
-                AND MONTH(d.Fecha) = c.Mes
-                AND c.Ano = @ano
-            WHERE d.NombrePresupuesto = @nombrePresupuesto
-            GROUP BY d.CodAlmacen, d.Canal, d.Tipo, MONTH(d.Fecha), c.Valor
-            HAVING ABS(SUM(d.Presupuesto) - ISNULL(c.Valor, 0)) > 1
-            ORDER BY d.CodAlmacen, MONTH(d.Fecha), d.Canal, d.Tipo
-        `);
+    // Channel mapping: RSM table uses Salón, AutoPollo, etc; Consolidado uses SALON, AUTO, etc
+    const channelMap = {
+        'Salón': 'SALON', 'Llevar': 'LLEVAR', 'AutoPollo': 'AUTO',
+        'Express': 'EXPRESS', 'ECommerce': 'ECOMMERCE', 'UberEats': 'UBEREATS'
+    };
 
-    return result.recordset;
+    const results = [];
+    for (const [canalRsm, colConsolidado] of Object.entries(channelMap)) {
+        try {
+            const res = await pool.request()
+                .input('nombrePresupuesto', sql.NVarChar(100), nombrePresupuesto)
+                .input('canal', sql.NVarChar(200), canalRsm)
+                .input('ano', sql.Int, cfg.AnoModelo)
+                .query(`
+                    SELECT
+                        d.CodAlmacen as codAlmacen,
+                        d.Canal as canal,
+                        d.Tipo as tipo,
+                        d.Mes as mes,
+                        SUM(d.Monto) AS sumaDiaria,
+                        MAX(c.${colConsolidado}) AS valorConsolidado
+                    FROM [${cfg.TablaDestino}] d
+                    LEFT JOIN KpisRosti_Consolidado_Mensual c
+                        ON d.CodAlmacen = c.CodAlmacen
+                        AND d.Tipo = c.Tipo
+                        AND d.Mes = c.Mes
+                        AND c.Ano = @ano
+                    WHERE d.NombrePresupuesto = @nombrePresupuesto
+                      AND d.Canal = @canal
+                      AND d.Tipo IN ('Ventas', 'Transacciones')
+                      AND LEFT(d.CodAlmacen, 1) != 'G'
+                    GROUP BY d.CodAlmacen, d.Canal, d.Tipo, d.Mes
+                    HAVING ABS(SUM(d.Monto) - ISNULL(MAX(c.${colConsolidado}), 0)) > 1
+                    ORDER BY d.CodAlmacen, d.Mes
+                `);
+            for (const r of res.recordset) {
+                results.push({
+                    codAlmacen: r.codAlmacen, canal: r.canal, tipo: r.tipo, mes: r.mes,
+                    local: r.codAlmacen,
+                    esperado: r.valorConsolidado || 0, real: r.sumaDiaria || 0,
+                    diferencia: (r.sumaDiaria || 0) - (r.valorConsolidado || 0),
+                    match: false
+                });
+            }
+        } catch (e) {
+            // If table doesn't exist yet, return empty
+            if (e.message.includes('Invalid object')) return [];
+            throw e;
+        }
+    }
+    return results;
 }
 
 /**
@@ -545,14 +724,37 @@ async function getDatosAjuste(nombrePresupuesto, codAlmacen, mes, canal, tipo) {
     return result.recordset;
 }
 
+// ------------------------------------------
+// STORES (for dropdowns)
+// ------------------------------------------
+
+/**
+ * Get all store codes with their names (for dropdowns)
+ */
+async function getStoresWithNames() {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+        SELECT DISTINCT 
+            c.CodAlmacen as code,
+            COALESCE(n.NOMBRE_OPERACIONES, n.NOMBRE_GENERAL, n.NOMBRE_CONTA, c.CodAlmacen) as name
+        FROM KpisRosti_Consolidado_Mensual c
+        LEFT JOIN DIM_NOMBRES_ALMACEN n ON RTRIM(n.CODALMACEN) = c.CodAlmacen
+        ORDER BY c.CodAlmacen
+    `);
+    return result.recordset;
+}
+
 module.exports = {
     // Config
     getConfig,
+    getAllConfigs,
     saveConfig,
+    deleteConfig,
     ejecutarCalculo,
     // Consolidado
     getConsolidadoMensual,
     saveConsolidadoMensual,
+    initializeYear,
     // Ajustes
     getAjustes,
     aplicarAjuste,
@@ -569,5 +771,7 @@ module.exports = {
     saveReferencia,
     deleteReferencia,
     // Validación
-    getValidacion
+    getValidacion,
+    // Stores
+    getStoresWithNames
 };

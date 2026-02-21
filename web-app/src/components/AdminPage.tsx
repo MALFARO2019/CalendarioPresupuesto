@@ -28,6 +28,8 @@ import { KpiAdminPage } from './KpiAdminPage';
 import { DeployManagement } from './deploy/DeployManagement';
 import { UserProfilesReport } from './UserProfilesReport';
 import { GeneralSettings } from './GeneralSettings';
+import { ModeloPresupuestoAdmin } from './presupuesto-modelo/ModeloPresupuestoAdmin';
+import LoginAuditPanel from './LoginAuditPanel';
 
 interface AdminPageProps {
     onBack: () => void;
@@ -76,7 +78,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
 
     // Auto-select tab based on permissions: if user has eventos but not admin, default to eventos
     const defaultTab = isOfflineAdmin ? 'database' : (canAccessUsers ? 'users' : 'events');
-    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general'>(defaultTab);
+    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [allStores, setAllStores] = useState<string[]>([]);
@@ -101,6 +103,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [newAccesoInventarios, setNewAccesoInventarios] = useState(false);
     const [newAccesoPersonal, setNewAccesoPersonal] = useState(false);
     const [newEsAdmin, setNewEsAdmin] = useState(false);
+    const [newModeloPerms, setNewModeloPerms] = useState({
+        accesoModeloPresupuesto: false, verConfigModelo: false, verConsolidadoMensual: false,
+        verAjustePresupuesto: false, verVersiones: false, verBitacora: false, verReferencias: false,
+        editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
+    });
     const [formError, setFormError] = useState('');
     const [formSuccess, setFormSuccess] = useState('');
 
@@ -124,6 +131,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editAccesoInventarios, setEditAccesoInventarios] = useState(false);
     const [editAccesoPersonal, setEditAccesoPersonal] = useState(false);
     const [editEsAdmin, setEditEsAdmin] = useState(false);
+    const [editModeloPerms, setEditModeloPerms] = useState({
+        accesoModeloPresupuesto: false, verConfigModelo: false, verConsolidadoMensual: false,
+        verAjustePresupuesto: false, verVersiones: false, verBitacora: false, verReferencias: false,
+        editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
+    });
     const [editPermitirEnvioClave, setEditPermitirEnvioClave] = useState(true);
     const [editPerfilId, setEditPerfilId] = useState<number | null>(null);
 
@@ -314,7 +326,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 newAccesoEvaluaciones,
                 newAccesoInventarios,
                 newAccesoPersonal,
-                newEsAdmin
+                newEsAdmin,
+                newModeloPerms
             );
             setFormSuccess(`Usuario ${newEmail} creado. Clave: ${result.clave}`);
             setNewEmail('');
@@ -334,6 +347,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             setNewAccesoInventarios(false);
             setNewAccesoPersonal(false);
             setNewEsAdmin(false);
+            setNewModeloPerms({
+                accesoModeloPresupuesto: false, verConfigModelo: false, verConsolidadoMensual: false,
+                verAjustePresupuesto: false, verVersiones: false, verBitacora: false, verReferencias: false,
+                editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
+            });
             setShowForm(false);
             loadData();
         } catch (err: any) {
@@ -361,6 +379,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setEditAccesoInventarios(user.accesoInventarios);
         setEditAccesoPersonal(user.accesoPersonal || false);
         setEditEsAdmin(user.esAdmin);
+        setEditModeloPerms({
+            accesoModeloPresupuesto: user.accesoModeloPresupuesto || false,
+            verConfigModelo: user.verConfigModelo || false,
+            verConsolidadoMensual: user.verConsolidadoMensual || false,
+            verAjustePresupuesto: user.verAjustePresupuesto || false,
+            verVersiones: user.verVersiones || false,
+            verBitacora: user.verBitacora || false,
+            verReferencias: user.verReferencias || false,
+            editarConsolidado: user.editarConsolidado || false,
+            ejecutarRecalculo: user.ejecutarRecalculo || false,
+            ajustarCurva: user.ajustarCurva || false,
+            restaurarVersiones: user.restaurarVersiones || false,
+        });
         setEditPermitirEnvioClave(user.permitirEnvioClave !== undefined ? user.permitirEnvioClave : true);
         setEditPerfilId(user.perfilId ?? null);
     };
@@ -396,7 +427,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 editAccesoPersonal,
                 editEsAdmin,
                 editPermitirEnvioClave,
-                editPerfilId
+                editPerfilId,
+                editModeloPerms
             );
             setFormSuccess(`Usuario ${editEmail} actualizado exitosamente`);
             setEditingUser(null);
@@ -499,6 +531,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             {canAccessUsers && <option value="invgate">🎫 InvGate</option>}
                             {canAccessUsers && <option value="forms">📋 Forms</option>}
                             {canAccessUsers && <option value="uber-eats">🍔 Uber Eats</option>}
+                            {canAccessUsers && <option value="modelo-presupuesto">📈 Modelo Presupuesto</option>}
                             {canAccessUsers && <option value="kpi-admin">📊 Admin KPIs</option>}
                             {canAccessUsers && <option value="deploy">🚀 Publicación</option>}
 
@@ -559,6 +592,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             </button>
                         )}
 
+                        {canAccessUsers && (
+                            <button onClick={() => setActiveTab('modelo-presupuesto')}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'modelo-presupuesto' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                                Modelo P.
+                            </button>
+                        )}
+
                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-3 pt-3 pb-1.5">Sistema</div>
                         {canAccessUsers && (
                             <button onClick={() => setActiveTab('general')}
@@ -591,6 +632,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'deploy' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
                                 <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                                 Publicación
+                            </button>
+                        )}
+                        {canAccessUsers && (
+                            <button onClick={() => setActiveTab('login-audit')}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'login-audit' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                <Shield className="w-4 h-4 flex-shrink-0" /> Bitácora
                             </button>
                         )}
                     </nav>
@@ -822,7 +869,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                 </div>
                                             </div>
 
-                                            {/* Store selection */}
+                                            {/* Modelo Presupuesto Permissions */}
+                                            <div>
+                                                <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1 mb-2">
+                                                    📈 Modelo de Presupuesto
+                                                </label>
+                                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 border-2 border-emerald-100 rounded-xl p-3">
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-emerald-50 p-2 rounded-lg border border-emerald-200 col-span-2 md:col-span-3">
+                                                        <input type="checkbox" checked={newModeloPerms.accesoModeloPresupuesto}
+                                                            onChange={e => setNewModeloPerms({ ...newModeloPerms, accesoModeloPresupuesto: e.target.checked })}
+                                                            className="w-4 h-4 text-emerald-600 rounded" />
+                                                        <span className="text-sm font-bold text-emerald-800">Acceso General</span>
+                                                    </label>
+                                                    {[
+                                                        { key: 'verConfigModelo', label: 'Ver Config' },
+                                                        { key: 'verConsolidadoMensual', label: 'Ver Consolidado' },
+                                                        { key: 'verAjustePresupuesto', label: 'Ver Ajustes' },
+                                                        { key: 'verVersiones', label: 'Ver Versiones' },
+                                                        { key: 'verBitacora', label: 'Ver Bitácora' },
+                                                        { key: 'verReferencias', label: 'Ver Referencias' },
+                                                        { key: 'editarConsolidado', label: 'Editar Consolidado' },
+                                                        { key: 'ejecutarRecalculo', label: 'Ejecutar Recálculo' },
+                                                        { key: 'ajustarCurva', label: 'Ajustar Curva' },
+                                                        { key: 'restaurarVersiones', label: 'Restaurar Versiones' },
+                                                    ].map(({ key, label }) => (
+                                                        <label key={key} className="flex items-center gap-2 cursor-pointer bg-emerald-50/50 p-2 rounded-lg border border-emerald-100 text-xs">
+                                                            <input type="checkbox"
+                                                                checked={(newModeloPerms as any)[key]}
+                                                                onChange={e => setNewModeloPerms({ ...newModeloPerms, [key]: e.target.checked })}
+                                                                className="w-3.5 h-3.5 text-emerald-600 rounded" />
+                                                            <span className="font-medium text-gray-700">{label}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
                                             <div>
                                                 <div className="flex items-center justify-between mb-2">
                                                     <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1">
@@ -1348,7 +1428,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                         </div>
                                                     </div>
 
-                                                    {/* Store selection */}
+                                                    {/* Modelo Presupuesto Permissions */}
+                                                    <div>
+                                                        <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1 mb-2">
+                                                            📈 Modelo de Presupuesto
+                                                        </label>
+                                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 border-2 border-emerald-100 rounded-xl p-3">
+                                                            <label className="flex items-center gap-2 cursor-pointer bg-emerald-50 p-2 rounded-lg border border-emerald-200 col-span-2 md:col-span-3">
+                                                                <input type="checkbox" checked={editModeloPerms.accesoModeloPresupuesto}
+                                                                    onChange={e => setEditModeloPerms({ ...editModeloPerms, accesoModeloPresupuesto: e.target.checked })}
+                                                                    className="w-4 h-4 text-emerald-600 rounded" />
+                                                                <span className="text-sm font-bold text-emerald-800">Acceso General</span>
+                                                            </label>
+                                                            {[
+                                                                { key: 'verConfigModelo', label: 'Ver Config' },
+                                                                { key: 'verConsolidadoMensual', label: 'Ver Consolidado' },
+                                                                { key: 'verAjustePresupuesto', label: 'Ver Ajustes' },
+                                                                { key: 'verVersiones', label: 'Ver Versiones' },
+                                                                { key: 'verBitacora', label: 'Ver Bitácora' },
+                                                                { key: 'verReferencias', label: 'Ver Referencias' },
+                                                                { key: 'editarConsolidado', label: 'Editar Consolidado' },
+                                                                { key: 'ejecutarRecalculo', label: 'Ejecutar Recálculo' },
+                                                                { key: 'ajustarCurva', label: 'Ajustar Curva' },
+                                                                { key: 'restaurarVersiones', label: 'Restaurar Versiones' },
+                                                            ].map(({ key, label }) => (
+                                                                <label key={key} className="flex items-center gap-2 cursor-pointer bg-emerald-50/50 p-2 rounded-lg border border-emerald-100 text-xs">
+                                                                    <input type="checkbox"
+                                                                        checked={(editModeloPerms as any)[key]}
+                                                                        onChange={e => setEditModeloPerms({ ...editModeloPerms, [key]: e.target.checked })}
+                                                                        className="w-3.5 h-3.5 text-emerald-600 rounded" />
+                                                                    <span className="font-medium text-gray-700">{label}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                     <div>
                                                         <div className="flex items-center justify-between mb-2">
                                                             <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1">
@@ -1483,9 +1596,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             <KpiAdminPage />
                         ) : activeTab === 'deploy' ? (
                             <DeployManagement />
-
+                        ) : activeTab === 'modelo-presupuesto' ? (
+                            <ModeloPresupuestoAdmin />
                         ) : activeTab === 'general' ? (
                             <GeneralSettings />
+                        ) : activeTab === 'login-audit' ? (
+                            <LoginAuditPanel />
                         ) : (
                             /* T&E (Táctica y Estrategia) Tab */
                             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">

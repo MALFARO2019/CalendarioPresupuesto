@@ -448,6 +448,23 @@ IMPORTANTE:
             console.log('✅ Default profiles created');
         }
 
+        // Create APP_BITACORA_LOGIN table for login audit
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_BITACORA_LOGIN' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_BITACORA_LOGIN (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    Email NVARCHAR(255) NOT NULL,
+                    Nombre NVARCHAR(255) NULL,
+                    Exito BIT NOT NULL DEFAULT 0,
+                    Motivo NVARCHAR(255) NULL,
+                    IP NVARCHAR(100) NULL,
+                    UserAgent NVARCHAR(500) NULL,
+                    Fecha DATETIME NOT NULL DEFAULT GETDATE()
+                );
+            END
+        `);
+
         console.log('✅ Security tables verified/created');
     } catch (err) {
         console.error('⚠️ Could not create security tables:', err.message);
@@ -455,15 +472,74 @@ IMPORTANTE:
 }
 
 /**
+ * Log a login event (fire-and-forget)
+ */
+async function logLoginEvent(email, nombre, exito, motivo, ip, userAgent) {
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('email', sql.NVarChar, email || '')
+            .input('nombre', sql.NVarChar, nombre || null)
+            .input('exito', sql.Bit, exito)
+            .input('motivo', sql.NVarChar, motivo || null)
+            .input('ip', sql.NVarChar, (ip || '').substring(0, 100))
+            .input('userAgent', sql.NVarChar, (userAgent || '').substring(0, 500))
+            .query('INSERT INTO APP_BITACORA_LOGIN (Email, Nombre, Exito, Motivo, IP, UserAgent) VALUES (@email, @nombre, @exito, @motivo, @ip, @userAgent)');
+    } catch (err) {
+        console.error('⚠️ Error logging login event:', err.message);
+    }
+}
+
+/**
+ * Get login audit log with optional filters
+ */
+async function getLoginAudit(fechaDesde, fechaHasta, emailFilter) {
+    const pool = await poolPromise;
+    let query = 'SELECT TOP 500 Id, Email, Nombre, Exito, Motivo, IP, UserAgent, Fecha FROM APP_BITACORA_LOGIN WHERE 1=1';
+    const request = pool.request();
+
+    if (fechaDesde) {
+        query += ' AND Fecha >= @desde';
+        request.input('desde', sql.DateTime, new Date(fechaDesde));
+    }
+    if (fechaHasta) {
+        // Add 1 day to include the entire end date
+        const hasta = new Date(fechaHasta);
+        hasta.setDate(hasta.getDate() + 1);
+        query += ' AND Fecha < @hasta';
+        request.input('hasta', sql.DateTime, hasta);
+    }
+    if (emailFilter) {
+        query += ' AND Email LIKE @emailFilter';
+        request.input('emailFilter', sql.NVarChar, `%${emailFilter}%`);
+    }
+
+    query += ' ORDER BY Fecha DESC';
+    const result = await request.query(query);
+
+    return result.recordset.map(r => ({
+        id: r.Id,
+        email: r.Email,
+        nombre: r.Nombre,
+        exito: r.Exito,
+        motivo: r.Motivo,
+        ip: r.IP,
+        userAgent: r.UserAgent,
+        fecha: r.Fecha
+    }));
+}
+
+/**
  * Login: validate email + PIN, return long-lived JWT
  */
-async function loginUser(email, clave) {
+async function loginUser(email, clave, ip, userAgent) {
     const pool = await poolPromise;
     const result = await pool.request()
         .input('email', sql.NVarChar, email)
         .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(restaurarVersiones,0) as restaurarVersiones FROM APP_USUARIOS WHERE Email = @email');
 
     if (result.recordset.length === 0) {
+        logLoginEvent(email, null, false, 'Usuario no encontrado', ip, userAgent);
         return { success: false, message: 'Usuario no encontrado. Contacte al administrador.' };
     }
 
@@ -477,12 +553,14 @@ async function loginUser(email, clave) {
     });
 
     if (!user.Activo) {
+        logLoginEvent(email, user.Nombre, false, 'Usuario desactivado', ip, userAgent);
         return { success: false, message: 'Usuario desactivado. Contacte al administrador.' };
     }
 
     // Verify PIN - trim both values to avoid whitespace issues
     if (user.Clave.trim() !== clave.trim()) {
         console.log('❌ Password mismatch');
+        logLoginEvent(email, user.Nombre, false, 'Clave incorrecta', ip, userAgent);
         return { success: false, message: 'Clave incorrecta.' };
     }
 
@@ -538,6 +616,9 @@ async function loginUser(email, clave) {
         JWT_SECRET,
         { expiresIn: '365d' }
     );
+
+    // Log successful login
+    logLoginEvent(email, user.Nombre, true, 'Login exitoso', ip, userAgent);
 
     return {
         success: true,
@@ -993,19 +1074,36 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
         .input('esAdmin', sql.Bit, permisos.esAdmin || false)
         .input('permitirEnvioClave', sql.Bit, permisos.permitirEnvioClave !== undefined ? permisos.permitirEnvioClave : true)
         .input('usuarioCreador', sql.NVarChar, usuarioCreador || '')
+        .input('accesoModeloPresupuesto', sql.Bit, permisos.accesoModeloPresupuesto || false)
+        .input('verConfigModelo', sql.Bit, permisos.verConfigModelo || false)
+        .input('verConsolidadoMensual', sql.Bit, permisos.verConsolidadoMensual || false)
+        .input('verAjustePresupuesto', sql.Bit, permisos.verAjustePresupuesto || false)
+        .input('verVersiones', sql.Bit, permisos.verVersiones || false)
+        .input('verBitacora', sql.Bit, permisos.verBitacora || false)
+        .input('verReferencias', sql.Bit, permisos.verReferencias || false)
+        .input('editarConsolidado', sql.Bit, permisos.editarConsolidado || false)
+        .input('ejecutarRecalculo', sql.Bit, permisos.ejecutarRecalculo || false)
+        .input('ajustarCurva', sql.Bit, permisos.ajustarCurva || false)
+        .input('restaurarVersiones', sql.Bit, permisos.restaurarVersiones || false)
         .query(`
             INSERT INTO APP_PERFILES (
                 Nombre, Descripcion, AccesoTendencia, AccesoTactica, AccesoEventos,
                 AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos,
                 AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal,
-                EsAdmin, PermitirEnvioClave, UsuarioCreador
+                EsAdmin, PermitirEnvioClave, UsuarioCreador,
+                accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual,
+                verAjustePresupuesto, verVersiones, verBitacora, verReferencias,
+                editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones
             )
             OUTPUT INSERTED.Id
             VALUES (
                 @nombre, @descripcion, @accesoTendencia, @accesoTactica, @accesoEventos,
                 @accesoPresupuesto, @accesoPresupuestoMensual, @accesoPresupuestoAnual, @accesoPresupuestoRangos,
                 @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @accesoPersonal,
-                @esAdmin, @permitirEnvioClave, @usuarioCreador
+                @esAdmin, @permitirEnvioClave, @usuarioCreador,
+                @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual,
+                @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias,
+                @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones
             )
         `);
 
@@ -1054,6 +1152,17 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
         .input('accesoPersonal', sql.Bit, permisos.accesoPersonal || false)
         .input('esAdmin', sql.Bit, permisos.esAdmin || false)
         .input('permitirEnvioClave', sql.Bit, permisos.permitirEnvioClave !== undefined ? permisos.permitirEnvioClave : true)
+        .input('accesoModeloPresupuesto', sql.Bit, permisos.accesoModeloPresupuesto || false)
+        .input('verConfigModelo', sql.Bit, permisos.verConfigModelo || false)
+        .input('verConsolidadoMensual', sql.Bit, permisos.verConsolidadoMensual || false)
+        .input('verAjustePresupuesto', sql.Bit, permisos.verAjustePresupuesto || false)
+        .input('verVersiones', sql.Bit, permisos.verVersiones || false)
+        .input('verBitacora', sql.Bit, permisos.verBitacora || false)
+        .input('verReferencias', sql.Bit, permisos.verReferencias || false)
+        .input('editarConsolidado', sql.Bit, permisos.editarConsolidado || false)
+        .input('ejecutarRecalculo', sql.Bit, permisos.ejecutarRecalculo || false)
+        .input('ajustarCurva', sql.Bit, permisos.ajustarCurva || false)
+        .input('restaurarVersiones', sql.Bit, permisos.restaurarVersiones || false)
         .query(`
             UPDATE APP_PERFILES
             SET Nombre = @nombre,
@@ -1071,6 +1180,17 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
                 AccesoPersonal = @accesoPersonal,
                 EsAdmin = @esAdmin,
                 PermitirEnvioClave = @permitirEnvioClave,
+                accesoModeloPresupuesto = @accesoModeloPresupuesto,
+                verConfigModelo = @verConfigModelo,
+                verConsolidadoMensual = @verConsolidadoMensual,
+                verAjustePresupuesto = @verAjustePresupuesto,
+                verVersiones = @verVersiones,
+                verBitacora = @verBitacora,
+                verReferencias = @verReferencias,
+                editarConsolidado = @editarConsolidado,
+                ejecutarRecalculo = @ejecutarRecalculo,
+                ajustarCurva = @ajustarCurva,
+                restaurarVersiones = @restaurarVersiones,
                 FechaModificacion = GETDATE()
             WHERE Id = @id
         `);
@@ -1193,6 +1313,17 @@ async function syncProfilePermissions(perfilId) {
         .input('accesoPersonal', sql.Bit, profile.AccesoPersonal)
         .input('esAdmin', sql.Bit, profile.EsAdmin)
         .input('permitirEnvioClave', sql.Bit, profile.PermitirEnvioClave)
+        .input('accesoModeloPresupuesto', sql.Bit, profile.accesoModeloPresupuesto || false)
+        .input('verConfigModelo', sql.Bit, profile.verConfigModelo || false)
+        .input('verConsolidadoMensual', sql.Bit, profile.verConsolidadoMensual || false)
+        .input('verAjustePresupuesto', sql.Bit, profile.verAjustePresupuesto || false)
+        .input('verVersiones', sql.Bit, profile.verVersiones || false)
+        .input('verBitacora', sql.Bit, profile.verBitacora || false)
+        .input('verReferencias', sql.Bit, profile.verReferencias || false)
+        .input('editarConsolidado', sql.Bit, profile.editarConsolidado || false)
+        .input('ejecutarRecalculo', sql.Bit, profile.ejecutarRecalculo || false)
+        .input('ajustarCurva', sql.Bit, profile.ajustarCurva || false)
+        .input('restaurarVersiones', sql.Bit, profile.restaurarVersiones || false)
         .query(`
             UPDATE APP_USUARIOS
             SET AccesoTendencia = @accesoTendencia,
@@ -1208,6 +1339,17 @@ async function syncProfilePermissions(perfilId) {
                 AccesoPersonal = @accesoPersonal,
                 EsAdmin = @esAdmin,
                 PermitirEnvioClave = @permitirEnvioClave,
+                accesoModeloPresupuesto = @accesoModeloPresupuesto,
+                verConfigModelo = @verConfigModelo,
+                verConsolidadoMensual = @verConsolidadoMensual,
+                verAjustePresupuesto = @verAjustePresupuesto,
+                verVersiones = @verVersiones,
+                verBitacora = @verBitacora,
+                verReferencias = @verReferencias,
+                editarConsolidado = @editarConsolidado,
+                ejecutarRecalculo = @ejecutarRecalculo,
+                ajustarCurva = @ajustarCurva,
+                restaurarVersiones = @restaurarVersiones,
                 FechaModificacion = GETDATE()
             WHERE PerfilId = @perfilId AND EsProtegido = 0
         `);
@@ -1236,5 +1378,7 @@ module.exports = {
     deleteProfile,
     assignProfileToUsers,
     syncProfilePermissions,
+    logLoginEvent,
+    getLoginAudit,
     ADMIN_PASSWORD
 };

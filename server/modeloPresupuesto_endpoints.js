@@ -28,35 +28,66 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     // CONFIG
     // ------------------------------------------
 
-    // GET /api/modelo-presupuesto/config
+    // GET /api/modelo-presupuesto/config — returns ALL configs
     app.get('/api/modelo-presupuesto/config', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
             if (!req.user.verConfigModelo) {
                 return res.status(403).json({ error: 'No tiene permiso para ver la configuración' });
             }
-            const config = await modeloPresupuesto.getConfig();
-            res.json(config);
+            const configs = await modeloPresupuesto.getAllConfigs();
+            res.json(configs);
         } catch (err) {
             console.error('Error GET /api/modelo-presupuesto/config:', err);
             res.status(500).json({ error: err.message });
         }
     });
 
-    // PUT /api/modelo-presupuesto/config/:id
+    // PUT /api/modelo-presupuesto/config/:id — update existing
     app.put('/api/modelo-presupuesto/config/:id', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
             if (!req.user.verConfigModelo) {
                 return res.status(403).json({ error: 'No tiene permiso para editar la configuración' });
             }
-            await modeloPresupuesto.saveConfig(parseInt(req.params.id), req.body);
-            res.json({ success: true });
+            const id = await modeloPresupuesto.saveConfig(parseInt(req.params.id), req.body);
+            res.json({ success: true, id });
         } catch (err) {
             console.error('Error PUT /api/modelo-presupuesto/config:', err);
             res.status(500).json({ error: err.message });
         }
     });
+
+    // PUT /api/modelo-presupuesto/config (without id — create new)
+    app.put('/api/modelo-presupuesto/config', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            if (!req.user.verConfigModelo) {
+                return res.status(403).json({ error: 'No tiene permiso para editar la configuración' });
+            }
+            const newId = await modeloPresupuesto.saveConfig(null, req.body);
+            res.json({ success: true, id: newId });
+        } catch (err) {
+            console.error('Error PUT /api/modelo-presupuesto/config (create):', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // DELETE /api/modelo-presupuesto/config/:id
+    app.delete('/api/modelo-presupuesto/config/:id', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            if (!req.user.verConfigModelo) {
+                return res.status(403).json({ error: 'No tiene permiso para eliminar configuraciones' });
+            }
+            await modeloPresupuesto.deleteConfig(parseInt(req.params.id));
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Error DELETE /api/modelo-presupuesto/config:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
 
     // POST /api/modelo-presupuesto/calcular
     app.post('/api/modelo-presupuesto/calcular', authMiddleware, async (req, res) => {
@@ -128,9 +159,57 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
         }
     });
 
-    // ------------------------------------------
-    // AJUSTES
-    // ------------------------------------------
+    // POST /api/modelo-presupuesto/consolidado/inicializar
+    app.post('/api/modelo-presupuesto/consolidado/inicializar', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            if (!req.user.editarConsolidado && !req.user.esAdmin) {
+                return res.status(403).json({ error: 'No tiene permiso para inicializar años' });
+            }
+            const { ano } = req.body;
+            if (!ano || ano < 2020 || ano > 2050) {
+                return res.status(400).json({ error: 'Año inválido' });
+            }
+            const result = await modeloPresupuesto.initializeYear(ano);
+            res.json(result);
+        } catch (err) {
+            console.error('Error POST /api/modelo-presupuesto/consolidado/inicializar:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // POST /api/modelo-presupuesto/calcular
+    app.post('/api/modelo-presupuesto/calcular', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            if (!req.user.ejecutarRecalculo && !req.user.esAdmin) {
+                return res.status(403).json({ error: 'No tiene permiso para ejecutar recálculo' });
+            }
+            const usuario = req.user.email || req.user.nombre;
+            const { codAlmacen, mes, nombrePresupuesto } = req.body;
+            const result = await modeloPresupuesto.ejecutarCalculo(usuario, codAlmacen || null, mes || null, nombrePresupuesto || null);
+            // SP returns a recordset with TotalRegistros
+            const totalRegistros = result.recordset?.[0]?.TotalRegistros || 0;
+            res.json({ success: true, totalRegistros });
+        } catch (err) {
+            console.error('Error POST /api/modelo-presupuesto/calcular:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // GET /api/modelo-presupuesto/validacion
+    app.get('/api/modelo-presupuesto/validacion', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            const { nombrePresupuesto } = req.query;
+            if (!nombrePresupuesto) return res.status(400).json({ error: 'nombrePresupuesto es requerido' });
+            const result = await modeloPresupuesto.getValidacion(nombrePresupuesto);
+            res.json(result);
+        } catch (err) {
+            console.error('Error GET /api/modelo-presupuesto/validacion:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
 
     // GET /api/modelo-presupuesto/ajustes
     app.get('/api/modelo-presupuesto/ajustes', authMiddleware, async (req, res) => {
@@ -286,8 +365,8 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
             if (!req.user.verReferencias) {
                 return res.status(403).json({ error: 'No tiene permiso para ver referencias' });
             }
-            const { nombrePresupuesto } = req.query;
-            const result = await modeloPresupuesto.getReferencias(nombrePresupuesto);
+            const { nombrePresupuesto, ano } = req.query;
+            const result = await modeloPresupuesto.getReferencias(nombrePresupuesto, ano ? parseInt(ano) : null);
             res.json(result);
         } catch (err) {
             console.error('Error GET /api/modelo-presupuesto/referencias:', err);
@@ -339,6 +418,18 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
             res.json({ success: true });
         } catch (err) {
             console.error('Error DELETE /api/modelo-presupuesto/referencias:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // GET /api/modelo-presupuesto/stores  (codes + names for dropdowns)
+    app.get('/api/modelo-presupuesto/stores', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            const stores = await modeloPresupuesto.getStoresWithNames();
+            res.json(stores);
+        } catch (err) {
+            console.error('Error GET /api/modelo-presupuesto/stores:', err);
             res.status(500).json({ error: err.message });
         }
     });

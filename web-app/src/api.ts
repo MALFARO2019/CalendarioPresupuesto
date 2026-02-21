@@ -19,6 +19,17 @@ export interface User {
     accesoEvaluaciones: boolean;
     accesoInventarios: boolean;
     accesoPersonal: boolean;
+    accesoModeloPresupuesto: boolean;
+    verConfigModelo: boolean;
+    verConsolidadoMensual: boolean;
+    verAjustePresupuesto: boolean;
+    verVersiones: boolean;
+    verBitacora: boolean;
+    verReferencias: boolean;
+    editarConsolidado: boolean;
+    ejecutarRecalculo: boolean;
+    ajustarCurva: boolean;
+    restaurarVersiones: boolean;
     esAdmin: boolean;
     esProtegido: boolean;
     allowedStores: string[];
@@ -182,12 +193,13 @@ export async function createAdminUser(
     accesoEvaluaciones: boolean = false,
     accesoInventarios: boolean = false,
     accesoPersonal: boolean = false,
-    esAdmin: boolean = false
+    esAdmin: boolean = false,
+    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {}
 ): Promise<{ success: boolean; userId: number; clave: string }> {
     const response = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin })
+        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, ...modeloPerms })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -217,12 +229,13 @@ export async function updateAdminUser(
     accesoPersonal: boolean,
     esAdmin: boolean,
     permitirEnvioClave: boolean = true,
-    perfilId: number | null = null
+    perfilId: number | null = null,
+    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {}
 ): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId })
+        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, ...modeloPerms })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -789,6 +802,17 @@ export interface Profile {
     accesoEvaluaciones: boolean;
     accesoInventarios: boolean;
     accesoPersonal: boolean;
+    accesoModeloPresupuesto: boolean;
+    verConfigModelo: boolean;
+    verConsolidadoMensual: boolean;
+    verAjustePresupuesto: boolean;
+    verVersiones: boolean;
+    verBitacora: boolean;
+    verReferencias: boolean;
+    editarConsolidado: boolean;
+    ejecutarRecalculo: boolean;
+    ajustarCurva: boolean;
+    restaurarVersiones: boolean;
     esAdmin: boolean;
     permitirEnvioClave: boolean;
     usuariosAsignados: number;
@@ -823,6 +847,17 @@ export async function createProfile(data: {
         accesoEvaluaciones: boolean;
         accesoInventarios: boolean;
         accesoPersonal: boolean;
+        accesoModeloPresupuesto?: boolean;
+        verConfigModelo?: boolean;
+        verConsolidadoMensual?: boolean;
+        verAjustePresupuesto?: boolean;
+        verVersiones?: boolean;
+        verBitacora?: boolean;
+        verReferencias?: boolean;
+        editarConsolidado?: boolean;
+        ejecutarRecalculo?: boolean;
+        ajustarCurva?: boolean;
+        restaurarVersiones?: boolean;
         esAdmin: boolean;
         permitirEnvioClave: boolean;
     };
@@ -856,6 +891,17 @@ export async function updateProfile(
             accesoEvaluaciones: boolean;
             accesoInventarios: boolean;
             accesoPersonal: boolean;
+            accesoModeloPresupuesto?: boolean;
+            verConfigModelo?: boolean;
+            verConsolidadoMensual?: boolean;
+            verAjustePresupuesto?: boolean;
+            verVersiones?: boolean;
+            verBitacora?: boolean;
+            verReferencias?: boolean;
+            editarConsolidado?: boolean;
+            ejecutarRecalculo?: boolean;
+            ajustarCurva?: boolean;
+            restaurarVersiones?: boolean;
             esAdmin: boolean;
             permitirEnvioClave: boolean;
         };
@@ -1165,5 +1211,298 @@ export async function fetchSetupGuide(): Promise<SetupGuide> {
         headers: authHeaders()
     });
     if (!response.ok) throw new Error('Error al obtener guía');
+    return response.json();
+}
+
+// ==========================================
+// MODELO DE PRESUPUESTO API
+// ==========================================
+
+export interface ModeloConfig {
+    id: number;
+    nombrePresupuesto: string;
+    anoModelo: number;
+    tablaDestino: string;
+    horaCalculo: string;
+    ultimoCalculo: string | null;
+    ultimoUsuario: string | null;
+    activo: boolean;
+    ejecutarEnJob: boolean;
+}
+
+export interface ConsolidadoRow {
+    id?: number;
+    codAlmacen: string;
+    local: string;
+    ano: number;
+    mes: number;
+    tipo: string;
+    salon: number;
+    llevar: number;
+    auto: number;
+    express: number;
+    ecommerce: number;
+    ubereats: number;
+    total: number;
+}
+
+export interface AjustePresupuesto {
+    id: number;
+    nombrePresupuesto: string;
+    codAlmacen: string;
+    mes: number;
+    canal: string;
+    tipo: string;
+    metodoAjuste: string;
+    valorAjuste: number;
+    metodoDistribucion: string;
+    motivo: string | null;
+    fechaAplicacion: string;
+    usuario: string;
+    activo: boolean;
+}
+
+export interface VersionPresupuesto {
+    id: number;
+    nombrePresupuesto: string;
+    numeroVersion: number;
+    nombreTabla: string;
+    fechaCreacion: string;
+    usuario: string;
+    origen: string;
+    totalRegistros: number;
+    notas: string | null;
+}
+
+export interface BitacoraEntry {
+    id: number;
+    nombrePresupuesto: string;
+    usuario: string;
+    fechaHora: string;
+    accion: string;
+    codAlmacen: string | null;
+    local: string | null;
+    mes: number | null;
+    canal: string | null;
+    tipo: string | null;
+    valorAnterior: string | null;
+    valorNuevo: string | null;
+    motivo: string | null;
+    origen: string;
+    detalle: string | null;
+}
+
+export interface ReferenciaLocal {
+    id: number;
+    codAlmacenNuevo: string;
+    nombreAlmacenNuevo: string | null;
+    codAlmacenReferencia: string;
+    nombreAlmacenReferencia: string | null;
+    canal: string | null;
+    ano: number;
+    nombrePresupuesto: string;
+    activo: boolean;
+}
+
+export interface StoreItem {
+    code: string;
+    name: string;
+}
+
+export async function fetchStoresWithNames(): Promise<StoreItem[]> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/stores`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching stores');
+    return response.json();
+}
+
+export interface ValidacionResult {
+    codAlmacen: string;
+    local: string;
+    mes: number;
+    canal: string;
+    tipo: string;
+    esperado: number;
+    real: number;
+    diferencia: number;
+    match: boolean;
+}
+
+// Config
+export async function fetchModeloConfig(): Promise<ModeloConfig[]> {
+    try {
+        const response = await fetch(`${API_BASE}/modelo-presupuesto/config`, { headers: authHeaders() });
+        if (!response.ok) return [];
+        const data = await response.json();
+        return Array.isArray(data) ? data : (data ? [data] : []);
+    } catch { return []; }
+}
+
+export async function saveModeloConfig(data: Partial<ModeloConfig>): Promise<{ success: boolean; id: number }> {
+    const url = data.id
+        ? `${API_BASE}/modelo-presupuesto/config/${data.id}`
+        : `${API_BASE}/modelo-presupuesto/config`;
+    const response = await fetch(url, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify(data)
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+export async function deleteModeloConfig(id: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/config/${id}`, {
+        method: 'DELETE', headers: authHeaders()
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+// Calculation
+export async function ejecutarRecalculo(nombrePresupuesto?: string, codAlmacen?: string, mes?: number): Promise<{ success: boolean; totalRegistros?: number }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/calcular`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ nombrePresupuesto, codAlmacen, mes })
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+// Consolidado Mensual
+export async function fetchConsolidadoMensual(ano: number, codAlmacen?: string, tipo?: string): Promise<ConsolidadoRow[]> {
+    const params = new URLSearchParams({ ano: ano.toString() });
+    if (codAlmacen) params.set('codAlmacen', codAlmacen);
+    if (tipo) params.set('tipo', tipo);
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/consolidado?${params}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching consolidado');
+    return response.json();
+}
+
+export async function saveConsolidadoMensual(rows: ConsolidadoRow[]): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/consolidado`, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify({ rows })
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+export async function initializeConsolidadoYear(ano: number): Promise<{ success: boolean; inserted: number }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/consolidado/inicializar`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ ano })
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+// Adjustments
+export async function fetchAjustes(nombrePresupuesto: string): Promise<AjustePresupuesto[]> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes?nombrePresupuesto=${encodeURIComponent(nombrePresupuesto)}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching ajustes');
+    return response.json();
+}
+
+export async function aplicarAjuste(data: {
+    nombrePresupuesto: string; codAlmacen: string; mes: number; canal: string; tipo: string;
+    metodoAjuste: string; valorAjuste: number; metodoDistribucion: string; motivo: string;
+}): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustar`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+export async function previewAjuste(data: {
+    nombrePresupuesto: string; codAlmacen: string; mes: number; canal: string; tipo: string;
+    metodoAjuste: string; valorAjuste: number; metodoDistribucion: string;
+}): Promise<{ preview: any[] }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustar/preview`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+// Versions
+export async function fetchVersiones(nombrePresupuesto: string): Promise<VersionPresupuesto[]> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/versiones?nombrePresupuesto=${encodeURIComponent(nombrePresupuesto)}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching versiones');
+    return response.json();
+}
+
+export async function restaurarVersion(versionId: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/versiones/restaurar`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ versionId })
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+// Bitacora
+export async function fetchBitacora(filtros: {
+    nombrePresupuesto: string; usuario?: string; mes?: number; desde?: string; hasta?: string;
+}): Promise<BitacoraEntry[]> {
+    const params = new URLSearchParams({ nombrePresupuesto: filtros.nombrePresupuesto });
+    if (filtros.usuario) params.set('usuario', filtros.usuario);
+    if (filtros.mes) params.set('mes', filtros.mes.toString());
+    if (filtros.desde) params.set('desde', filtros.desde);
+    if (filtros.hasta) params.set('hasta', filtros.hasta);
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/bitacora?${params}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching bitacora');
+    return response.json();
+}
+
+// Referencias
+export async function fetchReferencias(nombrePresupuesto: string, ano?: number): Promise<ReferenciaLocal[]> {
+    const params = new URLSearchParams({ nombrePresupuesto });
+    if (ano) params.set('ano', ano.toString());
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/referencias?${params}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching referencias');
+    return response.json();
+}
+
+export async function saveReferencia(data: Partial<ReferenciaLocal>): Promise<{ success: boolean }> {
+    const method = data.id ? 'PUT' : 'POST';
+    const url = data.id ? `${API_BASE}/modelo-presupuesto/referencias/${data.id}` : `${API_BASE}/modelo-presupuesto/referencias`;
+    const response = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(data) });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+export async function deleteReferencia(id: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/referencias/${id}`, {
+        method: 'DELETE', headers: authHeaders()
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+// Validation
+export async function fetchValidacion(nombrePresupuesto: string): Promise<ValidacionResult[]> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/validacion?nombrePresupuesto=${encodeURIComponent(nombrePresupuesto)}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching validacion');
+    return response.json();
+}
+
+// ==========================================
+// LOGIN AUDIT LOG API (admin only)
+// ==========================================
+
+export interface LoginAuditEntry {
+    id: number;
+    email: string;
+    nombre: string | null;
+    exito: boolean;
+    motivo: string | null;
+    ip: string | null;
+    userAgent: string | null;
+    fecha: string;
+}
+
+export async function fetchLoginAudit(desde?: string, hasta?: string, email?: string): Promise<LoginAuditEntry[]> {
+    const params = new URLSearchParams();
+    if (desde) params.set('desde', desde);
+    if (hasta) params.set('hasta', hasta);
+    if (email) params.set('email', email);
+    const response = await fetch(`${API_BASE}/admin/login-log?${params}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching login audit');
     return response.json();
 }
