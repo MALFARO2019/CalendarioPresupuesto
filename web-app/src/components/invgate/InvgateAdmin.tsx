@@ -34,6 +34,17 @@ interface ViewData {
     data: Record<string, string>[];
 }
 
+interface MappingConfig {
+    FieldType: string;
+    ColumnName: string;
+}
+interface MappingStats {
+    exists: boolean;
+    hasMappingColumns?: boolean;
+    stats?: { total: number; withCodAlmacen: number; withPersonalId: number; withoutCodAlmacen: number; withoutPersonalId: number };
+    mappings?: { fieldType: string; columnName: string }[];
+}
+
 // ─── Tab enum ─────────────────────────────────────────────────────
 type Tab = 'auth' | 'views' | 'sync';
 
@@ -68,6 +79,15 @@ export const InvgateAdmin: React.FC = () => {
     const [viewError, setViewError] = useState<string | null>(null);
     const [viewData, setViewData] = useState<ViewData | null>(null);
     const [loadingViewData, setLoadingViewData] = useState(false);
+
+    // Per-view sync & mapping state
+    const [syncingViewId, setSyncingViewId] = useState<number | null>(null);
+    const [expandedViewId, setExpandedViewId] = useState<number | null>(null);
+    const [viewMappings, setViewMappings] = useState<MappingConfig[]>([]);
+    const [viewMappingStats, setViewMappingStats] = useState<MappingStats | null>(null);
+    const [resolvingMappings, setResolvingMappings] = useState(false);
+    const [mappingPersonaCol, setMappingPersonaCol] = useState('');
+    const [mappingAlmacenCol, setMappingAlmacenCol] = useState('');
 
     const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` });
 
@@ -161,6 +181,20 @@ export const InvgateAdmin: React.FC = () => {
         }
     };
 
+    // ─── Sync a single view ──────────────────────────────────────
+    const syncView = async (viewId: number) => {
+        setSyncingViewId(viewId);
+        setViewError(null);
+        try {
+            const r = await axios.post(`${API_BASE}/invgate/views/${viewId}/sync`, {}, { headers: authHeaders() });
+            const result = r.data;
+            setViewError(`✅ Vista #${viewId}: ${result.totalNew || 0} nuevos, ${result.totalUpdated || 0} actualizados`);
+            await loadViews();
+        } catch (e: any) {
+            setViewError('Error sincronizando: ' + (e.response?.data?.error || e.message));
+        } finally { setSyncingViewId(null); }
+    };
+
     // ─── Load synced data for a view ─────────────────────────────
     const loadViewData = async (viewId: number) => {
         if (viewData?.viewId === viewId) { setViewData(null); return; } // toggle off
@@ -172,6 +206,53 @@ export const InvgateAdmin: React.FC = () => {
         } catch (e: any) {
             setViewError('Error cargando datos: ' + (e.response?.data?.error || e.message));
         } finally { setLoadingViewData(false); }
+    };
+
+    // ─── Mapping functions ───────────────────────────────────────
+    const loadMappings = async (viewId: number) => {
+        try {
+            const [mRes, sRes] = await Promise.all([
+                axios.get(`${API_BASE}/invgate/views/${viewId}/mappings`, { headers: authHeaders() }),
+                axios.get(`${API_BASE}/invgate/views/${viewId}/mapping-stats`, { headers: authHeaders() })
+            ]);
+            setViewMappings(mRes.data || []);
+            setViewMappingStats(sRes.data);
+            const persona = (mRes.data || []).find((m: MappingConfig) => m.FieldType === 'PERSONA');
+            const almacen = (mRes.data || []).find((m: MappingConfig) => m.FieldType === 'CODALMACEN');
+            setMappingPersonaCol(persona?.ColumnName || '');
+            setMappingAlmacenCol(almacen?.ColumnName || '');
+        } catch (e) { console.error('Error loading mappings:', e); }
+    };
+
+    const toggleExpandView = async (viewId: number) => {
+        if (expandedViewId === viewId) { setExpandedViewId(null); return; }
+        setExpandedViewId(viewId);
+        await loadMappings(viewId);
+    };
+
+    const saveMapping = async (viewId: number, fieldType: string, columnName: string) => {
+        try {
+            if (columnName) {
+                await axios.post(`${API_BASE}/invgate/views/${viewId}/mappings`,
+                    { fieldType, columnName }, { headers: authHeaders() });
+            } else {
+                await axios.delete(`${API_BASE}/invgate/views/${viewId}/mappings/${fieldType}`, { headers: authHeaders() });
+            }
+            await loadMappings(viewId);
+        } catch (e: any) {
+            setViewError('Error guardando mapeo: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
+    const resolveMappings = async (viewId: number) => {
+        setResolvingMappings(true);
+        try {
+            const r = await axios.post(`${API_BASE}/invgate/views/${viewId}/resolve-mappings`, {}, { headers: authHeaders() });
+            setViewError(`📎 ${r.data.message}`);
+            await loadMappings(viewId);
+        } catch (e: any) {
+            setViewError('Error resolviendo mapeos: ' + (e.response?.data?.error || e.message));
+        } finally { setResolvingMappings(false); }
     };
 
     // ─── Save OAuth config ────────────────────────────────────────
@@ -406,47 +487,110 @@ export const InvgateAdmin: React.FC = () => {
                                     <th>Nombre</th>
                                     <th style={{ width: '100px' }}>Tickets</th>
                                     <th style={{ width: '160px' }}>Última Sync</th>
-                                    <th style={{ width: '80px', textAlign: 'center' }}>Sync</th>
-                                    <th style={{ width: '80px' }}></th>
+                                    <th style={{ width: '80px', textAlign: 'center' }}>Auto</th>
+                                    <th style={{ width: '130px' }}></th>
                                     <th style={{ width: '50px' }}></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {views.map(v => (
-                                    <tr key={v.viewId}>
-                                        <td><span className="field-id">#{v.viewId}</span></td>
-                                        <td><strong>{v.nombre}</strong>
-                                            {v.columns.length > 0 && (
-                                                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                                                    {v.columns.slice(0, 5).join(', ')}{v.columns.length > 5 ? ` +${v.columns.length - 5}` : ''}
+                                    <React.Fragment key={v.viewId}>
+                                        <tr style={{ cursor: 'pointer' }} onClick={() => toggleExpandView(v.viewId)}>
+                                            <td><span className="field-id">#{v.viewId}</span></td>
+                                            <td><strong>{v.nombre}</strong>
+                                                {v.columns.length > 0 && (
+                                                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                                                        {v.columns.slice(0, 5).join(', ')}{v.columns.length > 5 ? ` +${v.columns.length - 5}` : ''}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td>{v.totalTickets}</td>
+                                            <td style={{ fontSize: '12px' }}>
+                                                {v.ultimaSync ? new Date(v.ultimaSync).toLocaleString('es-CR') : '—'}
+                                            </td>
+                                            <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                                <label className="toggle-switch">
+                                                    <input type="checkbox" checked={v.syncEnabled}
+                                                        onChange={() => toggleViewSync(v)} />
+                                                    <span className="toggle-slider"></span>
+                                                </label>
+                                            </td>
+                                            <td onClick={e => e.stopPropagation()}>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button onClick={() => syncView(v.viewId)}
+                                                        disabled={syncingViewId === v.viewId}
+                                                        style={{ background: '#3b82f6', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 8px' }}
+                                                        title="Sincronizar esta vista">
+                                                        {syncingViewId === v.viewId ? '⏳' : '🔄 Sync'}
+                                                    </button>
+                                                    <button onClick={() => loadViewData(v.viewId)}
+                                                        disabled={loadingViewData}
+                                                        style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 8px' }}
+                                                        title="Ver datos sincronizados">
+                                                        {viewData?.viewId === v.viewId ? '🔼' : '📊'}
+                                                    </button>
                                                 </div>
-                                            )}
-                                        </td>
-                                        <td>{v.totalTickets}</td>
-                                        <td style={{ fontSize: '12px' }}>
-                                            {v.ultimaSync ? new Date(v.ultimaSync).toLocaleString('es-CR') : '—'}
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <label className="toggle-switch">
-                                                <input type="checkbox" checked={v.syncEnabled}
-                                                    onChange={() => toggleViewSync(v)} />
-                                                <span className="toggle-slider"></span>
-                                            </label>
-                                        </td>
-                                        <td>
-                                            <button onClick={() => loadViewData(v.viewId)}
-                                                disabled={loadingViewData}
-                                                style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 8px' }}
-                                                title="Ver datos sincronizados">
-                                                {loadingViewData && viewData?.viewId !== v.viewId ? '⏳' : viewData?.viewId === v.viewId ? '🔼 Ocultar' : '📊 Datos'}
-                                            </button>
-                                        </td>
-                                        <td>
-                                            <button onClick={() => deleteView(v.viewId)}
-                                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}
-                                                title="Eliminar vista">🗑️</button>
-                                        </td>
-                                    </tr>
+                                            </td>
+                                            <td onClick={e => e.stopPropagation()}>
+                                                <button onClick={() => deleteView(v.viewId)}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}
+                                                    title="Eliminar vista">🗑️</button>
+                                            </td>
+                                        </tr>
+                                        {/* ── Expanded mapping config ── */}
+                                        {expandedViewId === v.viewId && (
+                                            <tr>
+                                                <td colSpan={7} style={{ background: '#f8fafc', padding: '16px', borderTop: 'none' }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                        <h5 style={{ margin: 0, fontSize: '13px', color: '#334155' }}>📎 Mapeo de Campos</h5>
+
+                                                        {v.columns.length === 0 ? (
+                                                            <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Sincronice la vista primero para ver las columnas disponibles.</p>
+                                                        ) : (
+                                                            <>
+                                                                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                                                    <div style={{ minWidth: '200px' }}>
+                                                                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Columna Persona:</label>
+                                                                        <select value={mappingPersonaCol}
+                                                                            onChange={e => { setMappingPersonaCol(e.target.value); saveMapping(v.viewId, 'PERSONA', e.target.value); }}
+                                                                            style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }}>
+                                                                            <option value="">— No mapear —</option>
+                                                                            {v.columns.filter(c => !c.startsWith('_')).map(c => <option key={c} value={c}>{c}</option>)}
+                                                                        </select>
+                                                                    </div>
+                                                                    <div style={{ minWidth: '200px' }}>
+                                                                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Columna CodAlmacen:</label>
+                                                                        <select value={mappingAlmacenCol}
+                                                                            onChange={e => { setMappingAlmacenCol(e.target.value); saveMapping(v.viewId, 'CODALMACEN', e.target.value); }}
+                                                                            style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }}>
+                                                                            <option value="">— No mapear —</option>
+                                                                            {v.columns.filter(c => !c.startsWith('_')).map(c => <option key={c} value={c}>{c}</option>)}
+                                                                        </select>
+                                                                    </div>
+                                                                    <button onClick={() => resolveMappings(v.viewId)}
+                                                                        disabled={resolvingMappings || (!mappingPersonaCol && !mappingAlmacenCol)}
+                                                                        style={{ background: '#10b981', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '6px 14px', height: '34px' }}>
+                                                                        {resolvingMappings ? '⏳ Resolviendo...' : '🔗 Resolver Mapeos'}
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* Mapping stats */}
+                                                                {viewMappingStats?.exists && viewMappingStats.hasMappingColumns && viewMappingStats.stats && (
+                                                                    <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#64748b', background: '#f0fdf4', borderRadius: '6px', padding: '8px 12px' }}>
+                                                                        <span>📊 Total: <strong>{viewMappingStats.stats.total}</strong></span>
+                                                                        <span>✅ CodAlmacen: <strong>{viewMappingStats.stats.withCodAlmacen}</strong></span>
+                                                                        <span>❌ Sin CodAlmacen: <strong style={{ color: viewMappingStats.stats.withoutCodAlmacen > 0 ? '#ef4444' : '#10b981' }}>{viewMappingStats.stats.withoutCodAlmacen}</strong></span>
+                                                                        <span>✅ Personal: <strong>{viewMappingStats.stats.withPersonalId}</strong></span>
+                                                                        <span>❌ Sin Personal: <strong style={{ color: viewMappingStats.stats.withoutPersonalId > 0 ? '#ef4444' : '#10b981' }}>{viewMappingStats.stats.withoutPersonalId}</strong></span>
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 ))}
                             </tbody>
                         </table>

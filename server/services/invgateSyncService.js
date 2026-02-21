@@ -1,5 +1,6 @@
 const invgateService = require('./invgateService');
 const { getInvgatePool, sql } = require('../invgateDb');
+const invgateMappingService = require('./invgateMappingService');
 
 /**
  * InvGate Sync Service (V1 API)
@@ -207,15 +208,22 @@ class InvGateSyncService {
     }
 
     // ================================================================
-    // SYNC VIEW DATA — create a dedicated table per view
+    // SYNC VIEW DATA — permanent table per view with upsert
     // Table name: InvgateView_{viewId} (e.g. InvgateView_25)
+    // Tables include _CODALMACEN, _PERSONAL_ID, _PERSONAL_NOMBRE
     // ================================================================
-    async syncViewData() {
+    async syncViewData(targetViewId = null) {
         let totalProcessed = 0, totalNew = 0, totalUpdated = 0;
         const errors = [];
         try {
             const views = await this.getViewConfigs();
-            const enabledViews = views.filter(v => v.syncEnabled);
+            let enabledViews = views.filter(v => v.syncEnabled);
+            if (targetViewId) {
+                enabledViews = views.filter(v => v.viewId === parseInt(targetViewId));
+                if (enabledViews.length === 0) {
+                    return { totalProcessed: 0, totalNew: 0, totalUpdated: 0, errors: [{ error: `Vista ${targetViewId} no encontrada` }] };
+                }
+            }
             if (enabledViews.length === 0) {
                 console.log('  ℹ️ No enabled views to sync');
                 return { totalProcessed, totalNew, totalUpdated, errors };
@@ -230,7 +238,7 @@ class InvGateSyncService {
                     console.log(`    📊 Got ${tickets.length} tickets from view ${view.viewId}`);
 
                     if (tickets.length === 0) {
-                        console.log(`    ⚠️ No tickets, skipping table creation`);
+                        console.log(`    ⚠️ No tickets returned from API`);
                         await this.updateViewSyncMeta(view.viewId, 0);
                         continue;
                     }
@@ -247,29 +255,59 @@ class InvGateSyncService {
                     const columns = Array.from(columnSet);
                     const safeColumns = columns.map(c => this._safeColumnName(c));
 
-                    // Drop and recreate table
-                    await pool.request().query(`
-                        IF OBJECT_ID('${tableName}', 'U') IS NOT NULL DROP TABLE [${tableName}];
-                    `);
+                    // Create table if it doesn't exist (with mapping columns built-in)
+                    const tableExists = await pool.request()
+                        .query(`SELECT OBJECT_ID('${tableName}', 'U') AS tid`);
 
-                    // Build CREATE TABLE with all columns as NVARCHAR(MAX)
-                    const colDefs = safeColumns.map(c => `[${c}] NVARCHAR(MAX) NULL`).join(',\n                        ');
-                    await pool.request().query(`
-                        CREATE TABLE [${tableName}] (
-                            [_RowId] INT IDENTITY(1,1) PRIMARY KEY,
-                            [_SyncedAt] DATETIME DEFAULT GETDATE(),
-                            ${colDefs}
-                        )
-                    `);
-                    console.log(`    🏗️ Created table [${tableName}] with ${safeColumns.length} columns`);
+                    if (!tableExists.recordset[0]?.tid) {
+                        const colDefs = safeColumns.map(c => `[${c}] NVARCHAR(MAX) NULL`).join(',\n                            ');
+                        await pool.request().query(`
+                            CREATE TABLE [${tableName}] (
+                                [_RowId] INT IDENTITY(1,1) PRIMARY KEY,
+                                [_SyncedAt] DATETIME DEFAULT GETDATE(),
+                                [_CODALMACEN] NVARCHAR(50) NULL,
+                                [_PERSONAL_ID] INT NULL,
+                                [_PERSONAL_NOMBRE] NVARCHAR(200) NULL,
+                                ${colDefs}
+                            )
+                        `);
+                        console.log(`    🏗️ Created table [${tableName}] with ${safeColumns.length} + 3 mapping columns`);
+                    } else {
+                        // Table exists — add any new columns from the API that don't exist yet
+                        const existingCols = await pool.request()
+                            .input('tbl', sql.NVarChar, tableName)
+                            .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl`);
+                        const existingSet = new Set(existingCols.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
 
-                    // Insert all tickets
+                        for (const col of safeColumns) {
+                            if (!existingSet.has(col.toLowerCase())) {
+                                try {
+                                    await pool.request().query(`ALTER TABLE [${tableName}] ADD [${col}] NVARCHAR(MAX) NULL`);
+                                    console.log(`    + Added new column [${col}] to [${tableName}]`);
+                                } catch (alterErr) {
+                                    // Column may already exist or name collision
+                                }
+                            }
+                        }
+
+                        // Also ensure mapping columns exist
+                        await invgateMappingService.ensureMappingColumns(tableName);
+                    }
+
+                    // Determine a unique key for upsert — try 'id' column first
+                    const idColIdx = columns.findIndex(c => c.toLowerCase() === 'id');
+                    const hasIdCol = idColIdx >= 0;
+                    const idSafeCol = hasIdCol ? safeColumns[idColIdx] : null;
+
+                    // Upsert all tickets
                     let insertedCount = 0;
+                    let updatedCount = 0;
                     for (const ticket of tickets) {
                         try {
                             const req = pool.request();
                             const colNames = [];
                             const paramNames = [];
+                            const updatePairs = [];
                             let paramIdx = 0;
 
                             for (let i = 0; i < columns.length; i++) {
@@ -280,22 +318,47 @@ class InvGateSyncService {
                                 const paramName = `p${paramIdx++}`;
                                 colNames.push(`[${safeColumns[i]}]`);
                                 paramNames.push(`@${paramName}`);
+                                updatePairs.push(`[${safeColumns[i]}] = @${paramName}`);
                                 req.input(paramName, sql.NVarChar(sql.MAX), valueStr);
                             }
 
-                            await req.query(`
-                                INSERT INTO [${tableName}] (${colNames.join(', ')})
-                                VALUES (${paramNames.join(', ')})
-                            `);
-                            insertedCount++;
+                            if (hasIdCol) {
+                                // Upsert using MERGE on the id column
+                                const ticketId = ticket[columns[idColIdx]];
+                                req.input('_mergeId', sql.NVarChar(sql.MAX), ticketId != null ? String(ticketId) : null);
+
+                                const result = await req.query(`
+                                    MERGE [${tableName}] AS target
+                                    USING (SELECT @_mergeId AS [${idSafeCol}]) AS source
+                                    ON target.[${idSafeCol}] = source.[${idSafeCol}]
+                                    WHEN MATCHED THEN UPDATE SET
+                                        ${updatePairs.join(', ')},
+                                        [_SyncedAt] = GETDATE()
+                                    WHEN NOT MATCHED THEN INSERT
+                                        (${colNames.join(', ')})
+                                        VALUES (${paramNames.join(', ')})
+                                    OUTPUT $action AS MergeAction;
+                                `);
+
+                                const action = result.recordset[0]?.MergeAction;
+                                if (action === 'INSERT') insertedCount++;
+                                else updatedCount++;
+                            } else {
+                                // No id column — just insert
+                                await req.query(`
+                                    INSERT INTO [${tableName}] (${colNames.join(', ')})
+                                    VALUES (${paramNames.join(', ')})
+                                `);
+                                insertedCount++;
+                            }
                         } catch (insertErr) {
-                            // Log but don't fail the whole sync
-                            if (insertedCount === 0) console.error(`    ⚠️ Insert error:`, insertErr.message);
+                            if (insertedCount + updatedCount === 0) console.error(`    ⚠️ Upsert error:`, insertErr.message);
                         }
                     }
 
-                    totalProcessed += insertedCount;
+                    totalProcessed += insertedCount + updatedCount;
                     totalNew += insertedCount;
+                    totalUpdated += updatedCount;
 
                     // Update columns in InvgateViews config
                     await pool.request()
@@ -303,8 +366,12 @@ class InvGateSyncService {
                         .input('cols', sql.NVarChar(sql.MAX), JSON.stringify(safeColumns))
                         .query('UPDATE InvgateViews SET ColumnsJSON = @cols WHERE ViewID = @viewId');
 
-                    await this.updateViewSyncMeta(view.viewId, insertedCount);
-                    console.log(`    ✅ View "${view.nombre}": ${insertedCount} rows inserted into [${tableName}]`);
+                    await this.updateViewSyncMeta(view.viewId, insertedCount + updatedCount);
+                    console.log(`    ✅ View "${view.nombre}": ${insertedCount} new, ${updatedCount} updated in [${tableName}]`);
+
+                    // Post-sync: resolve mappings
+                    await invgateMappingService.resolveAfterSync(view.viewId);
+
                 } catch (viewErr) {
                     console.error(`  ❌ View ${view.viewId} sync error:`, viewErr.message);
                     errors.push({ viewId: view.viewId, error: viewErr.message });
@@ -315,6 +382,15 @@ class InvGateSyncService {
             errors.push({ error: err.message });
         }
         return { totalProcessed, totalNew, totalUpdated, errors };
+    }
+
+    /**
+     * Sync a single view by ID (regardless of SyncEnabled flag)
+     */
+    async syncSingleView(viewId) {
+        console.log(`🔄 Syncing single view ${viewId}...`);
+        await this.ensureTables();
+        return this.syncViewData(viewId);
     }
 
     /** Sanitize column name for SQL — remove special chars, limit length */

@@ -7,6 +7,7 @@ const { getInvgatePool, sql } = require('./invgateDb');
 const invgateService = require('./services/invgateService');
 const invgateSyncService = require('./services/invgateSyncService');
 const invgateCron = require('./jobs/invgateCron');
+const invgateMappingService = require('./services/invgateMappingService');
 const crypto = require('crypto');
 
 function getEncKey() {
@@ -181,6 +182,91 @@ function registerInvgateEndpoints(app, authMiddleware) {
         try {
             const data = await invgateSyncService.getViewData(parseInt(req.params.id));
             res.json(data);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Sync a single view
+    app.post('/api/invgate/views/:id/sync', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const result = await invgateSyncService.syncSingleView(parseInt(req.params.id));
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ──────────────────────────────────────────
+    // VIEW MAPPINGS — Persona & CodAlmacen
+    // ──────────────────────────────────────────
+
+    // Get mappings for a view
+    app.get('/api/invgate/views/:id/mappings', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            await invgateMappingService.ensureMappingTable();
+            const mappings = await invgateMappingService.getMappings(parseInt(req.params.id));
+            res.json(mappings);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Set a mapping for a view
+    app.post('/api/invgate/views/:id/mappings', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            await invgateMappingService.ensureMappingTable();
+            const { fieldType, columnName } = req.body;
+            if (!fieldType || !columnName) return res.status(400).json({ error: 'fieldType y columnName son requeridos' });
+            await invgateMappingService.setMapping(parseInt(req.params.id), fieldType, columnName, req.user?.nombre || 'admin');
+            res.json({ success: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Delete a mapping
+    app.delete('/api/invgate/views/:id/mappings/:fieldType', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            await invgateMappingService.deleteMapping(parseInt(req.params.id), req.params.fieldType);
+            res.json({ success: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Get unmapped records for a view
+    app.get('/api/invgate/views/:id/unmapped', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const data = await invgateMappingService.getUnmappedRecords(parseInt(req.params.id));
+            res.json(data);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Resolve all mappings for a view
+    app.post('/api/invgate/views/:id/resolve-mappings', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const result = await invgateMappingService.resolveAllMappings(parseInt(req.params.id));
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Get mapping stats for a view
+    app.get('/api/invgate/views/:id/mapping-stats', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const stats = await invgateMappingService.getMappingStats(parseInt(req.params.id));
+            res.json(stats);
         } catch (err) {
             res.status(500).json({ error: err.message });
         }
