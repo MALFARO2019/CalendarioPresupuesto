@@ -30,6 +30,22 @@ async function ensureMappingTable() {
             );
         END
     `);
+    // Value mappings dictionary (manual assignment of form values → IDs)
+    await pool.request().query(`
+        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'FormsValueMappings')
+        BEGIN
+            CREATE TABLE FormsValueMappings (
+                ID              INT IDENTITY(1,1) PRIMARY KEY,
+                SourceValue     NVARCHAR(500) NOT NULL,
+                MappingType     NVARCHAR(50) NOT NULL,
+                ResolvedValue   NVARCHAR(200) NOT NULL,
+                ResolvedLabel   NVARCHAR(500) NULL,
+                CreatedAt       DATETIME DEFAULT GETDATE(),
+                CreatedBy       NVARCHAR(200) NULL,
+                CONSTRAINT UQ_FormsValueMappings UNIQUE (SourceValue, MappingType)
+            );
+        END
+    `);
 }
 
 // --- Get mappings for a source ---
@@ -120,11 +136,67 @@ async function ensureMappingColumns(tableName) {
     }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// VALUE MAPPINGS DICTIONARY (manual assignments)
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function getValueMappings(mappingType = null) {
+    const pool = await getFormsPool();
+    let q = 'SELECT * FROM FormsValueMappings';
+    if (mappingType) q += ` WHERE MappingType = @type`;
+    q += ' ORDER BY SourceValue';
+    const req = pool.request();
+    if (mappingType) req.input('type', sql.NVarChar, mappingType);
+    return (await req.query(q)).recordset;
+}
+
+async function setValueMapping(sourceValue, mappingType, resolvedValue, resolvedLabel, createdBy) {
+    const pool = await getFormsPool();
+    await pool.request()
+        .input('sv', sql.NVarChar, sourceValue.trim())
+        .input('mt', sql.NVarChar, mappingType)
+        .input('rv', sql.NVarChar, resolvedValue)
+        .input('rl', sql.NVarChar, resolvedLabel || null)
+        .input('cb', sql.NVarChar, createdBy || null)
+        .query(`
+            MERGE FormsValueMappings AS target
+            USING (SELECT @sv AS SourceValue, @mt AS MappingType) AS source
+            ON target.SourceValue = source.SourceValue AND target.MappingType = source.MappingType
+            WHEN MATCHED THEN
+                UPDATE SET ResolvedValue = @rv, ResolvedLabel = @rl, CreatedBy = @cb, CreatedAt = GETDATE()
+            WHEN NOT MATCHED THEN
+                INSERT (SourceValue, MappingType, ResolvedValue, ResolvedLabel, CreatedBy)
+                VALUES (@sv, @mt, @rv, @rl, @cb);
+        `);
+}
+
+async function deleteValueMapping(id) {
+    const pool = await getFormsPool();
+    await pool.request().input('id', sql.Int, id)
+        .query('DELETE FROM FormsValueMappings WHERE ID = @id');
+}
+
+// Check the dictionary for a value
+async function checkDictionary(sourceValue, mappingType) {
+    if (!sourceValue) return null;
+    const pool = await getFormsPool();
+    const r = await pool.request()
+        .input('sv', sql.NVarChar, String(sourceValue).trim())
+        .input('mt', sql.NVarChar, mappingType)
+        .query('SELECT TOP 1 ResolvedValue, ResolvedLabel FROM FormsValueMappings WHERE SourceValue = @sv AND MappingType = @mt');
+    return r.recordset[0] || null;
+}
+
 // --- Resolve CODALMACEN for a single value ---
 
 async function resolveCodAlmacen(aliasValue) {
     if (!aliasValue || !String(aliasValue).trim()) return null;
     try {
+        // 1. Check manual dictionary first
+        const dict = await checkDictionary(aliasValue, 'CODALMACEN');
+        if (dict) return dict.ResolvedValue;
+
+        // 2. Try APP_STORE_ALIAS
         const mainPool = await poolPromise;
         const result = await mainPool.request()
             .input('alias', mainSql.NVarChar, String(aliasValue).trim())
@@ -145,6 +217,11 @@ async function resolveCodAlmacen(aliasValue) {
 async function resolvePersonalId(personaValue) {
     if (!personaValue || !String(personaValue).trim()) return null;
     try {
+        // 1. Check manual dictionary first
+        const dict = await checkDictionary(personaValue, 'PERSONA');
+        if (dict) return { id: parseInt(dict.ResolvedValue), nombre: dict.ResolvedLabel || dict.ResolvedValue };
+
+        // 2. Try DIM_PERSONAL
         const mainPool = await poolPromise;
         const val = String(personaValue).trim();
 
@@ -187,6 +264,76 @@ async function resolvePersonalId(personaValue) {
         console.warn(`  ! resolvePersonalId error: ${e.message.substring(0, 80)}`);
         return null;
     }
+}
+
+// --- Get DISTINCT unmapped values (for manual mapping UI) ---
+
+async function getDistinctUnmapped(sourceId, tableName) {
+    const pool = await getFormsPool();
+    const mappings = await getMappings(sourceId);
+    const personaMapping = mappings.find(m => m.FieldType === 'PERSONA');
+    const almacenMapping = mappings.find(m => m.FieldType === 'CODALMACEN');
+
+    const result = { persona: [], almacen: [] };
+
+    if (almacenMapping) {
+        const col = almacenMapping.ColumnName;
+        try {
+            const r = await pool.request().query(`
+                SELECT [${col}] AS sourceValue, COUNT(*) AS cnt
+                FROM [${tableName}]
+                WHERE _CODALMACEN IS NULL AND [${col}] IS NOT NULL AND RTRIM(LTRIM([${col}])) != ''
+                GROUP BY [${col}]
+                ORDER BY COUNT(*) DESC
+            `);
+            result.almacen = r.recordset;
+        } catch (e) { /* column might not exist */ }
+    }
+
+    if (personaMapping) {
+        const col = personaMapping.ColumnName;
+        try {
+            const r = await pool.request().query(`
+                SELECT [${col}] AS sourceValue, COUNT(*) AS cnt
+                FROM [${tableName}]
+                WHERE _PERSONAL_ID IS NULL AND [${col}] IS NOT NULL AND RTRIM(LTRIM([${col}])) != ''
+                GROUP BY [${col}]
+                ORDER BY COUNT(*) DESC
+            `);
+            result.persona = r.recordset;
+        } catch (e) { /* column might not exist */ }
+    }
+
+    return result;
+}
+
+// --- Lookup personal for dropdown search ---
+
+async function lookupPersonal(search) {
+    const mainPool = await poolPromise;
+    const r = await mainPool.request()
+        .input('search', mainSql.NVarChar, `%${search}%`)
+        .query(`
+            SELECT TOP 20 ID, NOMBRE, CORREO FROM DIM_PERSONAL
+            WHERE ACTIVO = 1 AND (NOMBRE LIKE @search OR CORREO LIKE @search)
+            ORDER BY NOMBRE
+        `);
+    return r.recordset;
+}
+
+// --- Lookup stores for dropdown search ---
+
+async function lookupStores(search) {
+    const mainPool = await poolPromise;
+    const r = await mainPool.request()
+        .input('search', mainSql.NVarChar, `%${search}%`)
+        .query(`
+            SELECT TOP 20 CODALMACEN, NOMBRE_GENERAL
+            FROM DIM_NOMBRES_ALMACEN
+            WHERE CODALMACEN LIKE @search OR NOMBRE_GENERAL LIKE @search
+            ORDER BY NOMBRE_GENERAL
+        `);
+    return r.recordset;
 }
 
 // --- Resolve mappings for ALL rows in a table ---
@@ -388,5 +535,12 @@ module.exports = {
     resolveAllMappings,
     getUnmappedRecords,
     getMappingStats,
-    resolveAfterSync
+    resolveAfterSync,
+    // Value dictionary
+    getValueMappings,
+    setValueMapping,
+    deleteValueMapping,
+    getDistinctUnmapped,
+    lookupPersonal,
+    lookupStores
 };

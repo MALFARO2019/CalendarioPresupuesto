@@ -807,6 +807,83 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
         }
     });
 
+    // ─── Value Mappings Dictionary (manual form value → ID) ───────────────────
+
+    // GET /api/forms/value-mappings — list dictionary entries
+    app.get('/api/forms/value-mappings', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            const type = req.query.type || null;
+            const entries = await formsMappingService.getValueMappings(type);
+            res.json(entries);
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
+    // POST /api/forms/value-mappings — add/update dictionary entry
+    app.post('/api/forms/value-mappings', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            const { sourceValue, mappingType, resolvedValue, resolvedLabel } = req.body;
+            if (!sourceValue || !mappingType || !resolvedValue) {
+                return res.status(400).json({ error: 'sourceValue, mappingType y resolvedValue son requeridos' });
+            }
+            await formsMappingService.setValueMapping(sourceValue, mappingType, resolvedValue, resolvedLabel, req.user.email);
+            res.json({ success: true });
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
+    // DELETE /api/forms/value-mappings/:id — remove dictionary entry
+    app.delete('/api/forms/value-mappings/:id', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            await formsMappingService.deleteValueMapping(parseInt(req.params.id));
+            res.json({ success: true });
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
+    // GET /api/forms/lookup/personal — search DIM_PERSONAL for dropdown
+    app.get('/api/forms/lookup/personal', authMiddleware, async (req, res) => {
+        try {
+            const search = req.query.q || '';
+            if (search.length < 2) return res.json([]);
+            const results = await formsMappingService.lookupPersonal(search);
+            res.json(results);
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
+    // GET /api/forms/lookup/stores — search DIM_NOMBRES_ALMACEN for dropdown
+    app.get('/api/forms/lookup/stores', authMiddleware, async (req, res) => {
+        try {
+            const search = req.query.q || '';
+            if (search.length < 1) return res.json([]);
+            const results = await formsMappingService.lookupStores(search);
+            res.json(results);
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
+    // GET /api/forms/sources/:id/distinct-unmapped — unique unmapped values
+    app.get('/api/forms/sources/:id/distinct-unmapped', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            const sourceId = parseInt(req.params.id);
+            const pool = await getFormsPool();
+            const src = await pool.request()
+                .input('id', sql.Int, sourceId)
+                .query('SELECT SourceID, Alias, TableName FROM FormsSources WHERE SourceID = @id');
+            if (src.recordset.length === 0) return res.status(404).json({ error: 'No encontrado' });
+
+            const tableName = src.recordset[0].TableName || getTableName(sourceId, src.recordset[0].Alias);
+            const exists = await pool.request().input('tbl', sql.NVarChar, tableName)
+                .query('SELECT 1 FROM sys.tables WHERE name = @tbl');
+            if (exists.recordset.length === 0) {
+                return res.json({ persona: [], almacen: [] });
+            }
+
+            const result = await formsMappingService.getDistinctUnmapped(sourceId, tableName);
+            res.json(result);
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
     // Start cron on startup
     (async () => {
         try {

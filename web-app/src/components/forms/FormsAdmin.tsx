@@ -122,6 +122,14 @@ export const FormsAdmin: React.FC = () => {
     const [mappingUnmappedCount, setMappingUnmappedCount] = useState(0);
     const [showUnmapped, setShowUnmapped] = useState(false);
 
+    // Manual mapping state
+    const [distinctUnmapped, setDistinctUnmapped] = useState<{ persona: any[]; almacen: any[] }>({ persona: [], almacen: [] });
+    const [showManualMapping, setShowManualMapping] = useState(false);
+    const [manualSearchResults, setManualSearchResults] = useState<Record<string, any[]>>({});
+    const [manualSearchTimers, setManualSearchTimers] = useState<Record<string, any>>({});
+    const [manualAssignments, setManualAssignments] = useState<Record<string, { value: string; label: string }>>({});
+    const [savingManual, setSavingManual] = useState<string | null>(null);
+
     const headers = () => ({ Authorization: `Bearer ${getToken()}` });
 
     // ─── Load ─────────────────────────────────────────────────────────────────
@@ -461,6 +469,76 @@ export const FormsAdmin: React.FC = () => {
         } catch (e: any) {
             alert('Error: ' + (e.response?.data?.error || e.message));
         }
+    };
+
+    // ─── Manual Mapping ───────────────────────────────────────────────────────
+
+    const loadDistinctUnmapped = async () => {
+        if (!mappingSource) return;
+        try {
+            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/distinct-unmapped`, { headers: headers() });
+            setDistinctUnmapped({ persona: r.data.persona || [], almacen: r.data.almacen || [] });
+            setShowManualMapping(true);
+            setManualAssignments({});
+            setManualSearchResults({});
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
+    const searchLookup = (key: string, type: 'PERSONA' | 'CODALMACEN', query: string) => {
+        // Clear previous timer
+        if (manualSearchTimers[key]) clearTimeout(manualSearchTimers[key]);
+        if (query.length < 2) {
+            setManualSearchResults(prev => ({ ...prev, [key]: [] }));
+            return;
+        }
+        const timer = setTimeout(async () => {
+            try {
+                const endpoint = type === 'PERSONA' ? 'personal' : 'stores';
+                const r = await axios.get(`${API_BASE}/forms/lookup/${endpoint}?q=${encodeURIComponent(query)}`, { headers: headers() });
+                setManualSearchResults(prev => ({ ...prev, [key]: r.data }));
+            } catch (e) { /* ignore */ }
+        }, 300);
+        setManualSearchTimers(prev => ({ ...prev, [key]: timer }));
+    };
+
+    const selectManualMapping = (key: string, value: string, label: string) => {
+        setManualAssignments(prev => ({ ...prev, [key]: { value, label } }));
+        setManualSearchResults(prev => ({ ...prev, [key]: [] }));
+    };
+
+    const saveValueMapping = async (sourceValue: string, type: 'PERSONA' | 'CODALMACEN', key: string) => {
+        const assignment = manualAssignments[key];
+        if (!assignment) { alert('Seleccione un valor primero'); return; }
+        setSavingManual(key);
+        try {
+            await axios.post(`${API_BASE}/forms/value-mappings`, {
+                sourceValue,
+                mappingType: type,
+                resolvedValue: assignment.value,
+                resolvedLabel: assignment.label
+            }, { headers: headers() });
+            // Remove from distinct list
+            if (type === 'PERSONA') {
+                setDistinctUnmapped(prev => ({ ...prev, persona: prev.persona.filter(p => p.sourceValue !== sourceValue) }));
+            } else {
+                setDistinctUnmapped(prev => ({ ...prev, almacen: prev.almacen.filter(a => a.sourceValue !== sourceValue) }));
+            }
+            setManualAssignments(prev => { const n = { ...prev }; delete n[key]; return n; });
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        } finally {
+            setSavingManual(null);
+        }
+    };
+
+    const reloadMappingStats = async () => {
+        if (!mappingSource) return;
+        try {
+            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, { headers: headers() });
+            setMappingStats(r.data.stats);
+        } catch (e) { /* ignore */ }
     };
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -957,11 +1035,11 @@ export const FormsAdmin: React.FC = () => {
 
             {/* ── Mapping Modal ── */}
             {mappingSource && (
-                <div className="modal-overlay" onClick={() => { setMappingSource(null); setShowUnmapped(false); }}>
+                <div className="modal-overlay" onClick={() => { setMappingSource(null); setShowUnmapped(false); setShowManualMapping(false); }}>
                     <div className="modal-box modal-mapping" onClick={e => e.stopPropagation()}>
                         <div className="detail-header">
                             <h3>🔗 Mapeos — {mappingSource.Alias}</h3>
-                            <button className="btn-close" onClick={() => { setMappingSource(null); setShowUnmapped(false); }}>✕</button>
+                            <button className="btn-close" onClick={() => { setMappingSource(null); setShowUnmapped(false); setShowManualMapping(false); }}>✕</button>
                         </div>
 
                         {mappingLoading ? (
@@ -1009,6 +1087,9 @@ export const FormsAdmin: React.FC = () => {
                                             <button className="btn-resolve-mapping" onClick={resolveMappings} disabled={mappingResolving}>
                                                 {mappingResolving ? '⏳ Resolviendo...' : '🔄 Resolver Pendientes'}
                                             </button>
+                                            <button className="btn-manual-mapping" onClick={loadDistinctUnmapped}>
+                                                🔧 Asignar Manualmente
+                                            </button>
                                             <button className="btn-unmapped" onClick={loadUnmapped}>
                                                 🔍 Ver Sin Mapear
                                             </button>
@@ -1045,7 +1126,137 @@ export const FormsAdmin: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* Unmapped records */}
+                                {/* Manual Mapping Section */}
+                                {showManualMapping && (
+                                    <div className="manual-mapping-section">
+                                        <div className="manual-mapping-header">
+                                            <h4>🔧 Asignación Manual de Valores</h4>
+                                            <p style={{ color: '#6b7280', fontSize: 12, margin: '4px 0 0' }}>Asigne cada valor del formulario a su equivalente en el sistema. Una vez asignado, los futuros registros con el mismo valor se resolverán automáticamente.</p>
+                                        </div>
+
+                                        {/* Persona unmapped */}
+                                        {distinctUnmapped.persona.length > 0 && (
+                                            <div className="manual-type-section">
+                                                <h5>👤 Personas sin mapear ({distinctUnmapped.persona.length})</h5>
+                                                {distinctUnmapped.persona.map((item: any) => {
+                                                    const key = `persona_${item.sourceValue}`;
+                                                    const assignment = manualAssignments[key];
+                                                    return (
+                                                        <div key={key} className="manual-row">
+                                                            <div className="manual-source">
+                                                                <span className="manual-source-value">{item.sourceValue}</span>
+                                                                <span className="manual-source-count">({item.cnt} registros)</span>
+                                                            </div>
+                                                            <div className="manual-target">
+                                                                <span className="manual-arrow">→</span>
+                                                                <div className="manual-search-wrap">
+                                                                    {assignment ? (
+                                                                        <div className="manual-assigned">
+                                                                            <span>✅ {assignment.label}</span>
+                                                                            <button className="btn-clear-assign" onClick={() => setManualAssignments(prev => { const n = { ...prev }; delete n[key]; return n; })}>×</button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <>
+                                                                            <input
+                                                                                className="manual-search-input"
+                                                                                placeholder="Buscar persona..."
+                                                                                onChange={e => searchLookup(key, 'PERSONA', e.target.value)}
+                                                                            />
+                                                                            {(manualSearchResults[key]?.length > 0) && (
+                                                                                <div className="manual-dropdown">
+                                                                                    {manualSearchResults[key].map((p: any) => (
+                                                                                        <div key={p.ID} className="manual-dropdown-item" onClick={() => selectManualMapping(key, String(p.ID), p.NOMBRE)}>
+                                                                                            <strong>{p.NOMBRE}</strong>
+                                                                                            <small>{p.CORREO || ''}</small>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    className="btn-save-manual"
+                                                                    disabled={!assignment || savingManual === key}
+                                                                    onClick={() => saveValueMapping(item.sourceValue, 'PERSONA', key)}
+                                                                >
+                                                                    {savingManual === key ? '⏳' : '💾'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Almacen unmapped */}
+                                        {distinctUnmapped.almacen.length > 0 && (
+                                            <div className="manual-type-section">
+                                                <h5>🏪 Locales sin mapear ({distinctUnmapped.almacen.length})</h5>
+                                                {distinctUnmapped.almacen.map((item: any) => {
+                                                    const key = `almacen_${item.sourceValue}`;
+                                                    const assignment = manualAssignments[key];
+                                                    return (
+                                                        <div key={key} className="manual-row">
+                                                            <div className="manual-source">
+                                                                <span className="manual-source-value">{item.sourceValue}</span>
+                                                                <span className="manual-source-count">({item.cnt} registros)</span>
+                                                            </div>
+                                                            <div className="manual-target">
+                                                                <span className="manual-arrow">→</span>
+                                                                <div className="manual-search-wrap">
+                                                                    {assignment ? (
+                                                                        <div className="manual-assigned">
+                                                                            <span>✅ {assignment.label}</span>
+                                                                            <button className="btn-clear-assign" onClick={() => setManualAssignments(prev => { const n = { ...prev }; delete n[key]; return n; })}>×</button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <>
+                                                                            <input
+                                                                                className="manual-search-input"
+                                                                                placeholder="Buscar local..."
+                                                                                onChange={e => searchLookup(key, 'CODALMACEN', e.target.value)}
+                                                                            />
+                                                                            {(manualSearchResults[key]?.length > 0) && (
+                                                                                <div className="manual-dropdown">
+                                                                                    {manualSearchResults[key].map((s: any) => (
+                                                                                        <div key={s.CODALMACEN} className="manual-dropdown-item" onClick={() => selectManualMapping(key, s.CODALMACEN, `${s.CODALMACEN} — ${s.NOMBRE_GENERAL}`)}>
+                                                                                            <strong>{s.CODALMACEN}</strong>
+                                                                                            <small>{s.NOMBRE_GENERAL}</small>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    className="btn-save-manual"
+                                                                    disabled={!assignment || savingManual === key}
+                                                                    onClick={() => saveValueMapping(item.sourceValue, 'CODALMACEN', key)}
+                                                                >
+                                                                    {savingManual === key ? '⏳' : '💾'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {distinctUnmapped.persona.length === 0 && distinctUnmapped.almacen.length === 0 && (
+                                            <p style={{ color: '#059669', fontSize: 13, textAlign: 'center', padding: 12 }}>✅ Todos los valores están mapeados</p>
+                                        )}
+
+                                        <div className="manual-footer">
+                                            <button className="btn-resolve-mapping" onClick={async () => { await resolveMappings(); await reloadMappingStats(); await loadDistinctUnmapped(); }} disabled={mappingResolving}>
+                                                {mappingResolving ? '⏳ Resolviendo...' : '🔄 Re-resolver Todo'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Unmapped records detail */}
                                 {showUnmapped && (
                                     <div className="unmapped-section">
                                         <h4>⚠️ Registros Sin Mapear ({mappingUnmappedCount})</h4>
