@@ -26,13 +26,25 @@ interface ServerConfig {
 }
 
 const DEFAULT_SERVERS: ServerConfig[] = [
-    { id: '1', ip: '10.29.1.25', user: 'Administrador', password: 'R0st1p017', appDir: 'C:\\Apps\\CalendarioPresupuesto', label: 'Servidor Principal' },
+    { id: '1', ip: '10.29.1.25', user: 'Administrador', password: 'R0st1p017', appDir: 'C:\\Deploy\\CalendarioPresupuesto', label: 'Servidor Principal' },
 ];
 
 function loadServers(): ServerConfig[] {
     try {
         const data = localStorage.getItem('deploy_servers');
-        if (data) return JSON.parse(data);
+        if (data) {
+            const servers: ServerConfig[] = JSON.parse(data);
+            // Migrate old C:\Apps path to C:\Deploy path
+            let migrated = false;
+            servers.forEach(s => {
+                if (s.appDir && s.appDir.includes('\\Apps\\')) {
+                    s.appDir = s.appDir.replace('\\Apps\\', '\\Deploy\\');
+                    migrated = true;
+                }
+            });
+            if (migrated) saveServers(servers);
+            return servers;
+        }
     } catch { }
     return DEFAULT_SERVERS;
 }
@@ -165,9 +177,11 @@ export function DeployManagement() {
         setDeploySteps([
             { step: 'Verificando conexión', status: 'running' },
             { step: 'Descargando código (git)', status: 'pending' },
+            { step: 'Registrando versión', status: 'pending' },
             { step: 'Instalando dependencias backend', status: 'pending' },
             { step: 'Construyendo frontend', status: 'pending' },
             { step: 'Reiniciando servicio', status: 'pending' },
+            { step: 'Verificando API', status: 'pending' },
         ]);
         try {
             const result = await deployToServer(selectedServer.ip, selectedServer.user, selectedServer.password, selectedServer.appDir, version, notes);
@@ -321,6 +335,7 @@ export function DeployManagement() {
         switch (status) {
             case 'success': return '✅';
             case 'error': return '❌';
+            case 'warning': return '⚠️';
             case 'running': return '⏳';
             case 'deploying': return '🚀';
             default: return '⏸️';

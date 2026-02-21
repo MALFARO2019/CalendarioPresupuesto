@@ -253,6 +253,27 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
         return { success: false, steps };
     }
 
+    // Step 6: Post-deploy health check — verify the API actually returns the new version
+    steps.push({ step: 'Verificando API', status: 'running' });
+    try {
+        const healthResult = await runPowerShell(
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+            `Start-Sleep -Seconds 3; ` +
+            `try { $r = Invoke-RestMethod -Uri 'http://localhost/api/version-check' -TimeoutSec 10; $r.version } ` +
+            `catch { Write-Output 'ERROR: ' + $_.Exception.Message } }`
+        );
+        const remoteVersion = healthResult.trim();
+        if (deployVersion && remoteVersion === deployVersion) {
+            steps[steps.length - 1] = { step: 'Verificando API', status: 'success', detail: `API responde ${remoteVersion} ✓` };
+        } else if (remoteVersion.startsWith('ERROR:')) {
+            steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `API no responde: ${remoteVersion.substring(0, 150)}` };
+        } else {
+            steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `API responde "${remoteVersion}" pero se esperaba "${deployVersion}". Puede haber un proceso node viejo ocupando el puerto.` };
+        }
+    } catch (e) {
+        steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `No se pudo verificar: ${e.message.substring(0, 150)}` };
+    }
+
     // Record the deployed version for this server
     if (deployVersion) {
         setServerVersion(serverIp, deployVersion, 'deploy-system');
