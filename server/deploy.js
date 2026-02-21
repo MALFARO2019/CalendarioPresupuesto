@@ -94,10 +94,12 @@ async function deployToServer(serverIp, user, password, appDir) {
     }
 
     // Step 2: Git pull
+    // WinRM sessions don't inherit the full user PATH, so we must add Git's directory explicitly
+    const gitPathFix = `$env:Path += ';C:\\Program Files\\Git\\cmd;C:\\Program Files (x86)\\Git\\cmd'`;
     steps.push({ step: 'Descargando código (git)', status: 'running' });
     try {
         const gitResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { Set-Location '${appDir}'; git fetch origin production 2>&1; git reset --hard origin/production 2>&1 }`
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; Set-Location '${appDir}'; git fetch origin production 2>&1; git reset --hard origin/production 2>&1 }`
         );
         steps[steps.length - 1] = { step: 'Descargando código (git)', status: 'success', detail: gitResult.substring(0, 200) };
     } catch (e) {
@@ -106,10 +108,11 @@ async function deployToServer(serverIp, user, password, appDir) {
     }
 
     // Step 3: Install server dependencies
+    const nodePathFix = `$env:Path += ';C:\\Program Files\\nodejs;C:\\Users\\Administrador\\AppData\\Roaming\\npm'`;
     steps.push({ step: 'Instalando dependencias backend', status: 'running' });
     try {
         const npmResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { Set-Location '${appDir}\\server'; npm install --production --no-audit 2>&1 }`
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; ${nodePathFix}; Set-Location '${appDir}\\server'; npm install --production --no-audit 2>&1 }`
         );
         steps[steps.length - 1] = { step: 'Instalando dependencias backend', status: 'success', detail: 'Dependencias instaladas' };
     } catch (e) {
@@ -121,7 +124,7 @@ async function deployToServer(serverIp, user, password, appDir) {
     steps.push({ step: 'Construyendo frontend', status: 'running' });
     try {
         const buildResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { Set-Location '${appDir}\\web-app'; npm install --no-audit 2>&1; npm run build 2>&1 }`
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; ${nodePathFix}; Set-Location '${appDir}\\web-app'; npm install --no-audit 2>&1; npm run build 2>&1 }`
         );
         steps[steps.length - 1] = { step: 'Construyendo frontend', status: 'success', detail: 'Build completado' };
     } catch (e) {

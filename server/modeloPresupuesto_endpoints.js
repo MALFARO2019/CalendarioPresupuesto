@@ -327,6 +327,24 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
         }
     });
 
+    // DELETE /api/modelo-presupuesto/versiones/:id
+    app.delete('/api/modelo-presupuesto/versiones/:id', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            if (!req.user.restaurarVersiones) {
+                return res.status(403).json({ error: 'No tiene permiso para eliminar versiones' });
+            }
+            const usuario = req.user.email || req.user.nombre;
+            const result = await modeloPresupuesto.eliminarVersion(
+                parseInt(req.params.id), usuario
+            );
+            res.json({ success: true, result });
+        } catch (err) {
+            console.error('Error DELETE /api/modelo-presupuesto/versiones:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // ------------------------------------------
     // BITÁCORA
     // ------------------------------------------

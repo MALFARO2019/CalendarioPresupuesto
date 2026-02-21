@@ -74,25 +74,23 @@ export const AjusteChart: React.FC<Props> = ({ anoModelo, nombrePresupuesto }) =
         if (!codAlmacen) return;
         try {
             const data = await fetchConsolidadoMensual(anoModelo, codAlmacen, tipo);
-            // Sum by month across all channels for the selected store
+            // Data format: { ano, mes, tipo, local, codAlmacen, salon, llevar, auto, express, ecommerce, ubereats, total }
+            // Each row represents one month — use the 'total' column for chart data
             const monthlyTotals = new Array(12).fill(0);
             (data || []).forEach((row: any) => {
-                if (row.Canal === 'Todos' || !row.Canal) {
-                    for (let m = 1; m <= 12; m++) {
-                        const key = `Mes${m}`;
-                        if (row[key] != null) monthlyTotals[m - 1] += Number(row[key]);
+                const m = Number(row.mes);
+                if (m >= 1 && m <= 12) {
+                    if (row.total != null) {
+                        monthlyTotals[m - 1] += Number(row.total);
+                    } else {
+                        // Fallback: sum all channel columns
+                        const channels = ['salon', 'llevar', 'auto', 'express', 'ecommerce', 'ubereats'];
+                        channels.forEach(ch => {
+                            if (row[ch] != null) monthlyTotals[m - 1] += Number(row[ch]);
+                        });
                     }
                 }
             });
-            // If no "Todos" row, sum all channels
-            if (monthlyTotals.every(v => v === 0)) {
-                (data || []).forEach((row: any) => {
-                    for (let m = 1; m <= 12; m++) {
-                        const key = `Mes${m}`;
-                        if (row[key] != null) monthlyTotals[m - 1] += Number(row[key]);
-                    }
-                });
-            }
             setChartData(monthlyTotals);
         } catch {
             setChartData(new Array(12).fill(0)); // Graceful fallback

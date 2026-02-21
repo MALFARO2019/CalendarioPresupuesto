@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchCargos, createCargo, deleteCargo, fetchAsignaciones } from '../api';
-import { Plus, Edit2, Trash2, UserCheck, MapPin, RefreshCw, X, ChevronDown, ChevronUp, Calendar, AlertTriangle, Shield, Search, Briefcase, Settings } from 'lucide-react';
+import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchAsignaciones, fetchProfiles } from '../api';
+import type { Profile } from '../api';
+import { Plus, Edit2, Trash2, UserCheck, MapPin, RefreshCw, X, ChevronDown, ChevronUp, Calendar, AlertTriangle, Shield, Search } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,20 +27,16 @@ interface Asignacion {
     ACTIVO: boolean;
 }
 
-interface Cargo {
-    ID: number;
-    NOMBRE: string;
-    ACTIVO: boolean;
-}
+
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const PersonalManagement: React.FC = () => {
     const [personas, setPersonas] = useState<Persona[]>([]);
     const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
-    const [cargos, setCargos] = useState<Cargo[]>([]);
+    const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'personas' | 'asignaciones' | 'gestionar' | 'cobertura'>('asignaciones');
+    const [activeTab, setActiveTab] = useState<'personas' | 'asignaciones' | 'cobertura'>('asignaciones');
     const [allStores, setAllStores] = useState<string[]>([]);
     const [localesSinCobertura, setLocalesSinCobertura] = useState<{ Local: string, PerfilesFaltantes: string }[]>([]);
     const [loadingCobertura, setLoadingCobertura] = useState(false);
@@ -64,12 +61,7 @@ export const PersonalManagement: React.FC = () => {
     const [aNotas, setANotas] = useState('');
     const [savingAsig, setSavingAsig] = useState(false);
 
-    // Cargos Manager
-    const [showCargosModal, setShowCargosModal] = useState(false);
-    const [newCargoName, setNewCargoName] = useState('');
-    const [showDeleteCargoModal, setShowDeleteCargoModal] = useState(false);
-    const [cargoToDelete, setCargoToDelete] = useState<Cargo | null>(null);
-    const [cargoReassignTo, setCargoReassignTo] = useState('');
+
 
     // Filters
     const [filterPersona, setFilterPersona] = useState('');
@@ -84,17 +76,17 @@ export const PersonalManagement: React.FC = () => {
 
     const [error, setError] = useState<string | null>(null);
 
-    const activeCargos = cargos.map(c => c.NOMBRE);
+    const activeProfileNames = profiles.map(p => p.nombre);
 
     const headers = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
 
     // ─── Load ─────────────────────────────────────────────────────────────────
 
-    const loadCargos = useCallback(async () => {
+    const loadProfiles = useCallback(async () => {
         try {
-            const data = await fetchCargos();
-            setCargos(data);
-        } catch (e: any) { console.error('Error loading cargos', e); }
+            const data = await fetchProfiles();
+            setProfiles(data);
+        } catch (e: any) { console.error('Error loading profiles', e); }
     }, []);
 
     const loadPersonas = useCallback(async () => {
@@ -138,11 +130,11 @@ export const PersonalManagement: React.FC = () => {
     }, [activeTab, coberturaPerfil, coberturaMonth, coberturaYear]);
 
     useEffect(() => {
-        loadCargos();
+        loadProfiles();
         loadPersonas();
         loadAsignaciones();
         loadStores();
-    }, [loadCargos, loadPersonas, loadAsignaciones, loadStores]);
+    }, [loadProfiles, loadPersonas, loadAsignaciones, loadStores]);
 
     useEffect(() => {
         loadCobertura();
@@ -259,7 +251,7 @@ export const PersonalManagement: React.FC = () => {
                     <p className="text-sm text-gray-500 mt-0.5">Asignaciones de personal a locales por perfil</p>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={() => { loadPersonas(); loadAsignaciones(); loadCargos(); }} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" title="Actualizar">
+                    <button onClick={() => { loadPersonas(); loadAsignaciones(); loadProfiles(); }} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" title="Actualizar">
                         <RefreshCw className="w-4 h-4" />
                     </button>
                 </div>
@@ -273,10 +265,10 @@ export const PersonalManagement: React.FC = () => {
             )}
 
             <div className="flex items-center gap-1 sm:gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
-                {(['asignaciones', 'personas', 'gestionar', 'cobertura'] as const).map(tab => (
+                {(['asignaciones', 'personas', 'cobertura'] as const).map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)}
                         className={`px-3 sm:px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : tab === 'personas' ? `👤 Personal (${personas.length})` : tab === 'gestionar' ? `⚙️ Perfiles (${cargos.length})` : '🛡️ Cobertura'}
+                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : tab === 'personas' ? `👤 Personal (${personas.length})` : '🛡️ Cobertura'}
                     </button>
                 ))}
             </div>
@@ -296,7 +288,7 @@ export const PersonalManagement: React.FC = () => {
                         </select>
                         <select value={filterPerfil} onChange={e => setFilterPerfil(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
                             <option value="">Todos los perfiles</option>
-                            {activeCargos.map(p => <option key={p} value={p}>{p}</option>)}
+                            {activeProfileNames.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
                         <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2">
                             <Calendar className="w-4 h-4 text-gray-400" />
@@ -427,7 +419,7 @@ export const PersonalManagement: React.FC = () => {
                                 onChange={e => setCoberturaPerfil(e.target.value)}
                                 className="w-full px-4 py-2 border-2 border-orange-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 bg-white text-orange-900 font-semibold"
                             >
-                                {activeCargos.map(p => <option key={p} value={p}>{p}</option>)}
+                                {activeProfileNames.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
                         </div>
                         <div className="w-32">
@@ -501,73 +493,7 @@ export const PersonalManagement: React.FC = () => {
                 </div>
             )}
 
-            {/* ── TAB: Gestionar Perfiles ── */}
-            {activeTab === 'gestionar' && (
-                <div>
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 max-w-lg">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                            <Briefcase className="w-5 h-5 text-indigo-600" /> Gestión de Perfiles
-                        </h3>
-                        <p className="text-sm text-gray-500 mb-4">Administra los perfiles disponibles para asignar al personal.</p>
 
-                        <div className="flex gap-2 mb-4">
-                            <input
-                                type="text"
-                                value={newCargoName}
-                                onChange={e => setNewCargoName(e.target.value)}
-                                placeholder="Nuevo perfil..."
-                                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                                onKeyDown={e => {
-                                    if (e.key === 'Enter' && newCargoName.trim()) {
-                                        (async () => {
-                                            try { await createCargo(newCargoName); setNewCargoName(''); loadCargos(); } catch (err: any) { setError(err.message); }
-                                        })();
-                                    }
-                                }}
-                            />
-                            <button
-                                onClick={async () => {
-                                    if (!newCargoName.trim()) return;
-                                    try { await createCargo(newCargoName); setNewCargoName(''); loadCargos(); } catch (e: any) { setError(e.message); }
-                                }}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1.5 text-sm font-medium"
-                            >
-                                <Plus className="w-4 h-4" /> Agregar
-                            </button>
-                        </div>
-
-                        {cargos.length === 0 ? (
-                            <div className="text-center py-8 text-gray-400">
-                                <Briefcase className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                                <p className="text-sm">No hay perfiles definidos.</p>
-                                <p className="text-xs mt-1">Agrega uno usando el campo de arriba.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {cargos.map(c => (
-                                    <div key={c.ID} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
-                                        <div className="flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                                            <span className="font-medium text-gray-700">{c.NOMBRE}</span>
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                setCargoToDelete(c);
-                                                setCargoReassignTo('');
-                                                setShowDeleteCargoModal(true);
-                                            }}
-                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                            title={`Eliminar ${c.NOMBRE}`}
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
 
             {/* ── Modal: Persona ── */}
             {showPersonaForm && (
@@ -628,7 +554,7 @@ export const PersonalManagement: React.FC = () => {
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">Perfil *</label>
                                 <select value={aPerfil} onChange={e => setAPerfil(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
                                     <option value="">Seleccionar perfil...</option>
-                                    {activeCargos.map(p => <option key={p} value={p}>{p}</option>)}
+                                    {activeProfileNames.map(p => <option key={p} value={p}>{p}</option>)}
                                 </select>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
@@ -658,60 +584,7 @@ export const PersonalManagement: React.FC = () => {
 
 
 
-            {/* ── Modal: Eliminar Cargo ── */}
-            {showDeleteCargoModal && cargoToDelete && (
-                <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-                            <AlertTriangle className="w-6 h-6 text-red-600" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-800 text-center mb-2">¿Eliminar perfil?</h3>
-                        <p className="text-sm text-gray-500 text-center mb-6">
-                            Estás a punto de eliminar el perfil <strong>"{cargoToDelete.NOMBRE}"</strong>.
-                            Si hay asignaciones activas con este perfil, debes reasignarlas.
-                        </p>
 
-                        <div className="mb-6">
-                            <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Reasignar a (Opcional)</label>
-                            <select
-                                value={cargoReassignTo}
-                                onChange={e => setCargoReassignTo(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                            >
-                                <option value="">-- No reasignar (Mantener historial) --</option>
-                                {cargos.filter(c => c.ID !== cargoToDelete.ID).map(c => (
-                                    <option key={c.ID} value={c.NOMBRE}>{c.NOMBRE}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="flex gap-2">
-                            <button
-                                onClick={async () => {
-                                    try {
-                                        await deleteCargo(cargoToDelete.ID, cargoReassignTo || undefined);
-                                        setShowDeleteCargoModal(false);
-                                        setShowCargosModal(false); // Close parent too to refresh
-                                        loadCargos();
-                                        loadAsignaciones(); // Refresh assignments too as they might have changed
-                                    } catch (e: any) {
-                                        alert(e.message);
-                                    }
-                                }}
-                                className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors"
-                            >
-                                Eliminar
-                            </button>
-                            <button
-                                onClick={() => setShowDeleteCargoModal(false)}
-                                className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

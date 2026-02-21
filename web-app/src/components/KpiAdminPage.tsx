@@ -4,11 +4,12 @@ import {
     CheckCircle, Loader2, BarChart3, Layers, Settings, Users, Eye,
     RefreshCw, Database, TrendingUp
 } from 'lucide-react';
+import { getToken } from '../api';
 
 const API_BASE = '/api';
 
 async function apiFetch(url: string, opts: RequestInit = {}) {
-    const r = await fetch(`${API_BASE}${url}`, { ...opts, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('auth_token')}`, ...opts.headers } });
+    const r = await fetch(`${API_BASE}${url}`, { ...opts, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}`, ...opts.headers } });
     const data = await r.json();
     if (!r.ok || data?.error) throw new Error(data?.error || `HTTP ${r.status}`);
     return data;

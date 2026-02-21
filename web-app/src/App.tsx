@@ -1011,6 +1011,73 @@ function App() {
         )}
       </main>
 
+      {/* Mobile Bottom Navigation - only visible on small screens when in budget module */}
+      {dashboardTab !== 'home' && (
+        <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] no-print">
+          <div className="flex items-center justify-around px-1 py-1.5 max-w-md mx-auto">
+            <button
+              onClick={() => setDashboardTab('home')}
+              className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all text-gray-400 active:bg-gray-100"
+            >
+              <Home className="w-5 h-5" />
+              <span className="text-[10px] font-semibold">Inicio</span>
+            </button>
+
+            {user?.accesoPresupuestoMensual && (
+              <button
+                onClick={() => setDashboardTab('mensual')}
+                className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'mensual'
+                  ? 'text-indigo-600 bg-indigo-50'
+                  : 'text-gray-400 active:bg-gray-100'
+                  }`}
+              >
+                <Calendar className="w-5 h-5" />
+                <span className="text-[10px] font-semibold">Mensual</span>
+              </button>
+            )}
+
+            {user?.accesoPresupuestoAnual && (
+              <button
+                onClick={() => setDashboardTab('anual')}
+                className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'anual'
+                  ? 'text-indigo-600 bg-indigo-50'
+                  : 'text-gray-400 active:bg-gray-100'
+                  }`}
+              >
+                <BarChart3 className="w-5 h-5" />
+                <span className="text-[10px] font-semibold">Anual</span>
+              </button>
+            )}
+
+            {user?.accesoTendencia && (
+              <button
+                onClick={() => setDashboardTab('tendencia')}
+                className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'tendencia'
+                  ? 'text-indigo-600 bg-indigo-50'
+                  : 'text-gray-400 active:bg-gray-100'
+                  }`}
+              >
+                <BarChart3 className="w-5 h-5" />
+                <span className="text-[10px] font-semibold">Tendencia</span>
+              </button>
+            )}
+
+            {user?.accesoPresupuestoRangos && (
+              <button
+                onClick={() => setDashboardTab('rangos')}
+                className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'rangos'
+                  ? 'text-indigo-600 bg-indigo-50'
+                  : 'text-gray-400 active:bg-gray-100'
+                  }`}
+              >
+                <Calendar className="w-5 h-5" />
+                <span className="text-[10px] font-semibold">Rangos</span>
+              </button>
+            )}
+          </div>
+        </nav>
+      )}
+
       {/* Email Modal */}
       {showEmailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center no-print">

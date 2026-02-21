@@ -1,10 +1,20 @@
 -- ==========================================
--- SP_CALCULAR_PRESUPUESTO
+-- SP_CALCULAR_PRESUPUESTO  (v2 – corregido)
 -- Main budget calculation stored procedure
 -- ==========================================
--- Calculates daily budget from monthly consolidado,
--- maps historical dates, applies adjustments,
--- populates actual sales data, and generates aggregations.
+-- Distributes monthly budget to daily using normalized
+-- participation weights from the previous year.
+-- Maps historical dates, applies adjustments,
+-- populates actual sales, and generates aggregations.
+-- ==========================================
+-- FIXES in v2:
+--   1. Participation is now normalized PER MODEL-YEAR MONTH
+--      (guarantees SUM = 1.0 and daily budget sums to monthly total)
+--   2. Days without prior-year data get uniform distribution instead of 0
+--   3. Transaction rounding uses fractional MONTO (not participation)
+--   4. Accumulated differences fixed (Real_Acum - Presup_Acum)
+--   5. Adjustments section cleaned (no variable re-declaration)
+--   6. TQP for "Todos" anterior uses raw sums before dividing
 -- ==========================================
 
 USE RP_BI_RESUMENES;
@@ -164,7 +174,7 @@ BEGIN
     INSERT INTO #Almacenes (CodAlmacen, NombreLocal, Serie, IdLocal)
     SELECT DISTINCT
         cm.CodAlmacen,
-        MAX(cm.Local) AS NombreLocal,
+        MAX(cm.RESTAURANTE) AS NombreLocal,
         LEFT(cm.CodAlmacen, 1) AS Serie,
         ROW_NUMBER() OVER (ORDER BY cm.CodAlmacen) + 5000
     FROM KpisRosti_Consolidado_Mensual cm
@@ -179,11 +189,10 @@ BEGIN
     INSERT INTO #Canales VALUES ('AutoPollo'),('ECommerce'),('Express'),('Llevar'),('Salón'),('UberEats');
 
     -- ============================================
-    -- 6. CALCULATE PARTICIPATION from previous year
+    -- 6. GET RAW PREVIOUS-YEAR SALES by day/store/channel
     -- ============================================
-    IF OBJECT_ID('tempdb..#Participacion') IS NOT NULL DROP TABLE #Participacion;
+    IF OBJECT_ID('tempdb..#VentasAnterior') IS NOT NULL DROP TABLE #VentasAnterior;
 
-    -- Get daily sales by store/channel/type for previous year
     SELECT
         v.CODALMACEN AS CodAlmacen,
         v.CANAL AS Canal,
@@ -199,78 +208,106 @@ BEGIN
       AND (@CodAlmacen IS NULL OR v.CODALMACEN = @CodAlmacen)
     GROUP BY v.CODALMACEN, v.CANAL, CAST(v.FECHA AS DATE), MONTH(v.FECHA);
 
-    -- Calculate monthly totals for participation weights
-    IF OBJECT_ID('tempdb..#TotalMensual') IS NOT NULL DROP TABLE #TotalMensual;
-
-    SELECT
-        CodAlmacen, Canal, Mes,
-        SUM(Ventas) AS TotalVentas,
-        SUM(Transacciones) AS TotalTransacciones
-    INTO #TotalMensual
-    FROM #VentasAnterior
-    GROUP BY CodAlmacen, Canal, Mes;
-
-    -- Calculate daily participation (weight within the month)
-    SELECT
-        va.CodAlmacen, va.Canal, va.Fecha, va.Mes,
-        CASE WHEN tm.TotalVentas > 0 THEN va.Ventas / tm.TotalVentas ELSE 0 END AS ParticipacionVentas,
-        CASE WHEN tm.TotalTransacciones > 0 THEN CAST(va.Transacciones AS FLOAT) / tm.TotalTransacciones ELSE 0 END AS ParticipacionTransacciones
-    INTO #Participacion
-    FROM #VentasAnterior va
-    INNER JOIN #TotalMensual tm ON va.CodAlmacen = tm.CodAlmacen AND va.Canal = tm.Canal AND va.Mes = tm.Mes;
-
     -- ============================================
     -- 7. HANDLE NEW STORES (reference mapping)
+    --    Clone raw sales data for stores without history
     -- ============================================
-    -- For stores without historical data, clone participation from reference store
-    INSERT INTO #Participacion (CodAlmacen, Canal, Fecha, Mes, ParticipacionVentas, ParticipacionTransacciones)
+    INSERT INTO #VentasAnterior (CodAlmacen, Canal, Fecha, Mes, Ventas, Transacciones)
     SELECT
         m.CodAlmacenNuevo,
-        p.Canal,
-        p.Fecha,
-        p.Mes,
-        p.ParticipacionVentas,
-        p.ParticipacionTransacciones
+        va.Canal,
+        va.Fecha,
+        va.Mes,
+        va.Ventas,
+        va.Transacciones
     FROM DIM_MAPEO_PRESUPUESTO_LOCALES m
-    INNER JOIN #Participacion p ON p.CodAlmacen = m.CodAlmacenReferencia
+    INNER JOIN #VentasAnterior va ON va.CodAlmacen = m.CodAlmacenReferencia
     WHERE m.NombrePresupuesto = @NombrePresupuesto
       AND m.Activo = 1
-      AND NOT EXISTS (SELECT 1 FROM #Participacion p2 WHERE p2.CodAlmacen = m.CodAlmacenNuevo AND p2.Canal = p.Canal AND p2.Mes = p.Mes)
-      AND (m.Canal IS NULL OR m.Canal = p.Canal);
+      AND NOT EXISTS (SELECT 1 FROM #VentasAnterior va2
+                      WHERE va2.CodAlmacen = m.CodAlmacenNuevo AND va2.Canal = va.Canal AND va2.Mes = va.Mes)
+      AND (m.Canal IS NULL OR m.Canal = va.Canal);
 
     -- ============================================
-    -- 8. DELETE EXISTING DATA (for the scope being recalculated)
+    -- 8. BUILD NORMALIZED PARTICIPATION TABLE
+    --    Key: each model-year day gets a weight from the
+    --    adjusted previous-year date, but normalized so that
+    --    all days within the SAME MODEL-YEAR MONTH sum to 1.0
+    -- ============================================
+    IF OBJECT_ID('tempdb..#DiaRaw') IS NOT NULL DROP TABLE #DiaRaw;
+
+    -- For each calendar day, get the raw sales from its adjusted equivalent date
+    SELECT
+        cal.Fecha,
+        cal.Mes AS MesModelo,       -- Month in the MODEL year (for normalization)
+        a.CodAlmacen,
+        ch.Canal,
+        ISNULL(va.Ventas, 0)         AS RawVentas,
+        ISNULL(va.Transacciones, 0)  AS RawTransacciones
+    INTO #DiaRaw
+    FROM #Calendario cal
+    CROSS JOIN #Almacenes a
+    CROSS JOIN #Canales ch
+    LEFT JOIN #VentasAnterior va
+        ON va.Fecha = cal.FechaAnteriorAjustada
+        AND va.CodAlmacen = a.CodAlmacen
+        AND va.Canal = ch.Canal
+    WHERE (@Mes IS NULL OR cal.Mes = @Mes)
+      AND (@CodAlmacen IS NULL OR a.CodAlmacen = @CodAlmacen);
+
+    -- Calculate the monthly sum of raw values (for normalization denominator)
+    IF OBJECT_ID('tempdb..#MesSumRaw') IS NOT NULL DROP TABLE #MesSumRaw;
+
+    SELECT
+        MesModelo, CodAlmacen, Canal,
+        SUM(RawVentas)        AS SumRawVentas,
+        SUM(RawTransacciones) AS SumRawTransacciones,
+        COUNT(*)              AS DiasEnMes
+    INTO #MesSumRaw
+    FROM #DiaRaw
+    GROUP BY MesModelo, CodAlmacen, Canal;
+
+    -- Build normalized participation:
+    --   If the month has sales data: weight = raw_day / sum_month  (sums to 1.0)
+    --   If the month has NO sales data: uniform = 1 / days_in_month (sums to 1.0)
+    IF OBJECT_ID('tempdb..#Participacion') IS NOT NULL DROP TABLE #Participacion;
+
+    SELECT
+        d.Fecha,
+        d.MesModelo,
+        d.CodAlmacen,
+        d.Canal,
+        -- Normalized participation for Ventas
+        CASE
+            WHEN ms.SumRawVentas > 0 THEN d.RawVentas / ms.SumRawVentas
+            ELSE 1.0 / ms.DiasEnMes
+        END AS ParticipacionVentas,
+        -- Normalized participation for Transacciones
+        CASE
+            WHEN ms.SumRawTransacciones > 0 THEN CAST(d.RawTransacciones AS FLOAT) / ms.SumRawTransacciones
+            ELSE 1.0 / ms.DiasEnMes
+        END AS ParticipacionTransacciones
+    INTO #Participacion
+    FROM #DiaRaw d
+    INNER JOIN #MesSumRaw ms
+        ON ms.MesModelo = d.MesModelo
+        AND ms.CodAlmacen = d.CodAlmacen
+        AND ms.Canal = d.Canal;
+
+    -- ============================================
+    -- 9. DELETE EXISTING DATA (for the scope being recalculated)
     -- ============================================
     SET @SQL = N'DELETE FROM [' + @TablaDestino + '] WHERE NombrePresupuesto = @nombre';
     IF @CodAlmacen IS NOT NULL SET @SQL = @SQL + N' AND CodAlmacen = @cod';
     IF @Mes IS NOT NULL SET @SQL = @SQL + N' AND Mes = @mes';
-    -- Only delete individual stores, not groups (groups will be regenerated)
-    SET @SQL = @SQL + N' AND LEFT(CodAlmacen, 1) != ''G''';
-
-    EXEC sp_executesql @SQL,
-        N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT',
-        @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes;
-
-    -- Also delete groups
-    SET @SQL = N'DELETE FROM [' + @TablaDestino + '] WHERE NombrePresupuesto = @nombre AND LEFT(CodAlmacen, 1) = ''G''';
-    IF @Mes IS NOT NULL SET @SQL = @SQL + N' AND Mes = @mes';
-    EXEC sp_executesql @SQL,
-        N'@nombre NVARCHAR(100), @mes INT',
-        @nombre = @NombrePresupuesto, @mes = @Mes;
-
-    -- Also delete "Todos" channel
-    SET @SQL = N'DELETE FROM [' + @TablaDestino + '] WHERE NombrePresupuesto = @nombre AND Canal = ''Todos''';
-    IF @CodAlmacen IS NOT NULL SET @SQL = @SQL + N' AND CodAlmacen = @cod';
-    IF @Mes IS NOT NULL SET @SQL = @SQL + N' AND Mes = @mes';
+    -- Delete individual stores, groups, and Todos (all will be regenerated)
     EXEC sp_executesql @SQL,
         N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT',
         @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes;
 
     -- ============================================
-    -- 9. DISTRIBUTE MONTHLY BUDGET TO DAILY
+    -- 10. DISTRIBUTE MONTHLY BUDGET TO DAILY
     -- ============================================
-    -- For each store/channel/month, distribute monthly total by participation weights
-
     IF OBJECT_ID('tempdb..#Resultado') IS NOT NULL DROP TABLE #Resultado;
 
     CREATE TABLE #Resultado (
@@ -306,13 +343,12 @@ BEGIN
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
-        -- Get consolidado monthly totals
+        -- Get consolidado monthly totals (unpivot channels)
         IF OBJECT_ID('tempdb..#ConsolidadoMes') IS NOT NULL DROP TABLE #ConsolidadoMes;
 
         SELECT
             cm.CodAlmacen,
             cm.Mes,
-            -- Unpivot channels: for each channel get the monthly value
             ch.Canal,
             CASE ch.Canal
                 WHEN 'Salón' THEN cm.SALON
@@ -330,7 +366,7 @@ BEGIN
           AND (@CodAlmacen IS NULL OR cm.CodAlmacen = @CodAlmacen)
           AND (@Mes IS NULL OR cm.Mes = @Mes);
 
-        -- Join participation with calendar and consolidado to distribute
+        -- Join normalized participation with calendar and consolidado
         INSERT INTO #Resultado (
             Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
             CodAlmacen, Participacion, Canal, Ano, Tipo,
@@ -346,11 +382,19 @@ BEGIN
             cal.IdDia,
             cal.NombreDia,
             cal.Mes,
-            -- Distribute: monthly total * daily participation
+            -- Distribute: monthly total * NORMALIZED daily participation
             CASE
                 WHEN @TipoProc = 'Transacciones'
-                THEN ROUND(ISNULL(cm.PresupuestoMensual, 0) * ISNULL(p.ParticipacionTransacciones, 0), 0)
-                ELSE ISNULL(cm.PresupuestoMensual, 0) * ISNULL(p.ParticipacionVentas, 0)
+                THEN ROUND(
+                    ISNULL(cm.PresupuestoMensual, 0) *
+                    ISNULL(CASE @TipoProc
+                        WHEN 'Transacciones' THEN p.ParticipacionTransacciones
+                        ELSE p.ParticipacionVentas
+                    END, 0)
+                , 0)
+                ELSE
+                    ISNULL(cm.PresupuestoMensual, 0) *
+                    ISNULL(p.ParticipacionVentas, 0)
             END,
             a.CodAlmacen,
             CASE
@@ -373,13 +417,13 @@ BEGIN
         INNER JOIN #ConsolidadoMes cm ON cm.Mes = cal.Mes
         INNER JOIN #Almacenes a ON a.CodAlmacen = cm.CodAlmacen
         LEFT JOIN #Participacion p
-            ON p.CodAlmacen = a.CodAlmacen
+            ON p.Fecha = cal.Fecha
+            AND p.CodAlmacen = a.CodAlmacen
             AND p.Canal = cm.Canal
-            AND p.Fecha = cal.FechaAnteriorAjustada
         WHERE (@Mes IS NULL OR cal.Mes = @Mes);
 
         -- ============================================
-        -- 9b. ADJUST ROUNDING for Transactions (integers, largest remainder method)
+        -- 10b. ADJUST ROUNDING for Transactions (integers, largest remainder)
         -- ============================================
         IF @TipoProc = 'Transacciones'
         BEGIN
@@ -395,25 +439,33 @@ BEGIN
             )
             SELECT
                 s.CodAlmacen, s.Canal, s.Mes,
-                cm.PresupuestoMensual - s.SumaDistribuida AS Residuo
+                ISNULL(cm.PresupuestoMensual, 0) - s.SumaDistribuida AS Residuo
             INTO #Residuos
             FROM Sums s
             INNER JOIN #ConsolidadoMes cm ON cm.CodAlmacen = s.CodAlmacen AND cm.Canal = s.Canal AND cm.Mes = s.Mes
-            WHERE ABS(cm.PresupuestoMensual - s.SumaDistribuida) >= 1;
+            WHERE ABS(ISNULL(cm.PresupuestoMensual, 0) - s.SumaDistribuida) >= 1;
 
             -- Distribute residual using largest remainder method
-            -- Add +1 or -1 to days with largest fractional parts
-            ;WITH Ranked AS (
-                SELECT r.Fecha, r.CodAlmacen, r.Canal, r.Mes,
-                       r.Participacion - FLOOR(r.Participacion) AS Frac,
+            -- Use fractional part of the actual MONTO (before rounding), not of participation
+            ;WITH MontoDecimal AS (
+                SELECT
+                    r.Fecha, r.CodAlmacen, r.Canal, r.Mes,
+                    -- The "true" decimal monto before rounding
+                    ISNULL(cm.PresupuestoMensual, 0) * r.Participacion AS MontoExacto
+                FROM #Resultado r
+                INNER JOIN #ConsolidadoMes cm ON cm.CodAlmacen = r.CodAlmacen AND cm.Canal = r.Canal AND cm.Mes = r.Mes
+                WHERE r.Tipo = 'Transacciones'
+            ),
+            Ranked AS (
+                SELECT md.Fecha, md.CodAlmacen, md.Canal, md.Mes,
+                       md.MontoExacto - FLOOR(md.MontoExacto) AS Frac,
                        ROW_NUMBER() OVER (
-                           PARTITION BY r.CodAlmacen, r.Canal, r.Mes
-                           ORDER BY (r.Participacion - FLOOR(r.Participacion)) DESC, r.Fecha
+                           PARTITION BY md.CodAlmacen, md.Canal, md.Mes
+                           ORDER BY (md.MontoExacto - FLOOR(md.MontoExacto)) DESC, md.Fecha
                        ) AS RN,
                        res.Residuo
-                FROM #Resultado r
-                INNER JOIN #Residuos res ON res.CodAlmacen = r.CodAlmacen AND res.Canal = r.Canal AND res.Mes = r.Mes
-                WHERE r.Tipo = 'Transacciones'
+                FROM MontoDecimal md
+                INNER JOIN #Residuos res ON res.CodAlmacen = md.CodAlmacen AND res.Canal = md.Canal AND res.Mes = md.Mes
             )
             UPDATE #Resultado
             SET Monto = Monto + SIGN(rk.Residuo)
@@ -429,7 +481,7 @@ BEGIN
     DEALLOCATE tipo_cursor;
 
     -- ============================================
-    -- 10. GENERATE TQP (Ventas / Transacciones)
+    -- 11. GENERATE TQP (Ventas / Transacciones)
     -- ============================================
     INSERT INTO #Resultado (
         Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
@@ -450,7 +502,7 @@ BEGIN
     WHERE v.Tipo = 'Ventas';
 
     -- ============================================
-    -- 11. POPULATE ACTUAL SALES DATA (previous year + current year)
+    -- 12. POPULATE ACTUAL SALES DATA (previous year + current year)
     -- ============================================
     -- Previous year natural: MontoAnterior
     UPDATE r
@@ -500,7 +552,7 @@ BEGIN
     INNER JOIN #VentasActual va ON va.Fecha = r.Fecha AND va.CodAlmacen = r.CodAlmacen AND va.Canal = r.Canal;
 
     -- ============================================
-    -- 12. CALCULATE PARTICIPATIONS for previous year data
+    -- 13. CALCULATE PARTICIPATIONS for previous year data
     -- ============================================
     ;WITH MonthlyTotals AS (
         SELECT CodAlmacen, Canal, Mes, Tipo,
@@ -518,7 +570,7 @@ BEGIN
     INNER JOIN MonthlyTotals mt ON mt.CodAlmacen = r.CodAlmacen AND mt.Canal = r.Canal AND mt.Mes = r.Mes AND mt.Tipo = r.Tipo;
 
     -- ============================================
-    -- 13. INSERT INTO DESTINATION TABLE (individual stores)
+    -- 14. INSERT INTO DESTINATION TABLE (individual stores)
     -- ============================================
     SET @SQL = N'
     INSERT INTO [' + @TablaDestino + '] (
@@ -543,7 +595,7 @@ BEGIN
     EXEC sp_executesql @SQL;
 
     -- ============================================
-    -- 14. GENERATE "Todos" CHANNEL (sum of all base channels)
+    -- 15. GENERATE "Todos" CHANNEL (sum of all base channels)
     -- ============================================
     SET @SQL = N'
     INSERT INTO [' + @TablaDestino + '] (
@@ -596,82 +648,89 @@ BEGIN
     EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre = @NombrePresupuesto;
 
     -- ============================================
-    -- 15. GENERATE STORE GROUPS (CODVISIBLE=20)
+    -- 16. GENERATE STORE GROUPS (CODVISIBLE=20)
     -- ============================================
     IF OBJECT_ID('tempdb..#Grupos') IS NOT NULL DROP TABLE #Grupos;
 
-    SELECT
-        g.IDGRUPO,
-        'G' + RIGHT('0' + CAST(g.IDGRUPO - 3000 + 1 AS VARCHAR(2)), 2) AS CodAlmacenGrupo,
-        g.DESCRIPCION AS NombreGrupo,
-        gl.CODALMACEN AS CodAlmacenMiembro,
-        ROW_NUMBER() OVER (ORDER BY g.IDGRUPO) + 9000 AS IdLocalGrupo
-    INTO #Grupos
-    FROM GRUPO_ALMACEN g
-    INNER JOIN GRUPO_ALMACEN_LIN gl ON gl.IDGRUPO = g.IDGRUPO
-    WHERE g.CODVISIBLE = 20;
+    -- Only generate groups if the group tables exist
+    IF OBJECT_ID('GRUPO_ALMACEN') IS NOT NULL AND OBJECT_ID('GRUPO_ALMACEN_LIN') IS NOT NULL
+    BEGIN
+        SELECT
+            g.IDGRUPO,
+            'G' + RIGHT('0' + CAST(g.IDGRUPO - 3000 + 1 AS VARCHAR(2)), 2) AS CodAlmacenGrupo,
+            g.DESCRIPCION AS NombreGrupo,
+            gl.CODALMACEN AS CodAlmacenMiembro,
+            ROW_NUMBER() OVER (ORDER BY g.IDGRUPO) + 9000 AS IdLocalGrupo
+        INTO #Grupos
+        FROM GRUPO_ALMACEN g
+        INNER JOIN GRUPO_ALMACEN_LIN gl ON gl.IDGRUPO = g.IDGRUPO
+        WHERE g.CODVISIBLE = 20;
 
-    -- Insert group aggregations
-    SET @SQL = N'
-    INSERT INTO [' + @TablaDestino + '] (
-        Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
-        CodAlmacen, Participacion, Canal, Año, Tipo,
-        FechaAnterior, MontoAnterior, ParticipacionAnterior,
-        FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
-        MontoReal, ParticipacionReal,
-        NombrePresupuesto
-    )
-    SELECT
-        r.Fecha, MIN(g.IdLocalGrupo), MIN(g.NombreGrupo), ''G'', MIN(r.idDia), MIN(r.Dia), r.Mes,
-        SUM(r.Monto),
-        g.CodAlmacenGrupo, 0, r.Canal, MIN(r.Año), r.Tipo,
-        MIN(r.FechaAnterior), SUM(ISNULL(r.MontoAnterior, 0)), 0,
-        MIN(r.FechaAnteriorAjustada), SUM(ISNULL(r.MontoAnteriorAjustado, 0)), 0,
-        SUM(ISNULL(r.MontoReal, 0)), 0,
-        r.NombrePresupuesto
-    FROM [' + @TablaDestino + '] r
-    INNER JOIN #Grupos g ON g.CodAlmacenMiembro = r.CodAlmacen
-    WHERE r.NombrePresupuesto = @nombre
-      AND LEFT(r.CodAlmacen, 1) != ''G''
-      AND r.Tipo IN (''Ventas'', ''Transacciones'')
-    GROUP BY r.Fecha, g.CodAlmacenGrupo, r.Canal, r.Tipo, r.Mes, r.NombrePresupuesto;';
-    EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre = @NombrePresupuesto;
+        -- Insert group aggregations (Ventas + Transacciones)
+        SET @SQL = N'
+        INSERT INTO [' + @TablaDestino + '] (
+            Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
+            CodAlmacen, Participacion, Canal, Año, Tipo,
+            FechaAnterior, MontoAnterior, ParticipacionAnterior,
+            FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+            MontoReal, ParticipacionReal,
+            NombrePresupuesto
+        )
+        SELECT
+            r.Fecha, MIN(g.IdLocalGrupo), MIN(g.NombreGrupo), ''G'', MIN(r.idDia), MIN(r.Dia), r.Mes,
+            SUM(r.Monto),
+            g.CodAlmacenGrupo, 0, r.Canal, MIN(r.Año), r.Tipo,
+            MIN(r.FechaAnterior), SUM(ISNULL(r.MontoAnterior, 0)), 0,
+            MIN(r.FechaAnteriorAjustada), SUM(ISNULL(r.MontoAnteriorAjustado, 0)), 0,
+            SUM(ISNULL(r.MontoReal, 0)), 0,
+            r.NombrePresupuesto
+        FROM [' + @TablaDestino + '] r
+        INNER JOIN #Grupos g ON g.CodAlmacenMiembro = r.CodAlmacen
+        WHERE r.NombrePresupuesto = @nombre
+          AND LEFT(r.CodAlmacen, 1) != ''G''
+          AND r.Tipo IN (''Ventas'', ''Transacciones'')
+        GROUP BY r.Fecha, g.CodAlmacenGrupo, r.Canal, r.Tipo, r.Mes, r.NombrePresupuesto;';
+        EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre = @NombrePresupuesto;
 
-    -- Generate TQP for groups
-    SET @SQL = N'
-    INSERT INTO [' + @TablaDestino + '] (
-        Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
-        CodAlmacen, Participacion, Canal, Año, Tipo,
-        FechaAnterior, MontoAnterior, ParticipacionAnterior,
-        FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
-        MontoReal, ParticipacionReal,
-        NombrePresupuesto
-    )
-    SELECT
-        v.Fecha, v.idLocal, v.[Local], v.Serie, v.idDia, v.Dia, v.Mes,
-        CASE WHEN t.Monto > 0 THEN v.Monto / t.Monto ELSE 0 END,
-        v.CodAlmacen, 0, v.Canal, v.Año, ''TQP'',
-        v.FechaAnterior,
-        CASE WHEN t.MontoAnterior > 0 THEN v.MontoAnterior / t.MontoAnterior ELSE 0 END, 0,
-        v.FechaAnteriorAjustada,
-        CASE WHEN t.MontoAnteriorAjustado > 0 THEN v.MontoAnteriorAjustado / t.MontoAnteriorAjustado ELSE 0 END, 0,
-        CASE WHEN t.MontoReal > 0 THEN v.MontoReal / t.MontoReal ELSE 0 END, 0,
-        v.NombrePresupuesto
-    FROM [' + @TablaDestino + '] v
-    INNER JOIN [' + @TablaDestino + '] t ON t.Fecha = v.Fecha AND t.CodAlmacen = v.CodAlmacen AND t.Canal = v.Canal AND t.Tipo = ''Transacciones'' AND t.NombrePresupuesto = v.NombrePresupuesto
-    WHERE LEFT(v.CodAlmacen, 1) = ''G'' AND v.Tipo = ''Ventas'' AND v.NombrePresupuesto = @nombre;';
-    EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre = @NombrePresupuesto;
+        -- Generate TQP for groups
+        SET @SQL = N'
+        INSERT INTO [' + @TablaDestino + '] (
+            Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
+            CodAlmacen, Participacion, Canal, Año, Tipo,
+            FechaAnterior, MontoAnterior, ParticipacionAnterior,
+            FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+            MontoReal, ParticipacionReal,
+            NombrePresupuesto
+        )
+        SELECT
+            v.Fecha, v.idLocal, v.[Local], v.Serie, v.idDia, v.Dia, v.Mes,
+            CASE WHEN t.Monto > 0 THEN v.Monto / t.Monto ELSE 0 END,
+            v.CodAlmacen, 0, v.Canal, v.Año, ''TQP'',
+            v.FechaAnterior,
+            CASE WHEN t.MontoAnterior > 0 THEN v.MontoAnterior / t.MontoAnterior ELSE 0 END, 0,
+            v.FechaAnteriorAjustada,
+            CASE WHEN t.MontoAnteriorAjustado > 0 THEN v.MontoAnteriorAjustado / t.MontoAnteriorAjustado ELSE 0 END, 0,
+            CASE WHEN t.MontoReal > 0 THEN v.MontoReal / t.MontoReal ELSE 0 END, 0,
+            v.NombrePresupuesto
+        FROM [' + @TablaDestino + '] v
+        INNER JOIN [' + @TablaDestino + '] t ON t.Fecha = v.Fecha AND t.CodAlmacen = v.CodAlmacen AND t.Canal = v.Canal AND t.Tipo = ''Transacciones'' AND t.NombrePresupuesto = v.NombrePresupuesto
+        WHERE LEFT(v.CodAlmacen, 1) = ''G'' AND v.Tipo = ''Ventas'' AND v.NombrePresupuesto = @nombre;';
+        EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre = @NombrePresupuesto;
+    END -- IF GRUPO_ALMACEN exists
 
     -- ============================================
-    -- 16. CALCULATE ACCUMULATED VALUES AND DIFFERENCES
+    -- 17. CALCULATE ACCUMULATED VALUES AND DIFFERENCES
     -- ============================================
+    -- Accumulates: running sums per month
+    -- Differences: accumulated real vs accumulated budget/anterior
     SET @SQL = N'
     ;WITH Acumulados AS (
         SELECT
-            Fecha, CodAlmacen, Canal, Tipo,
-            SUM(Monto) OVER (PARTITION BY CodAlmacen, Canal, Tipo, Mes ORDER BY Fecha) AS MontoAcum,
-            SUM(ISNULL(MontoAnterior, 0)) OVER (PARTITION BY CodAlmacen, Canal, Tipo, Mes ORDER BY Fecha) AS MontoAntAcum,
-            SUM(ISNULL(MontoAnteriorAjustado, 0)) OVER (PARTITION BY CodAlmacen, Canal, Tipo, Mes ORDER BY Fecha) AS MontoAntAjAcum
+            Fecha, CodAlmacen, Canal, Tipo, Mes,
+            SUM(Monto) OVER (PARTITION BY CodAlmacen, Canal, Tipo, Mes, NombrePresupuesto ORDER BY Fecha) AS MontoAcum,
+            SUM(ISNULL(MontoAnterior, 0)) OVER (PARTITION BY CodAlmacen, Canal, Tipo, Mes, NombrePresupuesto ORDER BY Fecha) AS MontoAntAcum,
+            SUM(ISNULL(MontoAnteriorAjustado, 0)) OVER (PARTITION BY CodAlmacen, Canal, Tipo, Mes, NombrePresupuesto ORDER BY Fecha) AS MontoAntAjAcum,
+            SUM(ISNULL(MontoReal, 0)) OVER (PARTITION BY CodAlmacen, Canal, Tipo, Mes, NombrePresupuesto ORDER BY Fecha) AS MontoRealAcum
         FROM [' + @TablaDestino + ']
         WHERE NombrePresupuesto = @nombre
     )
@@ -679,19 +738,24 @@ BEGIN
     SET Monto_Acumulado = a.MontoAcum,
         MontoAnterior_Acumulado = a.MontoAntAcum,
         MontoAnteriorAjustado_Acumulado = a.MontoAntAjAcum,
-        Monto_Dif = ISNULL(t.MontoReal, 0) - a.MontoAcum,
-        MontoAnterior_Dif = ISNULL(t.MontoReal, 0) - a.MontoAntAcum,
-        MontoAnteriorAjustado_Dif = ISNULL(t.MontoReal, 0) - a.MontoAntAjAcum
+        -- Differences: Real acumulado vs each accumulated budget/anterior
+        Monto_Dif = a.MontoRealAcum - a.MontoAcum,
+        MontoAnterior_Dif = a.MontoRealAcum - a.MontoAntAcum,
+        MontoAnteriorAjustado_Dif = a.MontoRealAcum - a.MontoAntAjAcum
     FROM [' + @TablaDestino + '] t
-    INNER JOIN Acumulados a ON a.Fecha = t.Fecha AND a.CodAlmacen = t.CodAlmacen AND a.Canal = t.Canal AND a.Tipo = t.Tipo
+    INNER JOIN Acumulados a ON a.Fecha = t.Fecha AND a.CodAlmacen = t.CodAlmacen AND a.Canal = t.Canal AND a.Tipo = t.Tipo AND a.Mes = t.Mes
     WHERE t.NombrePresupuesto = @nombre;';
     EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre = @NombrePresupuesto;
 
     -- ============================================
-    -- 17. APPLY ADJUSTMENTS from MODELO_PRESUPUESTO_AJUSTES
+    -- 18. APPLY ADJUSTMENTS from MODELO_PRESUPUESTO_AJUSTES
     -- ============================================
     DECLARE @AjusteId INT, @AjCod NVARCHAR(10), @AjMes INT, @AjCanal NVARCHAR(200);
     DECLARE @AjTipo NVARCHAR(100), @AjMetodo NVARCHAR(50), @AjValor DECIMAL(18,4), @AjDistrib NVARCHAR(50);
+    DECLARE @TotalPresu FLOAT;
+    DECLARE @Factor FLOAT;
+    DECLARE @NewTotal FLOAT;
+    DECLARE @NormFactor FLOAT;
 
     DECLARE ajuste_cursor CURSOR FOR
         SELECT Id, CodAlmacen, Mes, Canal, Tipo, MetodoAjuste, ValorAjuste, MetodoDistribucion
@@ -706,9 +770,11 @@ BEGIN
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
-        -- Apply adjustment to destination table using SP_AJUSTAR_PRESUPUESTO logic inline
-        -- This recalculates affected values maintaining sum-zero within the month
-        DECLARE @TotalPresu FLOAT;
+        -- Reset variables for each iteration
+        SET @TotalPresu = NULL;
+        SET @Factor = 1;
+        SET @NewTotal = NULL;
+        SET @NormFactor = 1;
 
         SET @SQL = N'SELECT @tot = SUM(Monto) FROM [' + @TablaDestino + '] WHERE NombrePresupuesto = @nombre AND CodAlmacen = @cod AND Mes = @mes AND Canal = @canal AND Tipo = @tipo';
         EXEC sp_executesql @SQL,
@@ -717,12 +783,11 @@ BEGIN
 
         IF @TotalPresu IS NOT NULL AND @TotalPresu != 0
         BEGIN
-            DECLARE @Factor FLOAT = 1;
             IF @AjMetodo = 'Porcentaje' SET @Factor = 1 + (@AjValor / 100.0);
             ELSE IF @AjMetodo = 'Factor' SET @Factor = @AjValor;
             ELSE IF @AjMetodo = 'MontoAbsoluto' SET @Factor = (@TotalPresu + @AjValor) / @TotalPresu;
 
-            -- Since it's sum-zero, apply factor then normalize back to original total
+            -- Apply factor
             SET @SQL = N'
             UPDATE [' + @TablaDestino + ']
             SET Monto = Monto * @factor
@@ -731,16 +796,15 @@ BEGIN
                 N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @factor FLOAT',
                 @nombre = @NombrePresupuesto, @cod = @AjCod, @mes = @AjMes, @canal = @AjCanal, @tipo = @AjTipo, @factor = @Factor;
 
-            -- Re-normalize to ensure monthly total matches original consolidado
-            DECLARE @NewTotal FLOAT;
+            -- Re-normalize to ensure monthly total matches after factor (for sum-zero)
             SET @SQL = N'SELECT @tot = SUM(Monto) FROM [' + @TablaDestino + '] WHERE NombrePresupuesto = @nombre AND CodAlmacen = @cod AND Mes = @mes AND Canal = @canal AND Tipo = @tipo';
             EXEC sp_executesql @SQL,
                 N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @tot FLOAT OUTPUT',
                 @nombre = @NombrePresupuesto, @cod = @AjCod, @mes = @AjMes, @canal = @AjCanal, @tipo = @AjTipo, @tot = @NewTotal OUTPUT;
 
-            IF @NewTotal > 0 AND @NewTotal != @TotalPresu
+            IF @NewTotal IS NOT NULL AND @NewTotal > 0 AND ABS(@NewTotal - @TotalPresu) > 0.01
             BEGIN
-                DECLARE @NormFactor FLOAT = @TotalPresu / @NewTotal;
+                SET @NormFactor = @TotalPresu / @NewTotal;
                 SET @SQL = N'
                 UPDATE [' + @TablaDestino + ']
                 SET Monto = Monto * @nfactor
@@ -757,7 +821,7 @@ BEGIN
     DEALLOCATE ajuste_cursor;
 
     -- ============================================
-    -- 18. LOG EXECUTION IN BITACORA
+    -- 19. LOG EXECUTION IN BITACORA
     -- ============================================
     DECLARE @TotalRows INT;
     SET @SQL = N'SELECT @cnt = COUNT(*) FROM [' + @TablaDestino + '] WHERE NombrePresupuesto = @nombre';
@@ -772,7 +836,7 @@ BEGIN
          '{"registros":' + CAST(@TotalRows AS NVARCHAR(20)) + ',"tabla":"' + @TablaDestino + '"}');
 
     -- ============================================
-    -- 19. UPDATE CONFIG with last execution info
+    -- 20. UPDATE CONFIG with last execution info
     -- ============================================
     UPDATE MODELO_PRESUPUESTO_CONFIG
     SET UltimoCalculo = GETDATE(),
@@ -792,7 +856,8 @@ BEGIN
     IF OBJECT_ID('tempdb..#Almacenes') IS NOT NULL DROP TABLE #Almacenes;
     IF OBJECT_ID('tempdb..#Canales') IS NOT NULL DROP TABLE #Canales;
     IF OBJECT_ID('tempdb..#VentasAnterior') IS NOT NULL DROP TABLE #VentasAnterior;
-    IF OBJECT_ID('tempdb..#TotalMensual') IS NOT NULL DROP TABLE #TotalMensual;
+    IF OBJECT_ID('tempdb..#DiaRaw') IS NOT NULL DROP TABLE #DiaRaw;
+    IF OBJECT_ID('tempdb..#MesSumRaw') IS NOT NULL DROP TABLE #MesSumRaw;
     IF OBJECT_ID('tempdb..#Participacion') IS NOT NULL DROP TABLE #Participacion;
     IF OBJECT_ID('tempdb..#Resultado') IS NOT NULL DROP TABLE #Resultado;
     IF OBJECT_ID('tempdb..#VentasActual') IS NOT NULL DROP TABLE #VentasActual;
@@ -802,5 +867,5 @@ BEGIN
 END
 GO
 
-PRINT '✅ SP_CALCULAR_PRESUPUESTO created successfully';
+PRINT '✅ SP_CALCULAR_PRESUPUESTO v2 created successfully';
 GO

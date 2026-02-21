@@ -108,6 +108,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         verAjustePresupuesto: false, verVersiones: false, verBitacora: false, verReferencias: false,
         editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
     });
+    const [newPerfilId, setNewPerfilId] = useState<number | null>(null);
     const [formError, setFormError] = useState('');
     const [formSuccess, setFormSuccess] = useState('');
 
@@ -293,6 +294,41 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         }
     };
 
+    // When a profile is selected in the new user form, auto-fill all permissions
+    const handleNewProfileSelect = (profileId: number | null) => {
+        setNewPerfilId(profileId);
+        if (profileId) {
+            const p = profiles.find(pr => pr.id === profileId);
+            if (p) {
+                setNewAccesoTendencia(p.accesoTendencia);
+                setNewAccesoTactica(p.accesoTactica);
+                setNewAccesoEventos(p.accesoEventos);
+                setNewAccesoPresupuesto(p.accesoPresupuesto);
+                setNewAccesoPresupuestoMensual(p.accesoPresupuestoMensual ?? true);
+                setNewAccesoPresupuestoAnual(p.accesoPresupuestoAnual ?? true);
+                setNewAccesoPresupuestoRangos(p.accesoPresupuestoRangos ?? true);
+                setNewAccesoTiempos(p.accesoTiempos);
+                setNewAccesoEvaluaciones(p.accesoEvaluaciones);
+                setNewAccesoInventarios(p.accesoInventarios);
+                setNewAccesoPersonal(p.accesoPersonal || false);
+                setNewEsAdmin(p.esAdmin);
+                setNewModeloPerms({
+                    accesoModeloPresupuesto: p.accesoModeloPresupuesto || false,
+                    verConfigModelo: p.verConfigModelo || false,
+                    verConsolidadoMensual: p.verConsolidadoMensual || false,
+                    verAjustePresupuesto: p.verAjustePresupuesto || false,
+                    verVersiones: p.verVersiones || false,
+                    verBitacora: p.verBitacora || false,
+                    verReferencias: p.verReferencias || false,
+                    editarConsolidado: p.editarConsolidado || false,
+                    ejecutarRecalculo: p.ejecutarRecalculo || false,
+                    ajustarCurva: p.ajustarCurva || false,
+                    restaurarVersiones: p.restaurarVersiones || false,
+                });
+            }
+        }
+    };
+
     const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();
         setFormError('');
@@ -327,7 +363,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 newAccesoInventarios,
                 newAccesoPersonal,
                 newEsAdmin,
-                newModeloPerms
+                newModeloPerms,
+                newPerfilId
             );
             setFormSuccess(`Usuario ${newEmail} creado. Clave: ${result.clave}`);
             setNewEmail('');
@@ -352,6 +389,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 verAjustePresupuesto: false, verVersiones: false, verBitacora: false, verReferencias: false,
                 editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
             });
+            setNewPerfilId(null);
             setShowForm(false);
             loadData();
         } catch (err: any) {
@@ -743,6 +781,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                 </div>
                                             </div>
 
+                                            {/* Profile selector */}
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Perfil</label>
+                                                <select
+                                                    value={newPerfilId ?? ''}
+                                                    onChange={e => handleNewProfileSelect(e.target.value ? Number(e.target.value) : null)}
+                                                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm transition-all bg-white"
+                                                >
+                                                    <option value="">Sin perfil (permisos manuales)</option>
+                                                    {profiles.map(p => (
+                                                        <option key={p.id} value={p.id}>{p.nombre}</option>
+                                                    ))}
+                                                </select>
+                                                {newPerfilId && (
+                                                    <p className="text-xs text-indigo-500 mt-1">Los permisos se han configurado automáticamente según el perfil seleccionado.</p>
+                                                )}
+                                            </div>
+
                                             {/* Permissions */}
                                             <div>
                                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-2">Permisos</label>
@@ -1058,18 +1114,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                             <table className="w-full">
                                                 <thead>
                                                     <tr className="bg-gray-50 border-b border-gray-200">
-                                                        <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[22%]">Email</th>
-                                                        <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[14%]">Nombre</th>
-                                                        <th className="text-center px-2 py-3 text-xs font-bold text-gray-500 uppercase w-[8%]">Clave</th>
+                                                        <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[20%]">Email</th>
+                                                        <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[12%]">Nombre</th>
+                                                        <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[10%]">Perfil</th>
+                                                        <th className="text-center px-2 py-3 text-xs font-bold text-gray-500 uppercase w-[7%]">Clave</th>
                                                         <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase">Permisos / Canales</th>
-                                                        <th className="text-center px-2 py-3 text-xs font-bold text-gray-500 uppercase w-[8%]">Estado</th>
-                                                        <th className="text-right px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[7%]"></th>
+                                                        <th className="text-center px-2 py-3 text-xs font-bold text-gray-500 uppercase w-[7%]">Estado</th>
+                                                        <th className="text-right px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[6%]"></th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {filteredUsers.length === 0 ? (
                                                         <tr>
-                                                            <td colSpan={6} className="text-center py-12 text-gray-400">
+                                                            <td colSpan={7} className="text-center py-12 text-gray-400">
                                                                 {searchTerm
                                                                     ? `No se encontraron usuarios que coincidan con "${searchTerm}"`
                                                                     : 'No hay usuarios registrados. Haga clic en "Agregar Usuario" para crear uno.'}
@@ -1088,7 +1145,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                                         )}
                                                                     </div>
                                                                 </td>
-                                                                <td className="px-6 py-4 text-xs text-gray-600">{user.nombre || '—'}</td>
+                                                                <td className="px-3 py-2 text-xs text-gray-600">{user.nombre || '—'}</td>
+                                                                <td className="px-3 py-2">
+                                                                    {(() => {
+                                                                        const perfil = user.perfilId ? profiles.find(p => p.id === user.perfilId) : null;
+                                                                        return perfil
+                                                                            ? <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">{perfil.nombre}</span>
+                                                                            : <span className="text-[10px] text-gray-400">—</span>;
+                                                                    })()}
+                                                                </td>
                                                                 <td className="px-3 py-2">
                                                                     <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded tracking-wider">{user.clave || '—'}</span>
                                                                 </td>

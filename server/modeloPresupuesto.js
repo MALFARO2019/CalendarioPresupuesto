@@ -124,8 +124,9 @@ async function deleteConfig(id) {
  */
 async function ejecutarCalculo(usuario, codAlmacen = null, mes = null, nombrePresupuesto = null) {
     const pool = await poolPromise;
-    const request = pool.request()
-        .input('Usuario', sql.NVarChar(200), usuario);
+    const request = pool.request();
+    request.timeout = 300000; // 5 minutes for full budget calculation
+    request.input('Usuario', sql.NVarChar(200), usuario);
 
     if (nombrePresupuesto) request.input('NombrePresupuesto', sql.NVarChar(100), nombrePresupuesto);
     if (codAlmacen) request.input('CodAlmacen', sql.NVarChar(10), codAlmacen);
@@ -304,9 +305,13 @@ async function getAjustes(nombrePresupuesto) {
     const result = await pool.request()
         .input('nombrePresupuesto', sql.NVarChar(100), nombrePresupuesto)
         .query(`
-            SELECT Id, NombrePresupuesto, CodAlmacen, Mes, Dia, Canal, Tipo,
-                   MetodoAjuste, ValorAjuste, MetodoDistribucion, Motivo,
-                   FechaAplicacion, Usuario, Activo
+            SELECT Id as id, NombrePresupuesto as nombrePresupuesto,
+                   CodAlmacen as codAlmacen, Mes as mes, Dia as dia,
+                   Canal as canal, Tipo as tipo,
+                   MetodoAjuste as metodoAjuste, ValorAjuste as valorAjuste,
+                   MetodoDistribucion as metodoDistribucion, Motivo as motivo,
+                   FechaAplicacion as fechaAplicacion, Usuario as usuario,
+                   Activo as activo
             FROM MODELO_PRESUPUESTO_AJUSTES
             WHERE NombrePresupuesto = @nombrePresupuesto
             ORDER BY FechaAplicacion DESC
@@ -346,7 +351,7 @@ async function previewAjuste(data) {
     const config = await getConfig();
     if (!config) throw new Error('No hay configuración activa');
 
-    const tablaDestino = config.TablaDestino;
+    const tablaDestino = config.tablaDestino;
     const result = await pool.request()
         .input('nombrePresupuesto', sql.NVarChar(100), data.nombrePresupuesto)
         .input('codAlmacen', sql.NVarChar(10), data.codAlmacen)
@@ -354,18 +359,18 @@ async function previewAjuste(data) {
         .input('canal', sql.NVarChar(200), data.canal)
         .input('tipo', sql.NVarChar(100), data.tipo)
         .query(`
-            SELECT Fecha, Dia, Presupuesto, Real_Valor, AnoAnterior, AnoAnteriorAjustado
-            FROM ${tablaDestino}
+            SELECT Fecha, idDia, Dia, Monto, MontoReal, MontoAnterior, MontoAnteriorAjustado
+            FROM [${tablaDestino}]
             WHERE NombrePresupuesto = @nombrePresupuesto
               AND CodAlmacen = @codAlmacen
-              AND MONTH(Fecha) = @mes
+              AND Mes = @mes
               AND Canal = @canal
               AND Tipo = @tipo
-            ORDER BY Dia
+            ORDER BY Fecha
         `);
 
     const dailyData = result.recordset;
-    const totalActual = dailyData.reduce((sum, r) => sum + (r.Presupuesto || 0), 0);
+    const totalActual = dailyData.reduce((sum, r) => sum + (r.Monto || 0), 0);
 
     // Calculate adjusted values based on method
     let adjustedData;
@@ -374,38 +379,44 @@ async function previewAjuste(data) {
     switch (data.metodoAjuste) {
         case 'Porcentaje':
             adjustedData = dailyData.map(d => ({
-                ...d,
-                PresupuestoAjustado: d.Presupuesto * (1 + valor / 100),
-                Diferencia: d.Presupuesto * (valor / 100)
+                Fecha: d.Fecha,
+                idDia: d.idDia,
+                MontoActual: d.Monto || 0,
+                MontoNuevo: (d.Monto || 0) * (1 + valor / 100),
+                Diferencia: (d.Monto || 0) * (valor / 100)
             }));
             break;
         case 'MontoAbsoluto':
             // Distribute the absolute amount proportionally
             adjustedData = dailyData.map(d => {
-                const proporcion = totalActual > 0 ? (d.Presupuesto / totalActual) : (1 / dailyData.length);
+                const proporcion = totalActual > 0 ? ((d.Monto || 0) / totalActual) : (1 / dailyData.length);
                 const diff = valor * proporcion;
                 return {
-                    ...d,
-                    PresupuestoAjustado: d.Presupuesto + diff,
+                    Fecha: d.Fecha,
+                    idDia: d.idDia,
+                    MontoActual: d.Monto || 0,
+                    MontoNuevo: (d.Monto || 0) + diff,
                     Diferencia: diff
                 };
             });
             break;
         case 'Factor':
             adjustedData = dailyData.map(d => ({
-                ...d,
-                PresupuestoAjustado: d.Presupuesto * valor,
-                Diferencia: d.Presupuesto * (valor - 1)
+                Fecha: d.Fecha,
+                idDia: d.idDia,
+                MontoActual: d.Monto || 0,
+                MontoNuevo: (d.Monto || 0) * valor,
+                Diferencia: (d.Monto || 0) * (valor - 1)
             }));
             break;
         default:
             throw new Error(`Método de ajuste no válido: ${data.metodoAjuste}`);
     }
 
-    const totalAjustado = adjustedData.reduce((sum, r) => sum + r.PresupuestoAjustado, 0);
+    const totalAjustado = adjustedData.reduce((sum, r) => sum + r.MontoNuevo, 0);
 
     return {
-        dailyData: adjustedData,
+        preview: adjustedData,
         totalActual,
         totalAjustado,
         diferenciaNeta: totalAjustado - totalActual,
@@ -452,8 +463,10 @@ async function getVersiones(nombrePresupuesto) {
     const result = await pool.request()
         .input('nombrePresupuesto', sql.NVarChar(100), nombrePresupuesto)
         .query(`
-            SELECT Id, NombrePresupuesto, NumeroVersion, NombreTabla,
-                   FechaCreacion, Usuario, Origen, TotalRegistros, Notas
+            SELECT Id as id, NombrePresupuesto as nombrePresupuesto,
+                   NumeroVersion as numeroVersion, NombreTabla as nombreTabla,
+                   FechaCreacion as fechaCreacion, Usuario as usuario,
+                   Origen as origen, TotalRegistros as totalRegistros, Notas as notas
             FROM MODELO_PRESUPUESTO_VERSIONES
             WHERE NombrePresupuesto = @nombrePresupuesto
             ORDER BY NumeroVersion DESC
@@ -474,6 +487,65 @@ async function restaurarVersion(versionId, usuario) {
     return result;
 }
 
+/**
+ * Delete a version: drop the backup table and remove the record
+ */
+async function eliminarVersion(versionId, usuario) {
+    const pool = await poolPromise;
+
+    // 1. Look up the version to get the table name
+    const versionResult = await pool.request()
+        .input('id', sql.Int, versionId)
+        .query(`
+            SELECT Id, NombrePresupuesto, NumeroVersion, NombreTabla, TotalRegistros
+            FROM MODELO_PRESUPUESTO_VERSIONES
+            WHERE Id = @id
+        `);
+
+    if (versionResult.recordset.length === 0) {
+        throw new Error('Versión no encontrada');
+    }
+
+    const version = versionResult.recordset[0];
+    const nombreTabla = version.NombreTabla;
+
+    // 2. Drop the physical backup table (use QUOTENAME for safety)
+    try {
+        await pool.request()
+            .input('tableName', sql.NVarChar(256), nombreTabla)
+            .query(`
+                IF OBJECT_ID(QUOTENAME(@tableName), 'U') IS NOT NULL
+                    EXEC('DROP TABLE ' + QUOTENAME(@tableName))
+            `);
+    } catch (dropErr) {
+        console.warn(`Warning: Could not drop table ${nombreTabla}:`, dropErr.message);
+        // Continue with deletion of the record even if table drop fails
+    }
+
+    // 3. Delete the version record
+    await pool.request()
+        .input('id', sql.Int, versionId)
+        .query(`DELETE FROM MODELO_PRESUPUESTO_VERSIONES WHERE Id = @id`);
+
+    // 4. Log to bitacora
+    await pool.request()
+        .input('nombrePresupuesto', sql.NVarChar(100), version.NombrePresupuesto)
+        .input('usuario', sql.NVarChar(200), usuario)
+        .input('detalle', sql.NVarChar(sql.MAX), JSON.stringify({
+            versionId: version.Id,
+            numeroVersion: version.NumeroVersion,
+            nombreTabla: version.NombreTabla,
+            totalRegistros: version.TotalRegistros
+        }))
+        .query(`
+            INSERT INTO MODELO_PRESUPUESTO_BITACORA
+                (NombrePresupuesto, Usuario, Accion, Origen, Detalle)
+            VALUES (@nombrePresupuesto, @usuario, 'EliminarVersion', 'Manual', @detalle)
+        `);
+
+    return { deleted: true, nombreTabla };
+}
+
 // ------------------------------------------
 // BITÁCORA
 // ------------------------------------------
@@ -484,9 +556,12 @@ async function restaurarVersion(versionId, usuario) {
 async function getBitacora(filtros = {}) {
     const pool = await poolPromise;
     let query = `
-        SELECT TOP 500 Id, NombrePresupuesto, Usuario, FechaHora, Accion,
-               CodAlmacen, Local, Mes, Canal, Tipo,
-               ValorAnterior, ValorNuevo, Motivo, Origen, Detalle
+        SELECT TOP 500 Id as id, NombrePresupuesto as nombrePresupuesto,
+               Usuario as usuario, FechaHora as fechaHora, Accion as accion,
+               CodAlmacen as codAlmacen, Local as local, Mes as mes,
+               Canal as canal, Tipo as tipo,
+               ValorAnterior as valorAnterior, ValorNuevo as valorNuevo,
+               Motivo as motivo, Origen as origen, Detalle as detalle
         FROM MODELO_PRESUPUESTO_BITACORA
         WHERE 1=1
     `;
@@ -706,19 +781,21 @@ async function getDatosAjuste(nombrePresupuesto, codAlmacen, mes, canal, tipo) {
         .input('canal', sql.NVarChar(200), canal)
         .input('tipo', sql.NVarChar(100), tipo)
         .query(`
-            SELECT Fecha, Dia, DiaSemana,
-                   Presupuesto, Real_Valor AS RealValor,
-                   AnoAnterior, AnoAnteriorAjustado,
-                   PresupuestoAcum, Real_Acum AS RealAcum,
-                   AnoAnteriorAcum, AnoAnteriorAjustadoAcum,
-                   DiferenciaPresupuesto, DiferenciaAnoAnterior
-            FROM ${config.TablaDestino}
+            SELECT Fecha, idDia, Dia,
+                   Monto AS Presupuesto, MontoReal AS RealValor,
+                   MontoAnterior AS AnoAnterior, MontoAnteriorAjustado AS AnoAnteriorAjustado,
+                   Monto_Acumulado AS PresupuestoAcum,
+                   MontoAnterior_Acumulado AS AnoAnteriorAcum,
+                   MontoAnteriorAjustado_Acumulado AS AnoAnteriorAjustadoAcum,
+                   Monto_Dif AS DiferenciaPresupuesto,
+                   MontoAnterior_Dif AS DiferenciaAnoAnterior
+            FROM [${config.tablaDestino}]
             WHERE NombrePresupuesto = @nombrePresupuesto
               AND CodAlmacen = @codAlmacen
-              AND MONTH(Fecha) = @mes
+              AND Mes = @mes
               AND Canal = @canal
               AND Tipo = @tipo
-            ORDER BY Dia
+            ORDER BY Fecha
         `);
 
     return result.recordset;
@@ -764,6 +841,7 @@ module.exports = {
     // Versiones
     getVersiones,
     restaurarVersion,
+    eliminarVersion,
     // Bitácora
     getBitacora,
     // Referencias

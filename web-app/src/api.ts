@@ -194,12 +194,13 @@ export async function createAdminUser(
     accesoInventarios: boolean = false,
     accesoPersonal: boolean = false,
     esAdmin: boolean = false,
-    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {}
+    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {},
+    perfilId: number | null = null
 ): Promise<{ success: boolean; userId: number; clave: string }> {
     const response = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, ...modeloPerms })
+        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, ...modeloPerms })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -1403,7 +1404,7 @@ export async function aplicarAjuste(data: {
     nombrePresupuesto: string; codAlmacen: string; mes: number; canal: string; tipo: string;
     metodoAjuste: string; valorAjuste: number; metodoDistribucion: string; motivo: string;
 }): Promise<{ success: boolean }> {
-    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustar`, {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes/aplicar`, {
         method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
     });
     if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
@@ -1414,7 +1415,7 @@ export async function previewAjuste(data: {
     nombrePresupuesto: string; codAlmacen: string; mes: number; canal: string; tipo: string;
     metodoAjuste: string; valorAjuste: number; metodoDistribucion: string;
 }): Promise<{ preview: any[] }> {
-    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustar/preview`, {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes/preview`, {
         method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
     });
     if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
@@ -1429,10 +1430,18 @@ export async function fetchVersiones(nombrePresupuesto: string): Promise<Version
 }
 
 export async function restaurarVersion(versionId: number): Promise<{ success: boolean }> {
-    const response = await fetch(`${API_BASE}/modelo-presupuesto/versiones/restaurar`, {
-        method: 'POST', headers: authHeaders(), body: JSON.stringify({ versionId })
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/versiones/${versionId}/restaurar`, {
+        method: 'POST', headers: authHeaders()
     });
     if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+export async function eliminarVersion(versionId: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/versiones/${versionId}`, {
+        method: 'DELETE', headers: authHeaders()
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error al eliminar versión'); }
     return response.json();
 }
 
