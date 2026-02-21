@@ -231,6 +231,18 @@ function registerInvgateEndpoints(app, authMiddleware) {
         }
     });
 
+    // Sync a single view
+    app.post('/api/invgate/views/:id/sync', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const viewId = parseInt(req.params.id);
+            const result = await invgateSyncService.syncSingleView(viewId, 'MANUAL');
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // Get synced data for a view (from DB)
     app.get('/api/invgate/views/:id/data', authMiddleware, async (req, res) => {
         if (!requireAdmin(req, res)) return;

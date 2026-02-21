@@ -73,6 +73,7 @@ export const InvgateAdmin: React.FC = () => {
     const [viewError, setViewError] = useState<string | null>(null);
     const [viewData, setViewData] = useState<ViewData | null>(null);
     const [loadingViewData, setLoadingViewData] = useState(false);
+    const [syncingViewId, setSyncingViewId] = useState<number | null>(null);
 
     const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` });
 
@@ -199,15 +200,32 @@ export const InvgateAdmin: React.FC = () => {
 
     // ─── Load synced data for a view ─────────────────────────────
     const loadViewData = async (viewId: number) => {
-        if (viewData?.viewId === viewId) { setViewData(null); return; } // toggle off
+        if (viewData?.viewId === viewId) { setViewData(null); return; }
         setLoadingViewData(true);
-        setViewError(null);
         try {
-            const r = await axios.get(`${API_BASE}/invgate/views/${viewId}/data`, { headers: authHeaders() });
-            setViewData(r.data);
-        } catch (e: any) {
-            setViewError('Error cargando datos: ' + (e.response?.data?.error || e.message));
-        } finally { setLoadingViewData(false); }
+            const { data } = await axios.get<ViewData>(`${API_BASE}/invgate/views/${viewId}/data`, { headers: authHeaders() });
+            setViewData(data);
+        } catch (err: any) {
+            setViewError(err.response?.data?.error || err.message);
+        } finally {
+            setLoadingViewData(false);
+        }
+    };
+
+    // ─── Sync a single view ──────────────────────────────────────
+    const syncView = async (viewId: number, type: 'incremental' | 'full') => {
+        setSyncingViewId(viewId);
+        try {
+            await axios.post(`${API_BASE}/invgate/views/${viewId}/sync`, { type }, { headers: authHeaders() });
+            // Reload views to get updated meta
+            const { data } = await axios.get<ViewConfig[]>(`${API_BASE}/invgate/views`, { headers: authHeaders() });
+            setViews(data);
+            setViewError(null);
+        } catch (err: any) {
+            setViewError(err.response?.data?.error || err.message);
+        } finally {
+            setSyncingViewId(null);
+        }
     };
 
     // ─── Save OAuth config ────────────────────────────────────────
@@ -490,7 +508,7 @@ export const InvgateAdmin: React.FC = () => {
                                     <th style={{ width: '100px' }}>Tickets</th>
                                     <th style={{ width: '160px' }}>Última Sync</th>
                                     <th style={{ width: '80px', textAlign: 'center' }}>Sync</th>
-                                    <th style={{ width: '80px' }}></th>
+                                    <th style={{ width: '170px' }}></th>
                                     <th style={{ width: '50px' }}></th>
                                 </tr>
                             </thead>
@@ -517,12 +535,26 @@ export const InvgateAdmin: React.FC = () => {
                                             </label>
                                         </td>
                                         <td>
-                                            <button onClick={() => loadViewData(v.viewId)}
-                                                disabled={loadingViewData}
-                                                style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 8px' }}
-                                                title="Ver datos sincronizados">
-                                                {loadingViewData && viewData?.viewId !== v.viewId ? '⏳' : viewData?.viewId === v.viewId ? '🔼 Ocultar' : '📊 Datos'}
-                                            </button>
+                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                <button onClick={() => syncView(v.viewId, 'incremental')}
+                                                    disabled={syncingViewId !== null}
+                                                    style={{ background: 'none', border: '1px solid #22c55e', color: '#22c55e', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap', opacity: syncingViewId === v.viewId ? 0.5 : 1 }}
+                                                    title="Sincronización incremental">
+                                                    {syncingViewId === v.viewId ? '⏳' : '🔄'}
+                                                </button>
+                                                <button onClick={() => syncView(v.viewId, 'full')}
+                                                    disabled={syncingViewId !== null}
+                                                    style={{ background: 'none', border: '1px solid #f59e0b', color: '#f59e0b', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap', opacity: syncingViewId === v.viewId ? 0.5 : 1 }}
+                                                    title="Sincronización completa">
+                                                    {syncingViewId === v.viewId ? '⏳' : '⚡'}
+                                                </button>
+                                                <button onClick={() => loadViewData(v.viewId)}
+                                                    disabled={loadingViewData}
+                                                    style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 8px' }}
+                                                    title="Ver datos sincronizados">
+                                                    {loadingViewData && viewData?.viewId !== v.viewId ? '⏳' : viewData?.viewId === v.viewId ? '🔼 Ocultar' : '📊 Datos'}
+                                                </button>
+                                            </div>
                                         </td>
                                         <td>
                                             <button onClick={() => deleteView(v.viewId)}
