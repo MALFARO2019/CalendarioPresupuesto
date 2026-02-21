@@ -6,5 +6,6 @@
 | Alias | Rama | Estado | Descripción |
 |-------|------|--------|-------------|
 | Botones de Forms | main (sin rama) | ✅ Completado | Fix de botones de acciones cortados en la tabla de Forms admin |
-| prueba de chat | chat/prueba-de-chat | 🔵 Activo | Prueba de chat |
+| Invgate integracion | chat/invgate-integracion | 🔵 Activo | Limpieza: remover tab Solicitudes, trabajar solo con Vistas |
+| Subcripcion Reportes | chat/subcripcion-reportes | 🔵 Activo | Módulo de suscripción a reportes con programación y permisos por vista |
 | Actualización prefijos KPIsRosti | chat/actualizacion-prefijos-kpisrosti | ✅ Completado | Renombrar DBs WindowsFormsData→KPIsRosti_WForms, InvGateData→KPIsRosti_InvGate |

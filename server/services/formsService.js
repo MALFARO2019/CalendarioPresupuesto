@@ -246,6 +246,11 @@ class FormsService {
      * Supports URLs like:
      *   https://xxx-my.sharepoint.com/personal/user/_layouts/15/Doc.aspx?sourcedoc={GUID}
      *   https://xxx-my.sharepoint.com/personal/user/_layouts/15/AccessDenied.aspx?Source=...sourcedoc%3D%257BGUID%257D
+     *   https://xxx-my.sharepoint.com/:x:/r/personal/user/...
+     * 
+     * Uses two resolution strategies:
+     *   1. User drive + item GUID lookup
+     *   2. Shares API fallback (works even if email is wrong)
      */
     async resolveExcelFromUrl(excelUrl, ownerEmail) {
         const token = await this.getAccessToken();
@@ -272,33 +277,83 @@ class FormsService {
             throw new Error('No se pudo extraer el ID del archivo de la URL. Asegúrese de usar la URL del Excel en SharePoint/OneDrive.');
         }
 
-        // Get user ID for owner
-        const userR = await axios.get(
-            `https://graph.microsoft.com/v1.0/users/${ownerEmail}?$select=id`,
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const userId = userR.data.id;
-
-        // Get file info using the GUID as item ID
-        const fileR = await axios.get(
-            `https://graph.microsoft.com/v1.0/users/${userId}/drive/items/${itemGuid}?$select=id,name,parentReference`,
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-
-        const driveId = fileR.data.parentReference?.driveId;
-        const itemId = fileR.data.id;
-
-        // Get first sheet name
-        let sheetName = 'Sheet1';
+        // ── Strategy 1: User drive + item GUID ──────────────────────────────────
         try {
-            const sheetsR = await axios.get(
-                `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/worksheets`,
+            // Get user ID for owner
+            const userR = await axios.get(
+                `https://graph.microsoft.com/v1.0/users/${ownerEmail}?$select=id`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
-            sheetName = sheetsR.data.value?.[0]?.name || 'Sheet1';
-        } catch (e) { /* keep default */ }
+            const userId = userR.data.id;
 
-        return { driveId, itemId, sheetName, fileName: fileR.data.name };
+            // Get file info using the GUID as item ID
+            const fileR = await axios.get(
+                `https://graph.microsoft.com/v1.0/users/${userId}/drive/items/${itemGuid}?$select=id,name,parentReference`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            const driveId = fileR.data.parentReference?.driveId;
+            const itemId = fileR.data.id;
+
+            // Get first sheet name
+            let sheetName = 'Sheet1';
+            try {
+                const sheetsR = await axios.get(
+                    `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/worksheets`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+                sheetName = sheetsR.data.value?.[0]?.name || 'Sheet1';
+            } catch (e) { /* keep default */ }
+
+            return { driveId, itemId, sheetName, fileName: fileR.data.name };
+        } catch (directErr) {
+            console.warn(`⚠️ Direct resolve failed (${directErr.response?.status || directErr.message}), trying Shares API...`);
+        }
+
+        // ── Strategy 2: Shares API fallback (works with any URL) ────────────────
+        try {
+            // Try multiple URL variants for the Shares API
+            const urlVariants = [
+                excelUrl,  // Original full URL
+                excelUrl.split('&')[0],  // URL up to first &
+            ];
+
+            let lastErr = null;
+            for (const urlVariant of urlVariants) {
+                try {
+                    const encodedUrl = Buffer.from(urlVariant).toString('base64url');
+                    const shareToken = `u!${encodedUrl}`;
+
+                    const shareR = await axios.get(
+                        `https://graph.microsoft.com/v1.0/shares/${shareToken}/driveItem?$select=id,name,parentReference`,
+                        { headers: { Authorization: `Bearer ${token}` } }
+                    );
+
+                    const driveId = shareR.data.parentReference?.driveId;
+                    const itemId = shareR.data.id;
+
+                    if (!driveId || !itemId) continue;
+
+                    // Get first sheet name
+                    let sheetName = 'Sheet1';
+                    try {
+                        const sheetsR = await axios.get(
+                            `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/worksheets`,
+                            { headers: { Authorization: `Bearer ${token}` } }
+                        );
+                        sheetName = sheetsR.data.value?.[0]?.name || 'Sheet1';
+                    } catch (e) { /* keep default */ }
+
+                    return { driveId, itemId, sheetName, fileName: shareR.data.name };
+                } catch (e) {
+                    lastErr = e;
+                }
+            }
+
+            throw lastErr || new Error('Shares API: todas las variantes fallaron');
+        } catch (sharesErr) {
+            throw new Error(`No se pudo resolver el archivo Excel. Error directo: usuario no encontrado. Error Shares API: ${sharesErr.response?.data?.error?.message || sharesErr.message}`);
+        }
     }
 
     /**
