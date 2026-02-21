@@ -240,10 +240,11 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
     try {
         const restartResult = await runPowerShell(
             `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+            `taskkill /F /IM node.exe 2>$null; Start-Sleep -Seconds 2; ` +
             `$svc = Get-Service 'CalendarioPresupuesto-API' -ErrorAction SilentlyContinue; ` +
-            `if ($svc) { Restart-Service 'CalendarioPresupuesto-API' -Force; Write-Output 'Servicio NSSM reiniciado' } ` +
-            `else { taskkill /F /IM node.exe 2>$null; Start-Sleep -Seconds 2; ` +
-            `Start-Process cmd -ArgumentList '/c cd /d ${appDir}\\server && node server.js' -WindowStyle Hidden; ` +
+            `if ($svc) { Start-Service 'CalendarioPresupuesto-API'; Write-Output 'Servicio NSSM reiniciado' } ` +
+            `else { ` +
+            `Start-Process cmd -ArgumentList '/c cd /d ${appDir}\\\\server && node server.js' -WindowStyle Hidden; ` +
             `Write-Output 'Node.js reiniciado manualmente' } }`
         );
         steps[steps.length - 1] = { step: 'Reiniciando servicio', status: 'success', detail: restartResult.trim() };
