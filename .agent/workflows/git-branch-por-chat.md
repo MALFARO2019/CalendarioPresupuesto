@@ -42,8 +42,13 @@ Agregar una fila en `.agent/CHATS_ACTIVOS.md` con:
 
 - Trabajar normalmente sobre la rama creada
 - Hacer commits frecuentes con mensajes descriptivos
-- **DESPUÉS de cada tarea completada**, recordar al usuario:
+- **El ALIAS es FIJO para toda la conversación** — NO cambia aunque el tema evolucione. El alias refleja el nombre que eligió el usuario al inicio, no el contenido actual de la conversación.
+- **AL INICIO de cada respuesta** (antes de empezar a trabajar), mostrar siempre:
   > "📌 **Chat: [ALIAS]** | Rama: `chat/xxx`"
+- **ENTRE TAREAS** (al terminar un paso y antes de iniciar el siguiente), recordar:
+  > "📌 **Chat: [ALIAS]** | Rama: `chat/xxx` — continuando..."
+- **DESPUÉS de cada tarea completada**, recordar al usuario:
+  > "📌 **Chat: [ALIAS]** | Rama: `chat/xxx` — ✅ tarea completada"
 
 ---
 
