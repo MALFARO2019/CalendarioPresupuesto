@@ -1,7 +1,7 @@
 -- Migration: Add FormsSources table for multi-form Excel-based sync
--- Run this on WindowsFormsData database
+-- Run this on KPIsRosti_WForms database
 
-USE WindowsFormsData;
+USE KPIsRosti_WForms;
 GO
 
 -- Create FormsSources table

@@ -1,23 +1,23 @@
 -- ================================================================
 -- Migration Script: Microsoft Forms Integration
--- Database: WindowsFormsData (separada)
+-- Database: KPIsRosti_WForms (separada)
 -- Descripción: Crea las tablas necesarias para sincronizar
 --              datos de Microsoft Forms vía Graph API
 -- ================================================================
 
 -- Crear base de datos si no existe
-IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'WindowsFormsData')
+IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'KPIsRosti_WForms')
 BEGIN
-    CREATE DATABASE WindowsFormsData;
-    PRINT '✅ Base de datos WindowsFormsData creada';
+    CREATE DATABASE KPIsRosti_WForms;
+    PRINT '✅ Base de datos KPIsRosti_WForms creada';
 END
 ELSE
 BEGIN
-    PRINT 'ℹ️ Base de datos WindowsFormsData ya existe';
+    PRINT 'ℹ️ Base de datos KPIsRosti_WForms ya existe';
 END
 GO
 
-USE WindowsFormsData;
+USE KPIsRosti_WForms;
 GO
 
 -- ================================================================

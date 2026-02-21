@@ -3,7 +3,7 @@ const sql = require('mssql');
 const { ensureFormTable, upsertFormRow } = require('../services/formsDynamicTable');
 const formsService = require('../services/formsService');
 
-const cfg = { user: process.env.DB_USER, password: process.env.DB_PASSWORD, server: process.env.DB_SERVER, database: 'WindowsFormsData', options: { encrypt: true, trustServerCertificate: true } };
+const cfg = { user: process.env.DB_USER, password: process.env.DB_PASSWORD, server: process.env.DB_SERVER, database: 'KPIsRosti_WForms', options: { encrypt: true, trustServerCertificate: true } };
 
 async function run() {
     const pool = await sql.connect(cfg);

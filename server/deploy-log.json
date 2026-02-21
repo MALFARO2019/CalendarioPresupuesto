@@ -22,6 +22,287 @@
           "detail": "Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Management.Automation.PSCredential('Administrador', (ConvertTo-SecureString 'R0st1p017' -AsPlainText -Force)); Invoke-Command -ComputerName 10.29.1.25 -Credential $cred -ScriptBlock { Set-Location 'C:\\Deploy\\CalendarioPresupuesto'; git fetch origin production 2>&1; git reset --hard origin/production 2>&1 }\"\nEl t�rmino 'git' no se reconoce como nombre de un cmdlet, funci�n, archivo de script o programa ejecutable. Compruebe si escribi� correctamente el nombre o, si incluy� una ruta de acceso, \r\ncompruebe que dicha ruta es correcta e int�ntelo de nuevo.\r\n    + CategoryInfo          : ObjectNotFound: (git:String) [], CommandNotFoundException\r\n    + FullyQualifiedErrorId : CommandNotFoundException\r\n    + PSComputerName        : 10.29.1.25\r\n \r\nEl t�rmino 'git' no se reconoce como nombre de un cmdlet, funci�n, archivo de script o programa ejecutable. Compruebe si escribi� correctamente el nombre o, si incluy� una ruta de acceso, \r\ncompruebe que dicha ruta es correcta e int�ntelo de nuevo.\r\n    + CategoryInfo          : ObjectNotFound: (git:String) [], CommandNotFoundException\r\n    + FullyQualifiedErrorId : CommandNotFoundException\r\n    + PSComputerName        : 10.29.1.25\r\n \r\n\nStderr: El t�rmino 'git' no se reconoce como nombre de un cmdlet, funci�n, archivo de script o programa ejecutable. Compruebe si escribi� correctamente el nombre o, si incluy� una ruta de acceso, \r\ncompruebe que dicha ruta es correcta e int�ntelo de nuevo.\r\n    + CategoryInfo          : ObjectNotFound: (git:String) [], CommandNotFoundException\r\n    + FullyQualifiedErrorId : CommandNotFoundException\r\n    + PSComputerName        : 10.29.1.25\r\n \r\nEl t�rmino 'git' no se reconoce como nombre de un cmdlet, funci�n, archivo de script o programa ejecutable. Compruebe si escribi� correctamente el nombre o, si incluy� una ruta de acceso, \r\ncompruebe que dicha ruta es correcta e int�ntelo de nuevo.\r\n    + CategoryInfo          : ObjectNotFound: (git:String) [], CommandNotFoundException\r\n    + FullyQualifiedErrorId : CommandNotFoundException\r\n    + PSComputerName        : 10.29.1.25\r\n \r\n\nStdout: "
         }
       ]
+    },
+    {
+      "id": 1771686119243,
+      "version": "v1.1",
+      "date": "2026-02-21T15:01:59.243Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 26b3d22 feat: panel publicacion + crash protection + NSSM guide"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        }
+      ]
+    },
+    {
+      "id": 1771686676894,
+      "version": "v1.1",
+      "date": "2026-02-21T15:11:16.894Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 26b3d22 feat: panel publicacion + crash protection + NSSM guide"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        }
+      ]
+    },
+    {
+      "id": 1771686789570,
+      "version": "v1.1",
+      "date": "2026-02-21T15:13:09.570Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 26b3d22 feat: panel publicacion + crash protection + NSSM guide"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        }
+      ]
+    },
+    {
+      "id": 1771687606048,
+      "version": "v1.1",
+      "date": "2026-02-21T15:26:46.048Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 29fc449 fix: write deployed version to remote server deploy-log.json"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        }
+      ]
+    },
+    {
+      "id": 1771688594905,
+      "version": "v1.1",
+      "date": "2026-02-21T15:43:14.905Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 2573707 feat: per-server version tracking with downgrade prevention"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.1 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        }
+      ]
+    },
+    {
+      "id": 1771689705161,
+      "version": "v1.1",
+      "date": "2026-02-21T16:01:45.161Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 55828bc fix: correct default appDir to C:\\\\Apps\\\\CalendarioPresupuesto (matches NSSM service)"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.1 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        }
+      ]
+    },
+    {
+      "id": 1771689722665,
+      "version": "v1.1",
+      "date": "2026-02-21T16:02:02.665Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 55828bc fix: correct default appDir to C:\\\\Apps\\\\CalendarioPresupuesto (matches NSSM service)"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.1 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        }
+      ]
     }
   ]
 }

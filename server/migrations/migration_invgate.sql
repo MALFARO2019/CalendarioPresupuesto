@@ -1,23 +1,23 @@
 -- ================================================================
 -- Migration Script: Invgate Integration
--- Database: InvGateData (separada)
+-- Database: KPIsRosti_InvGate (separada)
 -- Descripción: Crea las tablas necesarias para sincronizar
 --              datos de Invgate Service Management
 -- ================================================================
 
 -- Crear base de datos si no existe
-IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'InvGateData')
+IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'KPIsRosti_InvGate')
 BEGIN
-    CREATE DATABASE InvGateData;
-    PRINT '✅ Base de datos InvGateData creada';
+    CREATE DATABASE KPIsRosti_InvGate;
+    PRINT '✅ Base de datos KPIsRosti_InvGate creada';
 END
 ELSE
 BEGIN
-    PRINT 'ℹ️ Base de datos InvGateData ya existe';
+    PRINT 'ℹ️ Base de datos KPIsRosti_InvGate ya existe';
 END
 GO
 
-USE InvGateData;
+USE KPIsRosti_InvGate;
 GO
 
 -- ================================================================

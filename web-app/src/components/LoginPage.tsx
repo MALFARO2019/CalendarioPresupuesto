@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { login, adminLogin, API_BASE } from '../api';
 import { Mail, Lock, Loader2, AlertCircle, Settings } from 'lucide-react';
 
@@ -22,6 +22,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminAcc
     const [adminPassword, setAdminPassword] = useState('');
     const [adminLoading, setAdminLoading] = useState(false);
     const [adminError, setAdminError] = useState('');
+
+    // Version state
+    const [appVersion, setAppVersion] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -110,6 +113,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminAcc
             setAdminLoading(false);
         }
     };
+
+    // Fetch version on mount
+    useEffect(() => {
+        fetch(`${API_BASE}/version-check`)
+            .then(r => r.json())
+            .then(data => setAppVersion(data.version || ''))
+            .catch(() => { });
+    }, []);
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-red-600 via-orange-600 to-red-700 flex items-center justify-center p-4">
@@ -355,10 +366,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminAcc
                         </div>
                     )}
                 </div>
-                {/* Version Indicator */}
-                <div className="mt-8 text-center text-xs text-indigo-200 opacity-60">
-                    v2.0 - FIX
-                </div>
+                {appVersion && (
+                    <div className="mt-8 text-center text-xs text-indigo-200 opacity-60">
+                        {appVersion}
+                    </div>
+                )}
             </div>
         </div>
     );

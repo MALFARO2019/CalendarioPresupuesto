@@ -9,5 +9,5 @@ Investica como proceder
 Ok
 ¿Qué reportes/métricas específicas necesitas? Todos los tiquetes con su detalle
 ¿Los datos de Invgate van en la misma BD o separada?
-No. usa una base de datos separada que se llame InvGateData
+No. usa una base de datos separada que se llame KPIsRosti_InvGate
 

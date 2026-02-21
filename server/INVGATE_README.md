@@ -5,7 +5,7 @@
 Se ha implementado la integración completa con InvGate Service Management que incluye:
 
 ### Backend
-- ✅ Base de datos separada **`InvGateData`** con tablas optimizadas
+- ✅ Base de datos separada **`KPIsRosti_InvGate`** con tablas optimizadas
 - ✅ Servicio de conexión al API de InvGate
 - ✅ Sistema de sincronización automática (full e incremental)
 - ✅ Cron job configurable para sincronización horaria
@@ -14,7 +14,7 @@ Se ha implementado la integración completa con InvGate Service Management que i
 ### Estructura de Archivos Creados
 ```
 server/
-├── invgateDb.js                     # Conexión a BD InvGateData
+├── invgateDb.js                     # Conexión a BD KPIsRosti_InvGate
 ├── services/
 │   ├── invgateService.js            # Cliente API InvGate
 │   └── invgateSyncService.js        # Lógica de sincronización
@@ -35,7 +35,7 @@ server/
 Archivo: `server/migrations/migration_invgate.sql`
 
 Este script creará:
-- Base de datos `InvGateData`
+- Base de datos `KPIsRosti_InvGate`
 - Tablas: `InvgateTickets`, `InvgateSyncLog`, `InvgateConfig`
 - Vistas y stored procedures para reportes
 
@@ -107,7 +107,7 @@ De ahí en adelante, la sincronización será automática cada hora con actualiz
 ### Proceso
 1. El servicio le pregunta al API de InvGate: "¿Qué tickets son nuevos o se modificaron?"
 2. Los descarga en lotes de 100 tickets
-3. Los guarda/actualiza en la base de datos local `InvGateData`
+3. Los guarda/actualiza en la base de datos local `KPIsRosti_InvGate`
 4. Registra el resultado en `InvgateSyncLog`
 
 ---
@@ -131,7 +131,7 @@ Próximos componentes a creat:
 
 ### No aparecen tickets
 - Verificar que la primera sincronización completa haya terminado exitosamente
-- Revisar que la base de datos `InvGateData` existe y tiene datos
+- Revisar que la base de datos `KPIsRosti_InvGate` existe y tiene datos
 
 ### Sincronización automática no funciona
 - Verificar que `SYNC_ENABLED` esté en `true` en la configuración

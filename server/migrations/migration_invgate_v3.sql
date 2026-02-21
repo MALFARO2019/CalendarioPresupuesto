@@ -1,13 +1,13 @@
 -- ================================================================
 -- Migration Script: InvGate V3 - Missing columns + fixes
--- Database: InvGateData
+-- Database: KPIsRosti_InvGate
 -- Descripción: Agrega columnas faltantes en InvgateHelpdesks 
 --              (SyncEnabled, TotalTickets) y en InvgateCustomFieldDefs
 --              (HelpdeskID) para soportar selección de helpdesks y
 --              configuración de campos por helpdesk.
 -- ================================================================
 
-USE InvGateData;
+USE KPIsRosti_InvGate;
 GO
 
 -- ================================================================

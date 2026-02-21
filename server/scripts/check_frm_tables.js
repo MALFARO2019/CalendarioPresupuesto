@@ -1,6 +1,6 @@
 require('dotenv').config();
 const sql = require('mssql');
-const cfg = { user: process.env.DB_USER, password: process.env.DB_PASSWORD, server: process.env.DB_SERVER, database: 'WindowsFormsData', options: { encrypt: true, trustServerCertificate: true } };
+const cfg = { user: process.env.DB_USER, password: process.env.DB_PASSWORD, server: process.env.DB_SERVER, database: 'KPIsRosti_WForms', options: { encrypt: true, trustServerCertificate: true } };
 sql.connect(cfg).then(async p => {
     const s = await p.request().query('SELECT SourceID, Alias, Activo, DriveId, TableName FROM FormsSources ORDER BY SourceID');
     console.log('=== FormsSources ===');

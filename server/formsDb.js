@@ -5,7 +5,7 @@ const formsDbConfig = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_SERVER,
-    database: 'WindowsFormsData', // Base de datos separada
+    database: 'KPIsRosti_WForms', // Base de datos separada
     options: {
         encrypt: true,
         trustServerCertificate: true,
@@ -25,9 +25,9 @@ async function getFormsPool() {
     if (!formsPool) {
         try {
             formsPool = await new sql.ConnectionPool(formsDbConfig).connect();
-            console.log('✅ Connected to WindowsFormsData database');
+            console.log('✅ Connected to KPIsRosti_WForms database');
         } catch (err) {
-            console.error('❌ WindowsFormsData database connection failed:', err);
+            console.error('❌ KPIsRosti_WForms database connection failed:', err);
             throw err;
         }
     }
@@ -41,7 +41,7 @@ async function closeFormsPool() {
     if (formsPool) {
         await formsPool.close();
         formsPool = null;
-        console.log('🔌 WindowsFormsData database connection closed');
+        console.log('🔌 KPIsRosti_WForms database connection closed');
     }
 }
 

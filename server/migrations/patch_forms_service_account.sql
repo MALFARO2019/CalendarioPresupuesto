@@ -1,7 +1,7 @@
 -- Patch: Ensure SERVICE_ACCOUNT key exists in FormsConfig
 -- Run this if the SERVICE_ACCOUNT field is blank in the Forms Azure AD config screen
 
-USE WindowsFormsData;
+USE KPIsRosti_WForms;
 GO
 
 -- Insert SERVICE_ACCOUNT row if it doesn't exist (MERGE so safe to re-run)

@@ -3,7 +3,7 @@ const sql = require('mssql');
 const { ensureFormTable, upsertFormRow } = require('../services/formsDynamicTable');
 const formsService = require('../services/formsService');
 
-const cfg = { user: process.env.DB_USER, password: process.env.DB_PASSWORD, server: process.env.DB_SERVER, database: 'WindowsFormsData', options: { encrypt: true, trustServerCertificate: true } };
+const cfg = { user: process.env.DB_USER, password: process.env.DB_PASSWORD, server: process.env.DB_SERVER, database: 'KPIsRosti_WForms', options: { encrypt: true, trustServerCertificate: true } };
 
 // Drop and recreate tables that had truncation errors (Frm_5, Frm_6, Frm_7)
 const SOURCE_IDS_TO_RECREATE = [5, 6, 7]; // Frm_4 was OK

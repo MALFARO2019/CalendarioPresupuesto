@@ -5,7 +5,7 @@ const cfg = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_SERVER,
-    database: 'WindowsFormsData',
+    database: 'KPIsRosti_WForms',
     options: { encrypt: true, trustServerCertificate: true }
 };
 

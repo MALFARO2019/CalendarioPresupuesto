@@ -156,7 +156,7 @@
 .sources-table-wrap {
     border-radius: 10px;
     border: 1px solid #e5e7eb;
-    overflow: hidden;
+    overflow-x: auto;
 }
 
 .sources-table {
@@ -168,15 +168,15 @@
 
 /* Column widths - total must = 100% */
 .sources-table col.col-name {
-    width: 23%;
+    width: 21%;
 }
 
 .sources-table col.col-owner {
-    width: 16%;
+    width: 15%;
 }
 
 .sources-table col.col-status {
-    width: 12%;
+    width: 10%;
 }
 
 .sources-table col.col-count {
@@ -192,7 +192,7 @@
 }
 
 .sources-table col.col-actions {
-    width: 14%;
+    width: 20%;
 }
 
 .sources-table th {
@@ -212,6 +212,11 @@
     border-bottom: 1px solid #f0f0f0;
     vertical-align: middle;
     overflow: hidden;
+}
+
+/* Allow action buttons to be fully visible */
+.sources-table td:last-child {
+    overflow: visible;
 }
 
 .sources-table tr:last-child td {

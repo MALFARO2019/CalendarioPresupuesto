@@ -18,7 +18,7 @@ sqlcmd -S $dbServer -U $dbUser -P $dbPassword -i "migrations\migration_invgate.s
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
     Write-Host "✅ Migración completada exitosamente!" -ForegroundColor Green
-    Write-Host "   Base de datos InvGateData creada" -ForegroundColor Gray
+    Write-Host "   Base de datos KPIsRosti_InvGate creada" -ForegroundColor Gray
 } else {
     Write-Host ""
     Write-Host "❌ Error ejecutando migración" -ForegroundColor Red

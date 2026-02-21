@@ -1,11 +1,11 @@
 -- ================================================================
 -- Migration Script: InvGate V2 - Custom Fields & Lookups
--- Database: InvGateData
+-- Database: KPIsRosti_InvGate
 -- Descripción: Agrega tablas de lookup, custom fields EAV,
 --              y columnas adicionales a InvgateTickets
 -- ================================================================
 
-USE InvGateData;
+USE KPIsRosti_InvGate;
 GO
 
 -- ================================================================

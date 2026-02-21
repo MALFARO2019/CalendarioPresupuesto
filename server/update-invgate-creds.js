@@ -6,7 +6,7 @@ const cfg = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_SERVER,
-    database: 'InvGateData',
+    database: 'KPIsRosti_InvGate',
     options: { encrypt: true, trustServerCertificate: true }
 };
 
@@ -35,7 +35,7 @@ async function upsert(pool, key, value) {
 
 async function main() {
     const pool = await sql.connect(cfg);
-    console.log('Connected to InvGateData\n');
+    console.log('Connected to KPIsRosti_InvGate\n');
 
     await upsert(pool, 'CLIENT_ID', NEW_CLIENT_ID);
     await upsert(pool, 'CLIENT_SECRET', NEW_CLIENT_SECRET);

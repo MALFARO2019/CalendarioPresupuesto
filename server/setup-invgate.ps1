@@ -16,7 +16,7 @@ Write-Host "Ejecutando migracion SQL..." -ForegroundColor Yellow
 sqlcmd -S $dbServer -U $dbUser -P $dbPassword -i "migrations\migration_invgate.sql"
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "Base de datos InvGateData creada exitosamente" -ForegroundColor Green
+    Write-Host "Base de datos KPIsRosti_InvGate creada exitosamente" -ForegroundColor Green
     
     # Configurar credenciales por defecto
     Write-Host ""
@@ -26,7 +26,7 @@ if ($LASTEXITCODE -eq 0) {
     $apiUrl = "https://rostipolloscr.invgate.net/api/v1"
     
     $sqlConfig = @"
-USE InvGateData;
+USE KPIsRosti_InvGate;
 
 UPDATE InvgateConfig SET ConfigValue = '$apiUrl', FechaModificacion = GETDATE(), UsuarioModificacion = 'SYSTEM_SETUP' WHERE ConfigKey = 'API_URL';
 UPDATE InvgateConfig SET ConfigValue = '$apiKey', FechaModificacion = GETDATE(), UsuarioModificacion = 'SYSTEM_SETUP' WHERE ConfigKey = 'API_KEY';

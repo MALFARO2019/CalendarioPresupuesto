@@ -5,14 +5,14 @@ USE master;
 GO
 
 -- Execute migration if database doesn't exist
-IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'WindowsFormsData')
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'KPIsRosti_WForms')
 BEGIN
-    CREATE DATABASE WindowsFormsData;
-    PRINT '✅ Created WindowsFormsData database';
+    CREATE DATABASE KPIsRosti_WForms;
+    PRINT '✅ Created KPIsRosti_WForms database';
 END
 GO
 
-USE WindowsFormsData;
+USE KPIsRosti_WForms;
 GO
 
 -- Create FormResponses table
@@ -173,7 +173,7 @@ GO
 
 PRINT '';
 PRINT '========================================';
-PRINT '✅ WindowsFormsData database setup complete!';
+PRINT '✅ KPIsRosti_WForms database setup complete!';
 PRINT '========================================';
 PRINT '';
 PRINT 'Configuration inserted:';

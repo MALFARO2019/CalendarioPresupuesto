@@ -65,12 +65,19 @@ function App() {
   const [verEventosAjuste, setVerEventosAjuste] = useState(false);
   const [eventosAjusteByDate, setEventosAjusteByDate] = useState<EventosByDate>({});
   const [adminNameForLocal, setAdminNameForLocal] = useState<PersonalAsignado[]>([]);
+  const [appVersion, setAppVersion] = useState('');
 
   // Fetch DB mode on mount
   useEffect(() => {
     fetch(`${API_BASE}/db-mode`)
       .then(r => r.json())
       .then(d => { if (d.mode) setDbMode(d.mode); })
+      .catch(() => { });
+
+    // Fetch app version
+    fetch(`${API_BASE}/version-check`)
+      .then(r => r.json())
+      .then(d => { if (d.version) setAppVersion(d.version); })
       .catch(() => { });
   }, []);
 
@@ -469,7 +476,9 @@ function App() {
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <img src="/LogoRosti.png" alt="Rosti" className="h-10 sm:h-14 w-auto rounded-xl" />
             <div className="hidden sm:block">
-              <h1 className="text-lg md:text-xl lg:text-2xl font-bold tracking-tight text-gray-900 whitespace-nowrap">KPIs Rosti</h1>
+              <h1 className="text-lg md:text-xl lg:text-2xl font-bold tracking-tight text-gray-900 whitespace-nowrap">
+                KPIs Rosti{appVersion && <span className="text-[10px] font-normal text-gray-400 ml-1.5 align-middle">{appVersion}</span>}
+              </h1>
               <p className="text-xs text-gray-500 font-medium hidden lg:block">Gestión y visualización de métricas</p>
             </div>
           </div>

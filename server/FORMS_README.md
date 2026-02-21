@@ -9,13 +9,13 @@ Integración con Microsoft Forms usando Microsoft Graph API para sincronización
 ### Backend
 
 #### Bases de Datos
-- **WindowsFormsData** - Base de datos separada
+- **KPIsRosti_WForms** - Base de datos separada
   - `FormResponses` - Respuestas de formularios
   - `FormsSyncLog` - Registro de sincronizaciones
   - `FormsConfig` - Configuración de Azure AD y sincronización
 
 #### Servicios
-- `formsDb.js` - Conexión a base de datos WindowsFormsData
+- `formsDb.js` - Conexión a base de datos KPIsRosti_WForms
 - `services/formsService.js` - Cliente de Microsoft Graph API con OAuth 2.0
 - `services/formsSyncService.js` - Lógica de sincronización (Full/Incremental)
 - `jobs/formsCron.js` - Cron job para sincronización automática
@@ -61,7 +61,7 @@ sqlcmd -S localhost -U sa -P <PASSWORD> -i server/migrations/migration_forms.sql
 ```
 
 Esto creará:
-- Base de datos `WindowsFormsData`
+- Base de datos `KPIsRosti_WForms`
 - Tablas, vistas y stored procedures
 
 ### 3. Configurar en la Aplicación
@@ -107,7 +107,7 @@ formsService.js (Client Credentials Flow)
        ↓
 formsSyncService.js (Full/Incremental Sync)
        ↓
-WindowsFormsData Database
+KPIsRosti_WForms Database
        ↓
 API Endpoints (/api/forms/*)
        ↓

@@ -1,0 +1,10 @@
+# 📋 Chats Activos
+
+> Este archivo se actualiza automáticamente por cada chat al iniciar y al terminar.
+> Revisar aquí para saber qué chats están trabajando y en qué rama.
+
+| Alias | Rama | Estado | Descripción |
+|-------|------|--------|-------------|
+| Botones de Forms | main (sin rama) | ✅ Completado | Fix de botones de acciones cortados en la tabla de Forms admin |
+| prueba de chat | chat/prueba-de-chat | 🔵 Activo | Prueba de chat |
+| Actualización prefijos KPIsRosti | chat/actualizacion-prefijos-kpisrosti | 🔵 Activo | Renombrar DBs WindowsFormsData→KPIsRosti_WForms, InvGateData→KPIsRosti_InvGate |

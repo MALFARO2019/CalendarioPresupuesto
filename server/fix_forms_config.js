@@ -10,7 +10,7 @@ const CORRECT_CONFIG = {
 };
 
 async function fixFormsConfig() {
-    console.log('🔍 Connecting to WindowsFormsData...');
+    console.log('🔍 Connecting to KPIsRosti_WForms...');
     const pool = await getFormsPool();
 
     // Show current state

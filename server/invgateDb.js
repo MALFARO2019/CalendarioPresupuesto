@@ -5,7 +5,7 @@ const invgateDbConfig = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_SERVER,
-    database: 'InvGateData', // Base de datos separada
+    database: 'KPIsRosti_InvGate', // Base de datos separada
     options: {
         encrypt: true,
         trustServerCertificate: true,

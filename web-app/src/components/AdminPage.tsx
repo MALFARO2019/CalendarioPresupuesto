@@ -30,6 +30,7 @@ import { UserProfilesReport } from './UserProfilesReport';
 import { GeneralSettings } from './GeneralSettings';
 import { ModeloPresupuestoAdmin } from './presupuesto-modelo/ModeloPresupuestoAdmin';
 import LoginAuditPanel from './LoginAuditPanel';
+import { StoreAliasAdmin } from './StoreAliasAdmin';
 
 interface AdminPageProps {
     onBack: () => void;
@@ -78,7 +79,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
 
     // Auto-select tab based on permissions: if user has eventos but not admin, default to eventos
     const defaultTab = isOfflineAdmin ? 'database' : (canAccessUsers ? 'users' : 'events');
-    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit'>(defaultTab);
+    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit' | 'store-aliases'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [allStores, setAllStores] = useState<string[]>([]);
@@ -676,6 +677,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             <button onClick={() => setActiveTab('login-audit')}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'login-audit' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
                                 <Shield className="w-4 h-4 flex-shrink-0" /> Bitácora
+                            </button>
+                        )}
+                        {canAccessUsers && (
+                            <button onClick={() => setActiveTab('store-aliases')}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'store-aliases' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                <Store className="w-4 h-4 flex-shrink-0" /> Alias Locales
                             </button>
                         )}
                     </nav>
@@ -1667,6 +1674,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             <GeneralSettings />
                         ) : activeTab === 'login-audit' ? (
                             <LoginAuditPanel />
+                        ) : activeTab === 'store-aliases' ? (
+                            <StoreAliasAdmin />
                         ) : (
                             /* T&E (Táctica y Estrategia) Tab */
                             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">

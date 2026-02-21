@@ -1,9 +1,9 @@
 -- ================================================================
 -- Script: Insertar/Actualizar credenciales OAuth InvGate
--- Ejecutar en la base de datos InvGateData
+-- Ejecutar en la base de datos KPIsRosti_InvGate
 -- ================================================================
 
-USE InvGateData;
+USE KPIsRosti_InvGate;
 GO
 
 -- Ver estado actual de la tabla

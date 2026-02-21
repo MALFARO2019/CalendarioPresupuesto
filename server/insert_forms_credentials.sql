@@ -1,5 +1,5 @@
 -- Insertar o actualizar credenciales Azure AD en FormsConfig
-USE WindowsFormsData;
+USE KPIsRosti_WForms;
 GO
 
 -- Eliminar credenciales existentes
