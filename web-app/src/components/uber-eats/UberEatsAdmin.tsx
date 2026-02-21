@@ -10,7 +10,7 @@ import {
     TrendingUp, ShoppingBag, DollarSign, Percent, Clock
 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://10.29.1.14:3000';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 // ───────────────────────── types ──────────────────────────────
 interface UberConfig {
@@ -120,16 +120,23 @@ export const UberEatsAdmin: React.FC = () => {
         try {
             const body: Record<string, unknown> = { clientId, syncEnabled, syncHour, daysBack, reportTypes: reportTypes.join(',') };
             if (clientSecret.trim()) body.clientSecret = clientSecret;
+            console.log('[UberEats] Saving config:', { ...body, clientSecret: body.clientSecret ? '[SET]' : undefined });
             const res = await fetch(`${API_BASE}/api/uber-eats/config`, {
                 method: 'POST', headers, body: JSON.stringify(body)
             });
             const data = await res.json();
+            console.log('[UberEats] Save response:', res.status, data);
             if (!res.ok) throw new Error(data.error || 'Error al guardar');
-            setConfigMsg({ type: 'success', text: 'Configuración guardada' });
+            const parts: string[] = [];
+            if (clientId) parts.push('Client ID');
+            if (clientSecret.trim()) parts.push('Client Secret');
+            parts.push('sync config');
+            setConfigMsg({ type: 'success', text: `✅ Guardado: ${parts.join(', ')}` });
             setClientSecret('');
-            loadConfig();
+            await loadConfig();
         } catch (e: any) {
-            setConfigMsg({ type: 'error', text: e.message });
+            console.error('[UberEats] Save error:', e);
+            setConfigMsg({ type: 'error', text: e.message || 'Error desconocido al guardar' });
         } finally { setConfigSaving(false); }
     };
 

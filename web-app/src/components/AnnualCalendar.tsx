@@ -20,6 +20,9 @@ interface AnnualCalendarProps {
     verEventos?: boolean;
     onVerEventosChange?: (v: boolean) => void;
     eventosByYear?: EventosByDate;
+    verEventosAjuste?: boolean;
+    onVerEventosAjusteChange?: (v: boolean) => void;
+    eventosAjusteByDate?: EventosByDate;
 }
 
 const MONTH_NAMES = [
@@ -55,7 +58,8 @@ interface MonthAgg {
 
 export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
     data, year, kpi, yearType, storeName = '', tacticaOpen = false, onTacticaClose, fechaLimite,
-    verEventos = false, onVerEventosChange, eventosByYear = {}
+    verEventos = false, onVerEventosChange, eventosByYear = {},
+    verEventosAjuste = false, onVerEventosAjusteChange, eventosAjusteByDate = {}
 }) => {
     const [visibleBars, setVisibleBars] = useState({
         presupuesto: true,

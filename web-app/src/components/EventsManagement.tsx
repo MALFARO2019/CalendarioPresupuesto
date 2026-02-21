@@ -16,7 +16,7 @@ import {
     Calendar, Plus, Trash2, Edit2, X, Loader2, AlertCircle,
     CheckCircle, CalendarDays
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 interface EventsManagementProps {
@@ -487,7 +487,7 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <span className="font-semibold text-sm text-gray-800">
-                                                            {format(new Date(fecha.FECHA), 'PPP', { locale: es })}
+                                                            {format(parseISO(fecha.FECHA.split('T')[0]), 'PPP', { locale: es })}
                                                         </span>
                                                         {fecha.Canal && (
                                                             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
@@ -496,7 +496,7 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                                         )}
                                                     </div>
                                                     <div className="text-xs text-gray-500">
-                                                        <div>Referencia: {format(new Date(fecha.FECHA_EFECTIVA), 'PPP', { locale: es })}</div>
+                                                        <div>Referencia: {format(parseISO(fecha.FECHA_EFECTIVA.split('T')[0]), 'PPP', { locale: es })}</div>
                                                         {fecha.USUARIO_MODIFICACION && (
                                                             <div className="mt-1 text-gray-400">
                                                                 Modificado por {fecha.USUARIO_MODIFICACION} el {fecha.FECHA_MODIFICACION && format(new Date(fecha.FECHA_MODIFICACION), 'PPpp', { locale: es })}

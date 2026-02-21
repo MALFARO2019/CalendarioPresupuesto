@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { API_BASE, getToken, fetchAllStores, fetchLocalesSinCobertura } from '../api';
+import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchAsignaciones, fetchProfiles } from '../api';
+import type { Profile } from '../api';
 import { Plus, Edit2, Trash2, UserCheck, MapPin, RefreshCw, X, ChevronDown, ChevronUp, Calendar, AlertTriangle, Shield, Search } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -26,11 +27,14 @@ interface Asignacion {
     ACTIVO: boolean;
 }
 
+
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const PersonalManagement: React.FC = () => {
     const [personas, setPersonas] = useState<Persona[]>([]);
     const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
+    const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'personas' | 'asignaciones' | 'cobertura'>('asignaciones');
     const [allStores, setAllStores] = useState<string[]>([]);
@@ -57,6 +61,8 @@ export const PersonalManagement: React.FC = () => {
     const [aNotas, setANotas] = useState('');
     const [savingAsig, setSavingAsig] = useState(false);
 
+
+
     // Filters
     const [filterPersona, setFilterPersona] = useState('');
     const [filterLocal, setFilterLocal] = useState('');
@@ -64,18 +70,24 @@ export const PersonalManagement: React.FC = () => {
     const [filterDateStart, setFilterDateStart] = useState('');
     const [filterDateEnd, setFilterDateEnd] = useState('');
     const [coberturaPerfil, setCoberturaPerfil] = useState('Supervisor');
+    const [coberturaMonth, setCoberturaMonth] = useState(new Date().getMonth() + 1);
+    const [coberturaYear, setCoberturaYear] = useState(new Date().getFullYear());
     const [expandedPersona, setExpandedPersona] = useState<number | null>(null);
 
-    const PERFILES_CATALOGO = [
-        'Administrador', 'Mercadeo', 'Supervisor', 'Auditor', 'Encargado',
-        'Entrenador', 'Cajero', 'Salonero', 'Cocinero', 'Motorizado', 'Miscelaneo'
-    ];
-
     const [error, setError] = useState<string | null>(null);
+
+    const activeProfileNames = profiles.map(p => p.nombre);
 
     const headers = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
 
     // ─── Load ─────────────────────────────────────────────────────────────────
+
+    const loadProfiles = useCallback(async () => {
+        try {
+            const data = await fetchProfiles();
+            setProfiles(data);
+        } catch (e: any) { console.error('Error loading profiles', e); }
+    }, []);
 
     const loadPersonas = useCallback(async () => {
         setLoading(true);
@@ -89,15 +101,15 @@ export const PersonalManagement: React.FC = () => {
 
     const loadAsignaciones = useCallback(async () => {
         try {
-            const r = await fetch(`${API_BASE}/personal/asignaciones`, { headers: headers() });
-            const d = await r.json();
-            setAsignaciones(Array.isArray(d) ? d : []);
+            // Can pass month/year here later if needed
+            const d = await fetchAsignaciones();
+            setAsignaciones(d);
         } catch (e: any) { setError(e.message); }
     }, []);
 
     const loadStores = useCallback(async () => {
         try {
-            const stores = await fetchAllStores();
+            const stores = await fetchPersonalStores();
             setAllStores(stores);
         } catch (e: any) { console.error('Error loading stores', e); }
     }, []);
@@ -105,18 +117,24 @@ export const PersonalManagement: React.FC = () => {
     const loadCobertura = useCallback(async () => {
         if (activeTab !== 'cobertura') return;
         setLoadingCobertura(true);
+        setError(null);
         try {
-            const data = await fetchLocalesSinCobertura(coberturaPerfil);
+            const data = await fetchLocalesSinCobertura(coberturaPerfil, coberturaMonth, coberturaYear);
             setLocalesSinCobertura(data);
-        } catch (e: any) { setError(e.message); }
+        } catch (e: any) {
+            console.error(e);
+            setError(e.message);
+            setLocalesSinCobertura([]);
+        }
         finally { setLoadingCobertura(false); }
-    }, [activeTab, coberturaPerfil]);
+    }, [activeTab, coberturaPerfil, coberturaMonth, coberturaYear]);
 
     useEffect(() => {
+        loadProfiles();
         loadPersonas();
         loadAsignaciones();
         loadStores();
-    }, [loadPersonas, loadAsignaciones, loadStores]);
+    }, [loadProfiles, loadPersonas, loadAsignaciones, loadStores]);
 
     useEffect(() => {
         loadCobertura();
@@ -232,9 +250,11 @@ export const PersonalManagement: React.FC = () => {
                     <h2 className="text-xl font-bold text-gray-800">👥 Control de Personal</h2>
                     <p className="text-sm text-gray-500 mt-0.5">Asignaciones de personal a locales por perfil</p>
                 </div>
-                <button onClick={() => { loadPersonas(); loadAsignaciones(); }} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" title="Actualizar">
-                    <RefreshCw className="w-4 h-4" />
-                </button>
+                <div className="flex gap-2">
+                    <button onClick={() => { loadPersonas(); loadAsignaciones(); loadProfiles(); }} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" title="Actualizar">
+                        <RefreshCw className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
 
             {error && (
@@ -244,11 +264,10 @@ export const PersonalManagement: React.FC = () => {
                 </div>
             )}
 
-            {/* Tabs */}
-            <div className="flex gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
+            <div className="flex items-center gap-1 sm:gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
                 {(['asignaciones', 'personas', 'cobertura'] as const).map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                        className={`px-3 sm:px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                         {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : tab === 'personas' ? `👤 Personal (${personas.length})` : '🛡️ Cobertura'}
                     </button>
                 ))}
@@ -269,7 +288,7 @@ export const PersonalManagement: React.FC = () => {
                         </select>
                         <select value={filterPerfil} onChange={e => setFilterPerfil(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
                             <option value="">Todos los perfiles</option>
-                            {PERFILES_CATALOGO.map(p => <option key={p} value={p}>{p}</option>)}
+                            {activeProfileNames.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
                         <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2">
                             <Calendar className="w-4 h-4 text-gray-400" />
@@ -400,7 +419,31 @@ export const PersonalManagement: React.FC = () => {
                                 onChange={e => setCoberturaPerfil(e.target.value)}
                                 className="w-full px-4 py-2 border-2 border-orange-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 bg-white text-orange-900 font-semibold"
                             >
-                                {PERFILES_CATALOGO.map(p => <option key={p} value={p}>{p}</option>)}
+                                {activeProfileNames.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                        </div>
+                        <div className="w-32">
+                            <label className="block text-xs font-bold text-orange-800 uppercase mb-2">Mes</label>
+                            <select
+                                value={coberturaMonth}
+                                onChange={e => setCoberturaMonth(parseInt(e.target.value))}
+                                className="w-full px-4 py-2 border-2 border-orange-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 bg-white text-orange-900 font-semibold"
+                            >
+                                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                                    <option key={m} value={m}>{new Date(0, m - 1).toLocaleString('es-CR', { month: 'long' })}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="w-24">
+                            <label className="block text-xs font-bold text-orange-800 uppercase mb-2">Año</label>
+                            <select
+                                value={coberturaYear}
+                                onChange={e => setCoberturaYear(parseInt(e.target.value))}
+                                className="w-full px-4 py-2 border-2 border-orange-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 bg-white text-orange-900 font-semibold"
+                            >
+                                {[2024, 2025, 2026, 2027].map(y => (
+                                    <option key={y} value={y}>{y}</option>
+                                ))}
                             </select>
                         </div>
                         <div className="flex items-end">
@@ -410,12 +453,12 @@ export const PersonalManagement: React.FC = () => {
                                 className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-bold shadow-sm transition-all flex items-center gap-2 disabled:opacity-50"
                             >
                                 <RefreshCw className={`w-4 h-4 ${loadingCobertura ? 'animate-spin' : ''}`} />
-                                Analizar Cobertura
+                                Analizar
                             </button>
                         </div>
                     </div>
 
-                    {localesSinCobertura.length === 0 && !loadingCobertura ? (
+                    {localesSinCobertura.length === 0 && !loadingCobertura && !error ? (
                         <div className="text-center py-12 bg-green-50 rounded-xl border border-green-100">
                             <Shield className="w-12 h-12 text-green-500 mx-auto mb-4" />
                             <h3 className="text-lg font-bold text-green-800">¡Cobertura Completa!</h3>
@@ -450,6 +493,8 @@ export const PersonalManagement: React.FC = () => {
                 </div>
             )}
 
+
+
             {/* ── Modal: Persona ── */}
             {showPersonaForm && (
                 <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowPersonaForm(false)}>
@@ -465,11 +510,11 @@ export const PersonalManagement: React.FC = () => {
                                 <input type="email" value={pCorreo} onChange={e => setPCorreo(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="correo@empresa.com" />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
-                                <div>
+                                <div className='col-span-1'>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Cédula</label>
                                     <input type="text" value={pCedula} onChange={e => setPCedula(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                                 </div>
-                                <div>
+                                <div className='col-span-1'>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Teléfono</label>
                                     <input type="text" value={pTelefono} onChange={e => setPTelefono(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                                 </div>
@@ -509,7 +554,7 @@ export const PersonalManagement: React.FC = () => {
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">Perfil *</label>
                                 <select value={aPerfil} onChange={e => setAPerfil(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
                                     <option value="">Seleccionar perfil...</option>
-                                    {PERFILES_CATALOGO.map(p => <option key={p} value={p}>{p}</option>)}
+                                    {activeProfileNames.map(p => <option key={p} value={p}>{p}</option>)}
                                 </select>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
@@ -536,6 +581,10 @@ export const PersonalManagement: React.FC = () => {
                     </div>
                 </div>
             )}
+
+
+
+
         </div>
     );
 };

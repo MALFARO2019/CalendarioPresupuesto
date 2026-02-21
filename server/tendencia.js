@@ -1,4 +1,5 @@
 const { sql, poolPromise } = require('./db');
+const { getAlcanceTableName } = require('./alcanceConfig');
 
 /**
  * GET /api/tendencia
@@ -23,6 +24,7 @@ async function getTendenciaData(req, res) {
         }
 
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const dbCanal = channel === 'Total' ? 'Todos' : channel;
         // Use DAILY fields (not accumulated) since we SUM them ourselves
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
@@ -60,7 +62,7 @@ async function getTendenciaData(req, res) {
                 if (memberCodes.length > 0) {
                     const localsQuery = `
                         SELECT DISTINCT Local
-                        FROM RSM_ALCANCE_DIARIO
+                        FROM ${alcanceTable}
                         WHERE Año = YEAR(@endDate)
                         AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
                         AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
@@ -124,7 +126,7 @@ async function getTendenciaData(req, res) {
                 SUM(r.MontoReal) as RealAcum,
                 -- Period anterior (sum of previous year for days WITH sales)
                 SUM(CASE WHEN r.MontoReal > 0 THEN r.${anteriorField} ELSE 0 END) as AnteriorAcum
-            FROM RSM_ALCANCE_DIARIO r
+            FROM ${alcanceTable} r
             WHERE r.Fecha BETWEEN @startDate AND @endDate
                 AND r.Año = YEAR(@endDate)
                 AND r.Tipo = @kpi
@@ -263,7 +265,7 @@ async function getTendenciaData(req, res) {
                 SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) as PresupuestoAcum,
                 SUM(MontoReal) as RealAcum,
                 SUM(CASE WHEN MontoReal > 0 THEN ${anteriorField} ELSE 0 END) as AnteriorAcum
-            FROM RSM_ALCANCE_DIARIO
+            FROM ${alcanceTable}
             WHERE Fecha BETWEEN @startDate2 AND @endDate2
                 AND Año = YEAR(@endDate2) AND ${canalFilter2}
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
@@ -378,7 +380,7 @@ async function getTendenciaData(req, res) {
                 SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) as PresupuestoAcum,
                 SUM(MontoReal) as RealAcum,
                 SUM(CASE WHEN MontoReal > 0 THEN ${anteriorField} ELSE 0 END) as AnteriorAcum
-            FROM RSM_ALCANCE_DIARIO
+            FROM ${alcanceTable}
             WHERE Fecha BETWEEN @prevStartDate AND @prevEndDate
                 AND Año = YEAR(@prevEndDate) AND ${canalFilter3}
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
@@ -530,6 +532,7 @@ async function getResumenCanal(req, res) {
         }
 
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 
         // If a group is selected, find member stores (same logic as getTendenciaData)
@@ -559,7 +562,7 @@ async function getResumenCanal(req, res) {
                 if (memberCodes.length > 0) {
                     const localsQuery = `
                         SELECT DISTINCT Local
-                        FROM RSM_ALCANCE_DIARIO
+                        FROM ${alcanceTable}
                         WHERE Año = YEAR(@endDate)
                         AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
                         AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
@@ -593,7 +596,7 @@ async function getResumenCanal(req, res) {
                 SUM(Monto) as Presupuesto,
                 SUM(MontoReal) as Real,
                 SUM(${anteriorField}) as Anterior
-            FROM RSM_ALCANCE_DIARIO
+            FROM ${alcanceTable}
             WHERE Fecha BETWEEN @startDate AND @endDate
                 AND Año = YEAR(@endDate) AND Tipo = @kpi
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
@@ -680,6 +683,7 @@ async function getResumenGrupos(req, res) {
         }
 
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const dbCanal = channel === 'Total' ? 'Todos' : channel;
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 
@@ -723,7 +727,7 @@ async function getResumenGrupos(req, res) {
                 localsReq.input('endDate_l', sql.Date, endDate);
                 memberCodes.forEach((code, i) => localsReq.input(`mcode${i}`, sql.NVarChar, code));
                 const localsResult = await localsReq.query(
-                    `SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = YEAR(@endDate_l) AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')}) AND SUBSTRING(CODALMACEN, 1, 1) != 'G'`
+                    `SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = YEAR(@endDate_l) AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')}) AND SUBSTRING(CODALMACEN, 1, 1) != 'G'`
                 );
                 const memberLocals = localsResult.recordset.map(r => r.Local);
 
@@ -756,7 +760,7 @@ async function getResumenGrupos(req, res) {
                         SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) as PresupuestoAcum,
                         SUM(MontoReal) as RealAcum,
                         SUM(CASE WHEN MontoReal > 0 THEN ${anteriorField} ELSE 0 END) as AnteriorAcum
-                    FROM RSM_ALCANCE_DIARIO
+                    FROM ${alcanceTable}
                     WHERE Fecha BETWEEN @startDate_a AND @endDate_a
                         AND Año = YEAR(@endDate_a)
                         AND Tipo = @kpi_a

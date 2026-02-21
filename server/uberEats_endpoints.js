@@ -63,7 +63,16 @@ function registerUberEatsEndpoints(app, authMiddleware) {
     app.post('/api/uber-eats/config', authMiddleware, async (req, res) => {
         if (!requireAdmin(req, res)) return;
         try {
+            console.log('📝 UberEats config save - body:', JSON.stringify({
+                clientId: req.body.clientId ? `[${req.body.clientId.length} chars]` : undefined,
+                clientSecret: req.body.clientSecret ? '[SET]' : undefined,
+                syncEnabled: req.body.syncEnabled,
+                syncHour: req.body.syncHour,
+                daysBack: req.body.daysBack,
+                reportTypes: req.body.reportTypes
+            }));
             const pool = await getUberEatsPool();
+            console.log('📝 UberEats DB pool connected:', pool.connected);
             const { clientId, clientSecret, syncEnabled, syncHour, daysBack, reportTypes } = req.body;
 
             async function setKey(key, value) {
@@ -77,14 +86,30 @@ function registerUberEatsEndpoints(app, authMiddleware) {
                     `);
             }
 
-            if (clientId !== undefined) await setKey('CLIENT_ID', clientId);
+            if (clientId !== undefined) {
+                console.log('📝 Saving CLIENT_ID:', clientId);
+                await setKey('CLIENT_ID', clientId);
+            }
             if (clientSecret !== undefined && clientSecret !== '') {
+                console.log('📝 Saving CLIENT_SECRET (encrypted)');
                 await setKey('CLIENT_SECRET', encryptValue(clientSecret));
             }
-            if (syncEnabled !== undefined) await setKey('SYNC_ENABLED', syncEnabled ? 'true' : 'false');
-            if (syncHour !== undefined) await setKey('SYNC_HOUR', String(syncHour));
-            if (daysBack !== undefined) await setKey('DAYS_BACK', String(daysBack));
-            if (reportTypes !== undefined) await setKey('REPORT_TYPES', String(reportTypes));
+            if (syncEnabled !== undefined) {
+                console.log('📝 Saving SYNC_ENABLED:', syncEnabled);
+                await setKey('SYNC_ENABLED', syncEnabled ? 'true' : 'false');
+            }
+            if (syncHour !== undefined) {
+                console.log('📝 Saving SYNC_HOUR:', syncHour);
+                await setKey('SYNC_HOUR', String(syncHour));
+            }
+            if (daysBack !== undefined) {
+                console.log('📝 Saving DAYS_BACK:', daysBack);
+                await setKey('DAYS_BACK', String(daysBack));
+            }
+            if (reportTypes !== undefined) {
+                console.log('📝 Saving REPORT_TYPES:', reportTypes);
+                await setKey('REPORT_TYPES', String(reportTypes));
+            }
 
             // Reset service so it re-reads from DB
             uberEatsService.initialized = false;
@@ -95,8 +120,10 @@ function registerUberEatsEndpoints(app, authMiddleware) {
                 await uberEatsCron.restart();
             }
 
+            console.log('✅ UberEats config saved successfully');
             res.json({ success: true, message: 'Configuración guardada' });
         } catch (err) {
+            console.error('❌ UberEats config save error:', err.message);
             res.status(500).json({ error: err.message });
         }
     });

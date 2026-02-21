@@ -36,3 +36,9 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# Files with secrets
+.agent/read_onenote.js
+.agent/.onenote_token.json
+server/fix_forms_config.js
+server/setup-forms.ps1

@@ -10,11 +10,13 @@ interface DailyBehaviorChartProps {
     dateRange?: { startDate: string; endDate: string };
     verEventos?: boolean;
     eventsByDate?: EventosByDate;
+    verEventosAjuste?: boolean;
+    eventosAjusteByDate?: EventosByDate;
 }
 
 const DAY_LETTERS = ['D', 'L', 'K', 'M', 'J', 'V', 'S'];
 
-export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi, dateRange, verEventos = false, eventsByDate = {} }) => {
+export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi, dateRange, verEventos = false, eventsByDate = {}, verEventosAjuste = false, eventosAjusteByDate = {} }) => {
     const fc = useFormatCurrency();
     const { formatPct100 } = useUserPreferences();
     // State for controlling which lines are visible
@@ -99,6 +101,25 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
             const difAnt = (real != null && anteriorVal != null) ? real - anteriorVal : null;
             const pctAnt = (anteriorVal != null && anteriorVal !== 0 && real != null) ? (real / anteriorVal * 100) : null;
 
+            const tooltipDate = payload[0]?.payload;
+            // Look up regular events (SharePoint / DIM_EVENTOS) for this day
+            const regularEventsForDay: { id: number; evento: string; esFeriado: boolean }[] = [];
+            if (verEventos && tooltipDate) {
+                const dd = String(tooltipDate.day).padStart(2, '0');
+                const mm = String(tooltipDate.month).padStart(2, '0');
+                const dateKey = `${tooltipDate.year}-${mm}-${dd}`;
+                const evs = eventsByDate[dateKey];
+                if (evs) regularEventsForDay.push(...evs);
+            }
+            // Look up adjustment events for this day
+            const ajusteEventsForDay: { id: number; evento: string }[] = [];
+            if (verEventosAjuste && tooltipDate) {
+                const dd = String(tooltipDate.day).padStart(2, '0');
+                const mm = String(tooltipDate.month).padStart(2, '0');
+                const dateKey = `${tooltipDate.year}-${mm}-${dd}`;
+                const evs = eventosAjusteByDate[dateKey];
+                if (evs) ajusteEventsForDay.push(...evs);
+            }
             return (
                 <div className="bg-white p-4 border border-gray-100 shadow-xl rounded-xl min-w-[200px]">
                     <p className="font-bold text-gray-700 mb-2">{label}</p>
@@ -137,6 +158,28 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                 </span>
                             )}
                         </div>
+                    )}
+                    {regularEventsForDay.length > 0 && (
+                        <>
+                            <div className="h-px bg-amber-200 my-1.5" />
+                            {regularEventsForDay.map((ev, idx) => (
+                                <div key={idx} className="flex items-center gap-2 text-xs font-medium">
+                                    <div className={`w-2 h-2 rounded-full ${ev.esFeriado ? 'bg-red-500' : 'bg-amber-400'}`}></div>
+                                    <span className={ev.esFeriado ? 'text-red-700 font-semibold' : 'text-amber-800 font-semibold'}>{ev.evento}</span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+                    {ajusteEventsForDay.length > 0 && (
+                        <>
+                            <div className="h-px bg-red-200 my-1.5" />
+                            {ajusteEventsForDay.map((aev, idx) => (
+                                <div key={idx} className="flex items-center gap-2 text-xs font-medium">
+                                    <div className="w-2 h-2 rounded-full bg-red-600"></div>
+                                    <span className="text-red-700 font-semibold">{aev.evento}</span>
+                                </div>
+                            ))}
+                        </>
                     )}
                 </div>
             );
@@ -457,6 +500,28 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                     strokeWidth={2}
                                     strokeDasharray="4 2"
                                     label={{ value: '📅', position: 'top', fontSize: 10 }}
+                                    isFront
+                                />
+                            );
+                        })}
+
+                        {/* Adjustment Event Reference Lines (red) */}
+                        {verEventosAjuste && Object.entries(eventosAjusteByDate).map(([dateStr, evs]) => {
+                            const [y, m, d] = dateStr.split('-').map(Number);
+                            const date = new Date(y, m - 1, d);
+                            const dayLetter = ['D', 'L', 'K', 'M', 'J', 'V', 'S'][date.getDay()];
+                            const dd = String(d).padStart(2, '0');
+                            const mm = String(m).padStart(2, '0');
+                            const yy = String(y).slice(-2);
+                            const xKey = `${dayLetter}_${dd}/${mm}/${yy}`;
+                            return (
+                                <ReferenceLine
+                                    key={`aj-${dateStr}`}
+                                    x={xKey}
+                                    stroke="#DC2626"
+                                    strokeWidth={2}
+                                    strokeDasharray="4 2"
+                                    label={{ value: '🔴', position: 'top', fontSize: 10 }}
                                     isFront
                                 />
                             );

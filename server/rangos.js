@@ -1,4 +1,5 @@
 const { sql, poolPromise } = require('./db');
+const { getAlcanceTableName } = require('./alcanceConfig');
 
 /**
  * GET /api/rangos
@@ -26,6 +27,7 @@ async function getRangosData(req, res) {
         }
 
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const dbCanal = canal === 'Total' ? 'Todos' : canal;
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 
@@ -62,7 +64,7 @@ async function getRangosData(req, res) {
                 if (memberCodes.length > 0) {
                     const localsQuery = `
                         SELECT DISTINCT Local
-                        FROM RSM_ALCANCE_DIARIO
+                        FROM ${alcanceTable}
                         WHERE Año = YEAR(@endDate)
                         AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
                         AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
@@ -169,7 +171,7 @@ async function getRangosData(req, res) {
                     THEN SUM(MontoReal) / SUM(CASE WHEN MontoReal > 0 THEN ISNULL(MontoAnteriorAjustado, 0) ELSE 0 END)
                     ELSE 0 
                 END as pctAnteriorAjustado
-            FROM RSM_ALCANCE_DIARIO
+            FROM ${alcanceTable}
             WHERE Fecha BETWEEN @startDate AND @endDate
                 AND Tipo = @kpi
                 AND ${canalFilter}
@@ -227,7 +229,7 @@ async function getRangosData(req, res) {
                     SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) as presupuestoConDatos,
                     SUM(MontoReal) as real,
                     SUM(CASE WHEN MontoReal > 0 THEN ${yearType === 'ajustado' ? 'ISNULL(MontoAnteriorAjustado, 0)' : 'MontoAnterior'} ELSE 0 END) as anterior
-                FROM RSM_ALCANCE_DIARIO
+                FROM ${alcanceTable}
                 WHERE Fecha BETWEEN @startDate AND @endDate
                     AND Tipo = @tipoKpi
                     AND ${canalFilter}
@@ -293,6 +295,7 @@ async function getRangosResumenCanal(req, res) {
         }
 
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const anteriorField = yearType === 'ajustado' ? 'ISNULL(MontoAnteriorAjustado, 0)' : 'MontoAnterior';
 
         // Build local filter
@@ -308,7 +311,7 @@ async function getRangosResumenCanal(req, res) {
                 SUM(Monto) as Presupuesto,
                 SUM(MontoReal) as Real,
                 SUM(${anteriorField}) as Anterior
-            FROM RSM_ALCANCE_DIARIO
+            FROM ${alcanceTable}
             WHERE Fecha BETWEEN @startDate AND @endDate
                 AND Tipo = @kpi
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'

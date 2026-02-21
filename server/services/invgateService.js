@@ -2,7 +2,9 @@ const axios = require('axios');
 const { getInvgatePool, sql } = require('../invgateDb');
 
 /**
- * InvGate Service - OAuth 2.0 client_credentials authentication
+ * InvGate Service - OAuth 2.0 client_credentials authentication + V1 API methods
+ * API V1: incidents fetched by helpdesk (GET /incidents/by.helpdesk?ids[]=X)
+ * Response format: { "ticketId": { ...ticketData }, ... }
  */
 class InvGateService {
     constructor() {
@@ -13,7 +15,16 @@ class InvGateService {
         this.accessToken = null;
         this.tokenExpiry = null;
         this.initialized = false;
+        // In-memory lookup caches (TTL: 1 hour)
+        this._helpdeskCache = null;
+        this._helpdeskCacheExpiry = 0;
+        this._categoryCache = null;
+        this._categoryCacheExpiry = 0;
     }
+
+    // ================================================================
+    // INIT & AUTH
+    // ================================================================
 
     async initialize() {
         try {
@@ -32,20 +43,14 @@ class InvGateService {
             this.clientId = config.CLIENT_ID;
             this.clientSecret = config.CLIENT_SECRET;
             this.tokenUrl = config.TOKEN_URL;
-            this.apiBaseUrl = config.API_BASE_URL || 'https://rostipollos.cloud.invgate.net/api/v2';
+            this.apiBaseUrl = config.API_BASE_URL || 'https://rostipollos.cloud.invgate.net/api/v1';
             this.initialized = !!(this.clientId && this.clientSecret && this.tokenUrl);
 
-            console.log('🔧 InvGate init - clientId:', this.clientId ? this.clientId.substring(0, 8) + '...' : 'NULL');
-            console.log('🔧 InvGate init - secret:', this.clientSecret ? this.clientSecret.substring(0, 5) + '...' : 'NULL');
-            console.log('🔧 InvGate init - tokenUrl:', this.tokenUrl || 'NULL');
-            console.log('🔧 InvGate init - initialized:', this.initialized);
-
             if (this.initialized) {
-                console.log('✅ InvGate Service initialized (OAuth 2.0)');
+                console.log(`✅ InvGate Service initialized (OAuth 2.0) — base: ${this.apiBaseUrl}`);
             } else {
                 console.log('⚠️ InvGate Service not configured (missing CLIENT_ID, CLIENT_SECRET or TOKEN_URL)');
             }
-
             return this.initialized;
         } catch (err) {
             console.error('❌ Failed to initialize InvGate Service:', err.message);
@@ -60,7 +65,7 @@ class InvGateService {
             return this.accessToken;
         }
 
-        console.log('🔑 Requesting new InvGate OAuth token from:', this.tokenUrl);
+        console.log('🔑 Requesting new InvGate OAuth token...');
         try {
             const params = new URLSearchParams();
             params.append('grant_type', 'client_credentials');
@@ -79,7 +84,6 @@ class InvGateService {
                 'api.v1.incident.attributes.priority:get',
                 'api.v1.incident.attributes.category:get',
                 'api.v1.incident.comment:get',
-                'api.v1.incident.custom_field:get',
             ].join(' '));
 
             const response = await axios.post(this.tokenUrl, params, {
@@ -87,22 +91,18 @@ class InvGateService {
                 timeout: 15000
             });
 
-            // InvGate returns HTTP 200 even on auth errors — check for error field
             if (response.data.error) {
                 const desc = response.data.error_description || response.data.error;
-                console.error('❌ InvGate OAuth error (HTTP 200):', response.data);
                 throw new Error(`InvGate OAuth: ${desc}`);
             }
 
             this.accessToken = response.data.access_token || response.data.token || response.data.jwt || response.data.id_token;
             const expiresIn = response.data.expires_in || 3600;
             this.tokenExpiry = Date.now() + (expiresIn * 1000);
-
             console.log('✅ InvGate OAuth token obtained, expires in', expiresIn, 'seconds');
-            console.log('   Token field keys:', Object.keys(response.data).join(', '));
             return this.accessToken;
         } catch (err) {
-            if (err.message.startsWith('InvGate OAuth:')) throw err; // already formatted
+            if (err.message.startsWith('InvGate OAuth:')) throw err;
             const httpStatus = err.response?.status;
             let msg;
             if (httpStatus === 404) {
@@ -117,17 +117,31 @@ class InvGateService {
         }
     }
 
+    async getConfig(key) {
+        try {
+            const pool = await getInvgatePool();
+            const result = await pool.request()
+                .input('key', sql.NVarChar, key)
+                .query('SELECT ConfigValue FROM InvgateConfig WHERE ConfigKey = @key');
+            return result.recordset[0]?.ConfigValue || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // ================================================================
+    // HTTP HELPER
+    // ================================================================
+
     async makeRequest(endpoint, method = 'GET', data = null, params = {}) {
         if (!this.initialized) {
             await this.initialize();
         }
-
         if (!this.initialized) {
             throw new Error('InvGate no configurado. Configure CLIENT_ID, CLIENT_SECRET y TOKEN_URL.');
         }
 
         const token = await this.getAccessToken();
-
         try {
             const url = `${this.apiBaseUrl}${endpoint}`;
             const config = {
@@ -141,62 +155,395 @@ class InvGateService {
                 params,
                 timeout: 30000
             };
-
             if (data && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
                 config.data = data;
             }
-
-            console.log(`📡 InvGate API Request: ${method} ${endpoint}`);
+            console.log(`📡 InvGate API: ${method} ${endpoint}`);
             const response = await axios(config);
             return response.data;
         } catch (err) {
             console.error(`❌ InvGate API Error (${endpoint}):`, err.message);
             if (err.response) {
                 console.error('   Status:', err.response.status);
-                console.error('   Data:', JSON.stringify(err.response.data).substring(0, 200));
+                console.error('   Data:', JSON.stringify(err.response.data).substring(0, 300));
             }
             throw new Error(`InvGate API Error: ${err.message}`);
         }
     }
 
-    async getTickets(options = {}) {
-        const { page = 1, pageSize = 100, updatedSince = null, status = null } = options;
-        const params = { page, per_page: pageSize };
-        if (updatedSince) params.updated_since = updatedSince;
-        if (status) params.status = status;
-        return await this.makeRequest('/incidents', 'GET', null, params);
+    // ================================================================
+    // V1 API METHODS
+    // ================================================================
+
+    /**
+     * Get all helpdesks from InvGate
+     * Returns array: [{id, name, status_id, parent_id, type_id, ...}]
+     */
+    async getHelpdesks() {
+        const now = Date.now();
+        if (this._helpdeskCache && now < this._helpdeskCacheExpiry) {
+            return this._helpdeskCache;
+        }
+        const data = await this.makeRequest('/helpdesks', 'GET');
+        const helpdesks = Array.isArray(data) ? data : [];
+        this._helpdeskCache = helpdesks;
+        this._helpdeskCacheExpiry = now + 3600000; // 1 hour
+        return helpdesks;
     }
 
-    async getTicketById(ticketId) {
-        return await this.makeRequest(`/incident/${ticketId}`, 'GET');
+    /**
+     * Get all incidents for a specific helpdesk
+     * V1 API returns: { "ticketId": { ...ticketData }, ... }
+     * Returns: array of ticket objects (with helpdeskId injected)
+     */
+    async getIncidentsByHelpdesk(helpdeskId) {
+        try {
+            const data = await this.makeRequest('/incidents/by.helpdesk', 'GET', null, { 'ids[]': helpdeskId });
+            if (!data || typeof data !== 'object' || Array.isArray(data)) return [];
+            if (data.error) {
+                console.warn(`  ⚠️ Helpdesk ${helpdeskId} returned error:`, data.error);
+                return [];
+            }
+            // Convert object {id: ticketData} to array
+            const tickets = Object.entries(data).map(([id, ticket]) => ({
+                ...ticket,
+                id: parseInt(id),
+                _helpdeskId: helpdeskId
+            }));
+            return tickets;
+        } catch (err) {
+            console.warn(`  ⚠️ Failed to get incidents for helpdesk ${helpdeskId}:`, err.message);
+            return [];
+        }
     }
+
+    /**
+     * Get all incidents from all ENABLED helpdesks
+     * Returns: array of all ticket objects
+     */
+    async getAllIncidents() {
+        const helpdesks = await this.getHelpdesks();
+        // Get enabled helpdesks from DB
+        let enabledIds = null;
+        try {
+            const pool = await getInvgatePool();
+            const result = await pool.request().query(
+                'SELECT HelpdeskID FROM InvgateHelpdesks WHERE SyncEnabled = 1'
+            );
+            if (result.recordset.length > 0) {
+                enabledIds = new Set(result.recordset.map(r => r.HelpdeskID));
+            }
+        } catch (e) {
+            // Table may not exist yet — sync all helpdesks
+            console.log('  ℹ️ InvgateHelpdesks table not found, syncing all helpdesks');
+        }
+
+        const allTickets = [];
+        for (const hd of helpdesks) {
+            if (enabledIds && !enabledIds.has(hd.id)) {
+                console.log(`  ⏭️ Skipping helpdesk ${hd.name} (not enabled for sync)`);
+                continue;
+            }
+            console.log(`  📂 Fetching incidents for helpdesk: ${hd.name} (ID: ${hd.id})`);
+            const tickets = await this.getIncidentsByHelpdesk(hd.id);
+            // Inject helpdesk info
+            tickets.forEach(t => {
+                t._helpdeskName = hd.name;
+            });
+            allTickets.push(...tickets);
+            // Small delay to avoid rate limiting
+            await new Promise(r => setTimeout(r, 300));
+        }
+        console.log(`  ✅ Total incidents fetched: ${allTickets.length}`);
+        return allTickets;
+    }
+
+    /**
+     * Get all categories from InvGate
+     * Returns: array of {id, name, parent_id, ...}
+     */
+    async getCategories() {
+        const now = Date.now();
+        if (this._categoryCache && now < this._categoryCacheExpiry) {
+            return this._categoryCache;
+        }
+        try {
+            const data = await this.makeRequest('/categories', 'GET');
+            const categories = Array.isArray(data) ? data : (data.categories || []);
+            this._categoryCache = categories;
+            this._categoryCacheExpiry = now + 3600000;
+            return categories;
+        } catch (err) {
+            console.warn('  ⚠️ Failed to get categories:', err.message);
+            return [];
+        }
+    }
+
+    /**
+     * Get custom field metadata (names) from InvGate API.
+     * Tries multiple endpoints — InvGate API naming varies by version/config.
+     * Returns: { [fieldId]: { name, fieldType } }
+     */
+    async getCustomFieldMetadata() {
+        const endpoints = [
+            '/custom_fields',
+            '/custom_attributes',
+            '/cf.fields',
+            '/incidents/custom_fields'
+        ];
+        for (const ep of endpoints) {
+            try {
+                const data = await this.makeRequest(ep, 'GET');
+                if (!data) continue;
+                // Normalize to map: {id -> {name, type}}
+                const items = Array.isArray(data) ? data
+                    : (data.custom_fields || data.custom_attributes || data.fields || Object.values(data));
+                if (!Array.isArray(items) || items.length === 0) continue;
+                const map = {};
+                for (const item of items) {
+                    const id = item.id || item.field_id || item.fieldId;
+                    if (!id) continue;
+                    map[parseInt(id)] = {
+                        name: item.name || item.label || item.display_name || item.title || null,
+                        fieldType: item.type || item.field_type || item.kind || null
+                    };
+                }
+                if (Object.keys(map).length > 0) {
+                    console.log(`  ✅ Custom field metadata from ${ep}: ${Object.keys(map).length} fields`);
+                    return map;
+                }
+            } catch (e) {
+                // Endpoint not available, try next
+                console.log(`  ⏭️ Custom field metadata endpoint ${ep} not available: ${e.message.substring(0, 60)}`);
+            }
+        }
+        console.log('  ℹ️ No custom field metadata endpoint found — names will be inferred from ticket data');
+        return {};
+    }
+
+    /**
+     * Detect all custom field IDs used in a helpdesk's incidents.
+     * Returns: [{fieldId, fieldName, fieldType, sampleValues[]}]
+     * Now also fetches real field names from the API metadata endpoint.
+     */
+    async detectCustomFields(helpdeskId) {
+        // First try to get metadata (real names)
+        const metaMap = await this.getCustomFieldMetadata().catch(() => ({}));
+
+        const tickets = await this.getIncidentsByHelpdesk(helpdeskId);
+        const fieldMap = {};
+        for (const ticket of tickets) {
+            if (!ticket.custom_fields) continue;
+            // InvGate v1 custom_fields can be either:
+            //   {id: value} or {id: {name: "field name", value: ...}}
+            for (const [fieldId, raw] of Object.entries(ticket.custom_fields)) {
+                const fid = parseInt(fieldId);
+                if (!fieldMap[fid]) {
+                    // Try to get name from the value object itself (InvGate sometimes embeds it)
+                    let embeddedName = null;
+                    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+                        embeddedName = raw.name || raw.field_name || raw.label || null;
+                    }
+                    fieldMap[fid] = {
+                        fieldId: fid,
+                        fieldName: (metaMap[fid]?.name) || embeddedName || null,
+                        sampleValues: []
+                    };
+                }
+                // Extract display value
+                let displayValue = raw;
+                if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+                    // Could be {hash: "name"} dropdown OR {name, value} structure
+                    if (raw.value !== undefined) {
+                        displayValue = raw.value;
+                    } else {
+                        const vals = Object.values(raw).filter(v => typeof v === 'string');
+                        displayValue = vals[0] || null;
+                    }
+                } else if (typeof raw === 'number' && raw > 1000000000 && raw < 9999999999) {
+                    displayValue = `[date: ${new Date(raw * 1000).toISOString().split('T')[0]}]`;
+                }
+                if (displayValue !== null && displayValue !== undefined && fieldMap[fid].sampleValues.length < 3) {
+                    fieldMap[fid].sampleValues.push(String(displayValue));
+                }
+            }
+        }
+
+        // Determine field type from sample values + metadata
+        for (const f of Object.values(fieldMap)) {
+            // Priority: API metadata type > inferred type
+            if (metaMap[f.fieldId]?.fieldType) {
+                const apiType = metaMap[f.fieldId].fieldType.toLowerCase();
+                if (apiType.includes('date') || apiType.includes('time')) f.fieldType = 'date';
+                else if (apiType.includes('num') || apiType.includes('int') || apiType.includes('float')) f.fieldType = 'number';
+                else if (apiType.includes('list') || apiType.includes('drop') || apiType.includes('select') || apiType.includes('option')) f.fieldType = 'dropdown';
+                else f.fieldType = 'text';
+            } else {
+                const samples = f.sampleValues;
+                if (samples.some(s => s.startsWith('[date:'))) {
+                    f.fieldType = 'date';
+                } else if (samples.length > 0 && samples.every(s => !isNaN(s) && s !== '')) {
+                    f.fieldType = 'number';
+                } else {
+                    const ticket = tickets.find(t => t.custom_fields && t.custom_fields[f.fieldId]);
+                    const rawVal = ticket?.custom_fields?.[f.fieldId];
+                    f.fieldType = (rawVal && typeof rawVal === 'object') ? 'dropdown' : 'text';
+                }
+            }
+
+            // If still no name, use a descriptive default based on type
+            if (!f.fieldName) {
+                const typeLabel = { date: 'Fecha', number: 'Número', dropdown: 'Lista', text: 'Texto' }[f.fieldType] || 'Campo';
+                f.fieldName = `${typeLabel} ${f.fieldId}`;
+            }
+        }
+
+        return Object.values(fieldMap).sort((a, b) => a.fieldId - b.fieldId);
+    }
+
+
+    // ================================================================
+    // VIEW-BASED API METHODS
+    // ================================================================
+
+    /**
+     * Get incidents by InvGate view (single page).
+     * Uses /incidents.details.by.view endpoint.
+     * Returns: { tickets: [...], totalCount, page, columns: [...] }
+     */
+    async getIncidentsByView(viewId, page = 1) {
+        try {
+            const data = await this.makeRequest('/incidents.details.by.view', 'GET', null, {
+                view_id: viewId,
+                page: page
+            });
+            if (!data || typeof data !== 'object') {
+                return { tickets: [], totalCount: 0, page, columns: [] };
+            }
+
+            // Normalize response — InvGate v1 may return object {id: ticketData} or array
+            let tickets = [];
+            if (Array.isArray(data)) {
+                tickets = data;
+            } else if (data.data && Array.isArray(data.data)) {
+                tickets = data.data;
+            } else if (data.error) {
+                throw new Error(`InvGate view error: ${data.error}`);
+            } else {
+                // Object format {id: {...}, id2: {...}}
+                tickets = Object.entries(data).map(([id, ticket]) => ({
+                    ...ticket,
+                    id: parseInt(id)
+                }));
+            }
+
+            // Auto-detect columns from first ticket
+            const columns = [];
+            if (tickets.length > 0) {
+                const sample = tickets[0];
+                for (const key of Object.keys(sample)) {
+                    if (key.startsWith('_')) continue; // skip internal fields
+                    columns.push(key);
+                }
+            }
+
+            return {
+                tickets,
+                totalCount: data.total || data.count || tickets.length,
+                page,
+                columns
+            };
+        } catch (err) {
+            console.error(`❌ Error getting incidents by view ${viewId}:`, err.message);
+            throw err;
+        }
+    }
+
+    /**
+     * Preview a view — returns first page of data with detected columns.
+     * Used in the admin UI to let the user see what a view contains before enabling sync.
+     */
+    async getViewPreview(viewId) {
+        const result = await this.getIncidentsByView(viewId, 1);
+        // Limit to first 10 rows for preview
+        const previewTickets = result.tickets.slice(0, 10);
+
+        // Build column info with sample values
+        const columnInfo = result.columns.map(col => {
+            const samples = previewTickets
+                .map(t => {
+                    const val = t[col];
+                    if (val === null || val === undefined) return null;
+                    if (typeof val === 'object') return JSON.stringify(val);
+                    return String(val);
+                })
+                .filter(v => v !== null)
+                .slice(0, 3);
+            return { name: col, sampleValues: samples };
+        });
+
+        return {
+            viewId,
+            totalCount: result.totalCount,
+            previewRows: previewTickets.length,
+            columns: columnInfo,
+            data: previewTickets
+        };
+    }
+
+    /**
+     * Get ALL incidents from a view (paginated fetch).
+     * Used during sync to get complete data set.
+     */
+    async getAllIncidentsByView(viewId) {
+        const allTickets = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+            console.log(`  📄 View ${viewId}: fetching page ${page}...`);
+            const result = await this.getIncidentsByView(viewId, page);
+            allTickets.push(...result.tickets);
+
+            // Stop if we got fewer tickets than expected or empty page
+            if (result.tickets.length === 0) {
+                hasMore = false;
+            } else {
+                // InvGate v1 typically returns 100 per page
+                hasMore = result.tickets.length >= 100;
+                page++;
+            }
+
+            // Rate limit protection
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        console.log(`  ✅ View ${viewId}: total ${allTickets.length} incidents fetched`);
+        return allTickets;
+    }
+
+    // ================================================================
+    // CONNECTION TEST
+    // ================================================================
 
     async testConnection() {
         try {
-            // Always re-initialize to pick up any config changes
             await this.initialize();
-
             if (!this.initialized) {
-                return {
-                    success: false,
-                    message: 'API no configurada. Guarde primero CLIENT_ID, CLIENT_SECRET y TOKEN_URL.'
-                };
+                return { success: false, message: 'API no configurada. Guarde primero CLIENT_ID, CLIENT_SECRET y TOKEN_URL.' };
             }
-
-            // Force a fresh token (clear cache to test credentials)
+            // Force fresh token
             this.accessToken = null;
             this.tokenExpiry = null;
 
-            // Step 1: obtain OAuth token
             let token;
             try {
                 token = await this.getAccessToken();
             } catch (tokenErr) {
-                // Provide clear diagnostic info
                 const msg = tokenErr.message;
                 let hint = '';
                 if (msg.includes('invalid_client') || msg.includes('Client authentication failed')) {
-                    hint = ' → Las credenciales OAuth (CLIENT_ID/CLIENT_SECRET) son inválidas o no están registradas en InvGate. Vea instrucciones para generar credenciales en InvGate Admin.';
+                    hint = ' → Credenciales OAuth inválidas. Verifique CLIENT_ID y CLIENT_SECRET en InvGate.';
                 } else if (msg.includes('404') || msg.includes('no encontrada')) {
                     hint = ` → TOKEN_URL incorrecta: ${this.tokenUrl}`;
                 }
@@ -207,27 +554,19 @@ class InvGateService {
                 return { success: false, message: 'No se pudo obtener token OAuth (respuesta vacía del servidor)' };
             }
 
-            // Step 2: verify API connectivity using /helpdesks (no params required)
             try {
                 const helpdeskData = await this.makeRequest('/helpdesks', 'GET');
                 const count = Array.isArray(helpdeskData) ? helpdeskData.length : Object.keys(helpdeskData || {}).length;
                 return { success: true, message: `✅ Conexión exitosa con InvGate (${count} helpdesk(s) encontrado(s))` };
             } catch (apiErr) {
                 const apiMsg = apiErr.message;
-                let apiHint = '';
-                if (apiMsg.includes('404')) {
-                    apiHint = ` → URL Base del API incorrecta: ${this.apiBaseUrl}`;
-                }
-                return {
-                    success: false,
-                    message: 'Token OAuth OK ✅, pero error al llamar la API: ' + apiMsg + apiHint
-                };
+                let apiHint = apiMsg.includes('404') ? ` → URL Base incorrecta: ${this.apiBaseUrl}` : '';
+                return { success: false, message: 'Token OK ✅, pero error al llamar la API: ' + apiMsg + apiHint };
             }
         } catch (err) {
             return { success: false, message: err.message };
         }
     }
-
 }
 
 module.exports = new InvGateService();

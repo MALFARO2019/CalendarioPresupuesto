@@ -92,7 +92,12 @@ export function ModuleCard({ module, stats = [], isLoading = false, onClick, dat
                         <div className="absolute inset-0 border-4 border-gray-200 rounded-full"></div>
                         <div className="absolute inset-0 border-4 border-transparent rounded-full border-t-orange-500 border-r-orange-500 animate-spin"></div>
                     </div>
-                    <p className="text-gray-500 text-sm font-medium">Cargando datos...</p>
+                    <div className="text-center">
+                        <p className="text-gray-500 text-sm font-medium">Cargando datos...</p>
+                        <p className="text-xs text-gray-400 mt-1 font-medium animate-pulse">
+                            Puede ingresar al módulo mientras carga
+                        </p>
+                    </div>
                 </div>
             ) : stats.length > 0 ? (
                 <div className="mb-4">

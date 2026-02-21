@@ -17,7 +17,9 @@ const {
     updateProfile,
     deleteProfile,
     assignProfileToUsers,
-    syncProfilePermissions
+    syncProfilePermissions,
+    logLoginEvent,
+    getLoginAudit
 } = require('./auth');
 const { sendPasswordEmail, sendReportEmail, verifyEmailService } = require('./emailService');
 const { getTendenciaData, getResumenCanal, getResumenGrupos } = require('./tendencia');
@@ -44,10 +46,16 @@ const personalModule = require('./personal');
 const { ensureUberEatsTables } = require('./uberEatsDb');
 const uberEatsCron = require('./jobs/uberEatsCron');
 const registerUberEatsEndpoints = require('./uberEats_endpoints');
-
+const registerInvgateEndpoints = require('./invgate_endpoints');
+const spEventsService = require('./services/sharepointEventsService');
+const { ensureKpiAdminTables } = require('./kpiAdminDb');
+const { registerKpiAdminEndpoints } = require('./kpiAdmin_endpoints');
+const deployModule = require('./deploy');
+const { getAlcanceTableName, invalidateAlcanceTableCache } = require('./alcanceConfig');
+const registerModeloPresupuestoEndpoints = require('./modeloPresupuesto_endpoints');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 80;
 
 app.use(cors());
 app.use(express.json());
@@ -61,17 +69,115 @@ app.use(express.json());
     try { await formsCron.start(); } catch (e) { console.error('Forms cron error:', e.message); }
     // Initialize Uber Eats DB and cron
     try { await ensureUberEatsTables(); } catch (e) { console.error('UberEats DB error:', e.message); }
+    // KPI Admin tables
+    try { await ensureKpiAdminTables(); } catch (e) { console.error('KPI Admin DB error:', e.message); }
     try { await uberEatsCron.start(); } catch (e) { console.error('UberEats cron error:', e.message); }
+    // SharePoint Eventos Rosti: initial sync + periodic refresh (every 60 min)
+    try {
+        await spEventsService.syncEventos();
+        setInterval(async () => {
+            try { await spEventsService.syncEventos(); }
+            catch (e) { console.error('SP Events periodic sync error:', e.message); }
+        }, 60 * 60 * 1000);
+    } catch (e) { console.error('SP Events initial sync error:', e.message); }
 })();
+
+// ==========================================
+// KPI ADMIN ENDPOINTS
+// ==========================================
+registerKpiAdminEndpoints(app, authMiddleware);
 
 // ==========================================
 // UBER EATS ENDPOINTS
 // ==========================================
 registerUberEatsEndpoints(app, authMiddleware);
 
+// ==========================================
+// INVGATE ENDPOINTS
+// ==========================================
+registerInvgateEndpoints(app, authMiddleware);
+
+// ==========================================
+// MODELO PRESUPUESTO ENDPOINTS
+// ==========================================
+registerModeloPresupuestoEndpoints(app, authMiddleware);
+
+// ==========================================
+// DEPLOY MANAGEMENT ENDPOINTS
+// ==========================================
+
+// GET deploy log (changelog)
+app.get('/api/deploy/log', authMiddleware, (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        res.json(deployModule.getDeployLog());
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST new deploy log entry
+app.post('/api/deploy/log', authMiddleware, (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const { version, notes, servers } = req.body;
+        if (!version) return res.status(400).json({ error: 'Versión es requerida' });
+        const entry = deployModule.addDeployEntry(version, notes || '', servers || [], req.user.email || 'admin');
+        res.json({ success: true, entry });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST deploy to server
+app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const { serverIp, user, password, appDir, version, notes } = req.body;
+        if (!serverIp || !user || !password || !appDir) {
+            return res.status(400).json({ error: 'Faltan parámetros: serverIp, user, password, appDir' });
+        }
+
+        // Create log entry
+        const entry = deployModule.addDeployEntry(
+            version || 'sin versión',
+            notes || '',
+            [serverIp],
+            req.user.email || 'admin',
+            'deploying'
+        );
+
+        // Execute deploy
+        const result = await deployModule.deployToServer(serverIp, user, password, appDir);
+
+        // Update log entry with result
+        deployModule.updateDeployEntry(entry.id, {
+            status: result.success ? 'success' : 'error',
+            steps: result.steps
+        });
+
+        res.json({ success: result.success, steps: result.steps, entryId: entry.id });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET server setup guide
+app.get('/api/deploy/setup-guide', authMiddleware, (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        res.json(deployModule.getServerSetupGuide());
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // TEST ENDPOINT
 app.get('/api/test', (req, res) => {
     res.json({ message: 'Server is working!' });
+});
+
+app.get('/api/version-check', (req, res) => {
+    res.json({
+        version: 'v2.0 - FIX',
+        timestamp: new Date().toISOString(),
+        env: 'production',
+        db: dbManager.activeMode
+    });
 });
 
 // ==========================================
@@ -109,8 +215,45 @@ app.delete('/api/personal/:id', authMiddleware, async (req, res) => {
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ==========================================
+// PERSONAL ENDPOINTS
+// ==========================================
+
+app.get('/api/personal', authMiddleware, async (req, res) => {
+    try { res.json(await personalModule.getAllPersonal()); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/personal', authMiddleware, async (req, res) => {
+    try {
+        const { nombre, correo, cedula, telefono } = req.body;
+        if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
+        res.status(201).json(await personalModule.createPersona(nombre, correo, cedula, telefono));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/personal/:id', authMiddleware, async (req, res) => {
+    try {
+        const { nombre, correo, cedula, telefono, activo } = req.body;
+        res.json(await personalModule.updatePersona(parseInt(req.params.id), nombre, correo, cedula, telefono, activo));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/personal/:id', authMiddleware, async (req, res) => {
+    try { await personalModule.deletePersona(parseInt(req.params.id)); res.json({ ok: true }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Asignaciones
 app.get('/api/personal/asignaciones', authMiddleware, async (req, res) => {
-    try { res.json(await personalModule.getAsignaciones(req.query.personalId ? parseInt(req.query.personalId) : null)); }
+    try {
+        const { personalId, month, year } = req.query;
+        res.json(await personalModule.getAsignaciones(
+            personalId ? parseInt(personalId) : null,
+            month,
+            year
+        ));
+    }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -134,9 +277,53 @@ app.delete('/api/personal/asignaciones/:id', authMiddleware, async (req, res) =>
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Cobertura
 app.get('/api/personal/locales-sin-cobertura', authMiddleware, async (req, res) => {
-    try { res.json(await personalModule.getLocalesSinCobertura(req.query.perfil || null)); }
+    try {
+        const { perfil, month, year } = req.query;
+        res.json(await personalModule.getLocalesSinCobertura(perfil || null, month, year));
+    }
     catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Almacenes individuales (sin grupos)
+app.get('/api/personal/stores', authMiddleware, async (req, res) => {
+    try { res.json(await personalModule.getAllStores()); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Personal por local: retorna todos los asignados activos con su perfil
+app.get('/api/personal/admin-por-local', authMiddleware, async (req, res) => {
+    try {
+        const { local } = req.query;
+        if (!local) return res.json([]);
+        const personal = await personalModule.getPersonalPorLocal(local);
+        res.json(personal);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Cargos (Perfiles)
+app.get('/api/personal/cargos', authMiddleware, async (req, res) => {
+    try { res.json(await personalModule.getAllCargos()); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/personal/cargos', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { nombre } = req.body;
+        await personalModule.createCargo(nombre);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/personal/cargos/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { reassignTo } = req.body;
+        await personalModule.deleteCargo(parseInt(req.params.id), reassignTo);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 
@@ -164,13 +351,126 @@ app.post('/api/auth/login', async (req, res) => {
         if (!clave) {
             return res.status(400).json({ error: 'Clave es requerida' });
         }
-        const result = await loginUser(email.trim().toLowerCase(), clave.trim());
+
+        // Timeout to avoid hanging when DB is unreachable
+        const loginPromise = loginUser(email.trim().toLowerCase(), clave.trim(), req.ip, req.headers['user-agent']);
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('DB_TIMEOUT')), 10000)
+        );
+
+        let result;
+        try {
+            result = await Promise.race([loginPromise, timeoutPromise]);
+        } catch (timeoutErr) {
+            if (timeoutErr.message === 'DB_TIMEOUT') {
+                return res.status(503).json({ error: 'No se pudo conectar a la base de datos. Verifique la conexión VPN o use Acceso Administrador.' });
+            }
+            throw timeoutErr;
+        }
+
         if (!result.success) {
             return res.status(401).json({ error: result.message });
         }
         res.json(result);
     } catch (err) {
         console.error('Error in /api/auth/login:', err);
+        res.status(500).json({ error: 'No se pudo conectar a la base de datos. Verifique la conexión VPN o use Acceso Administrador.' });
+    }
+});
+
+// POST /api/auth/admin-login - Login with admin password only (no DB required)
+app.post('/api/auth/admin-login', (req, res) => {
+    try {
+        const { password } = req.body;
+        if (!password) {
+            return res.status(400).json({ error: 'Clave de administrador es requerida' });
+        }
+        if (!verifyAdminPassword(password)) {
+            return res.status(401).json({ error: 'Clave de administrador incorrecta' });
+        }
+
+        // Generate JWT with offline admin identity (no DB lookup)
+        const jwt = require('jsonwebtoken');
+        const token = jwt.sign(
+            {
+                userId: 0,
+                email: 'admin@offline',
+                nombre: 'Administrador',
+                allowedStores: [],
+                allowedCanales: [],
+                accesoTendencia: false,
+                accesoTactica: false,
+                accesoEventos: true,
+                accesoPresupuesto: false,
+                accesoPresupuestoMensual: false,
+                accesoPresupuestoAnual: false,
+                accesoPresupuestoRangos: false,
+                accesoTiempos: false,
+                accesoEvaluaciones: false,
+                accesoInventarios: false,
+                accesoPersonal: false,
+                // Modelo Presupuesto
+                accesoModeloPresupuesto: true,
+                verConfigModelo: true,
+                verConsolidadoMensual: true,
+                verAjustePresupuesto: true,
+                verVersiones: true,
+                verBitacora: true,
+                verReferencias: true,
+                editarConsolidado: true,
+                ejecutarRecalculo: true,
+                ajustarCurva: true,
+                restaurarVersiones: true,
+                esAdmin: true,
+                esProtegido: false,
+                offlineAdmin: true
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        console.log('🔐 Offline admin login successful');
+        logLoginEvent('admin@offline', 'Administrador', true, 'Admin login (offline)', req.ip, req.headers['user-agent']);
+        res.json({
+            success: true,
+            token,
+            user: {
+                id: 0,
+                email: 'admin@offline',
+                nombre: 'Administrador',
+                esAdmin: true,
+                offlineAdmin: true,
+                accesoTendencia: false,
+                accesoTactica: false,
+                accesoEventos: true,
+                accesoPresupuesto: false,
+                accesoPresupuestoMensual: false,
+                accesoPresupuestoAnual: false,
+                accesoPresupuestoRangos: false,
+                accesoTiempos: false,
+                accesoEvaluaciones: false,
+                accesoInventarios: false,
+                accesoPersonal: false,
+                // Modelo Presupuesto
+                accesoModeloPresupuesto: true,
+                verConfigModelo: true,
+                verConsolidadoMensual: true,
+                verAjustePresupuesto: true,
+                verVersiones: true,
+                verBitacora: true,
+                verReferencias: true,
+                editarConsolidado: true,
+                ejecutarRecalculo: true,
+                ajustarCurva: true,
+                restaurarVersiones: true,
+                esProtegido: false,
+                allowedStores: [],
+                allowedCanales: []
+            }
+        });
+    } catch (err) {
+        logLoginEvent('admin@offline', null, false, 'Error: ' + err.message, req.ip, req.headers['user-agent']);
+        console.error('Error in /api/auth/admin-login:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -241,6 +541,21 @@ app.post('/api/admin/verify', (req, res) => {
     }
 });
 
+// GET /api/admin/login-log - Get login audit log (admin only)
+app.get('/api/admin/login-log', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos de administrador' });
+        }
+        const { desde, hasta, email } = req.query;
+        const records = await getLoginAudit(desde || null, hasta || null, email || null);
+        res.json(records);
+    } catch (err) {
+        console.error('Error in /api/admin/login-log:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/admin/users - List all users (admin only)
 app.get('/api/admin/users', authMiddleware, async (req, res) => {
     try {
@@ -261,8 +576,9 @@ app.post('/api/admin/users', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin } = req.body;
-        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin);
+        const { email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones } = req.body;
+        const modeloPresupuestoPerms = { accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones };
+        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, modeloPresupuestoPerms, perfilId || null);
         res.json({ success: true, userId: result.userId, clave: result.clave });
     } catch (err) {
         console.error('Error creating user:', err);
@@ -280,8 +596,8 @@ app.put('/api/admin/users/:id', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId } = req.body;
-        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId);
+        const { email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones } = req.body;
+        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones);
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating user:', err);
@@ -854,6 +1170,8 @@ app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
                 WHEN MATCHED THEN UPDATE SET Valor = @valor, FechaModificacion = GETDATE(), UsuarioModificacion = @usuario
                 WHEN NOT MATCHED THEN INSERT (Clave, Valor, FechaModificacion, UsuarioModificacion) VALUES (@clave, @valor, GETDATE(), @usuario);
             `);
+        // Invalidate alcance table cache if this key was changed
+        if (req.params.key === 'ALCANCE_TABLE_NAME') invalidateAlcanceTableCache();
         res.json({ success: true });
     } catch (err) {
         console.error('Error in PUT /api/admin/config:', err);
@@ -869,6 +1187,7 @@ app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
 app.get('/api/budget', authMiddleware, async (req, res) => {
     try {
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const year = parseInt(req.query.year) || 2026;
         const local = req.query.local;
         let canal = req.query.canal || 'Todos';
@@ -921,7 +1240,7 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
             if (memberCodes.length > 0) {
                 const localsQuery = `
                     SELECT DISTINCT Local
-                    FROM RSM_ALCANCE_DIARIO
+                    FROM ${alcanceTable}
                     WHERE Año = @year
                     AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
                     AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
@@ -982,7 +1301,7 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
                 SUM(MontoAnterior_Acumulado) AS MontoAnterior_Acumulado, 
                 SUM(MontoAnteriorAjustado) AS MontoAnteriorAjustado, 
                 SUM(MontoAnteriorAjustado_Acumulado) AS MontoAnteriorAjustado_Acumulado
-            FROM RSM_ALCANCE_DIARIO 
+            FROM ${alcanceTable} 
             WHERE Año = @year AND ${localFilter} AND ${canalFilter} AND Tipo = @tipo
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
                 ${dateFilter}
@@ -1037,7 +1356,8 @@ app.get('/api/stores', authMiddleware, async (req, res) => {
         console.log('ðŸ“‹ Official group names from GRUPOSALMACENCAB:', Array.from(officialGroupNames));
 
         // Then get all locals from budget data
-        let localsQuery = 'SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026';
+        const alcanceTable = await getAlcanceTableName(pool);
+        let localsQuery = `SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026`;
 
         if (userStores.length > 0) {
             // User has specific store permissions
@@ -1083,7 +1403,8 @@ app.get('/api/stores', authMiddleware, async (req, res) => {
 app.get('/api/test-stores', async (req, res) => {
     try {
         const pool = await poolPromise;
-        const query = 'SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026 ORDER BY Local';
+        const alcanceTable = await getAlcanceTableName(pool);
+        const query = `SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026 ORDER BY Local`;
         const result = await pool.request().query(query);
         const allLocals = result.recordset.map(r => r.Local);
 
@@ -1114,9 +1435,10 @@ app.get('/api/stores-v2', authMiddleware, async (req, res) => {
         const currentMonth = new Date().getMonth() + 1; // 1-12
 
         // Query to get groups: Local with CODALMACEN starting with 'G'
+        const alcanceTable = await getAlcanceTableName(pool);
         let groupsQuery = `
             SELECT DISTINCT Local
-            FROM RSM_ALCANCE_DIARIO 
+            FROM ${alcanceTable} 
             WHERE Año = 2026 
             AND Canal = 'Todos' 
             AND Tipo = 'Ventas' 
@@ -1125,7 +1447,7 @@ app.get('/api/stores-v2', authMiddleware, async (req, res) => {
         `;
 
         // Query to get all locals
-        let allLocalsQuery = `SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026`;
+        let allLocalsQuery = `SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026`;
 
         if (userStores.length > 0) {
             // User has specific store permissions
@@ -1195,7 +1517,7 @@ app.get('/api/group-stores/:groupName', authMiddleware, async (req, res) => {
         console.log(`ðŸ” Looking up group members for: "${groupName}"`);
 
         // Step 1: Find the IDGRUPO from GRUPOSALMACENCAB using the group name
-        // The Local name in RSM_ALCANCE_DIARIO matches DESCRIPCION in GRUPOSALMACENCAB
+        // The Local name in the alcance table matches DESCRIPCION in GRUPOSALMACENCAB
         const idGrupoQuery = `
             SELECT GA.IDGRUPO, GA.DESCRIPCION
             FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENCAB GA
@@ -1237,10 +1559,11 @@ app.get('/api/group-stores/:groupName', authMiddleware, async (req, res) => {
             return res.json({ stores: [] });
         }
 
-        // Step 3: Map member CODALMACEN to Local names via RSM_ALCANCE_DIARIO
+        // Step 3: Map member CODALMACEN to Local names via alcance table
+        const alcanceTable = await getAlcanceTableName(pool);
         const storesQuery = `
             SELECT DISTINCT Local
-            FROM RSM_ALCANCE_DIARIO
+            FROM ${alcanceTable}
             WHERE Año = 2026
             AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
             ORDER BY Local
@@ -1267,8 +1590,9 @@ app.get('/api/all-stores', authMiddleware, async (req, res) => {
     try {
         // No permission check needed - all authenticated users can see stores
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const result = await pool.request()
-            .query('SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026 ORDER BY Local');
+            .query(`SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026 ORDER BY Local`);
         const stores = result.recordset.map(r => r.Local);
         res.json(stores);
     } catch (err) {
@@ -1281,8 +1605,9 @@ app.get('/api/all-stores', authMiddleware, async (req, res) => {
 app.get('/api/columns', async (req, res) => {
     try {
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const result = await pool.request()
-            .query("SELECT TOP 1 * FROM RSM_ALCANCE_DIARIO WHERE Año = 2026");
+            .query(`SELECT TOP 1 * FROM ${alcanceTable} WHERE Año = 2026`);
 
         if (result.recordset.length > 0) {
             res.json({
@@ -1324,9 +1649,10 @@ app.get('/api/fecha-limite', authMiddleware, async (req, res) => {
         const pool = await poolPromise;
         const year = parseInt(req.query.year) || 2026;
 
+        const alcanceTable = await getAlcanceTableName(pool);
         const result = await pool.request()
             .input('year', sql.Int, year)
-            .query('SELECT MAX(Fecha) as FechaLimite FROM RSM_ALCANCE_DIARIO WHERE MontoReal > 0 AND Año = @year');
+            .query(`SELECT MAX(Fecha) as FechaLimite FROM ${alcanceTable} WHERE MontoReal > 0 AND Año = @year`);
 
         const fechaLimite = result.recordset[0]?.FechaLimite;
         if (fechaLimite) {
@@ -1874,6 +2200,8 @@ app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
             `);
 
         console.log(`âœ… Config '${req.params.key}' updated by ${req.user.email}`);
+        // Invalidate alcance table cache if this key was changed
+        if (req.params.key === 'ALCANCE_TABLE_NAME') invalidateAlcanceTableCache();
         res.json({ success: true });
     } catch (err) {
         console.error('Error in PUT /api/admin/config:', err);
@@ -2165,7 +2493,8 @@ app.get('/api/eventos/por-mes', authMiddleware, async (req, res) => {
                     E.IDEVENTO,
                     E.EVENTO,
                     E.ESFERIADO,
-                    E.ESINTERNO
+                    E.ESINTERNO,
+                    E.USARENPRESUPUESTO
                 FROM DIM_EVENTOS_FECHAS EF
                 INNER JOIN DIM_EVENTOS E ON E.IDEVENTO = EF.IDEVENTO
                 WHERE YEAR(EF.FECHA) = @year AND MONTH(EF.FECHA) = @month
@@ -2182,7 +2511,8 @@ app.get('/api/eventos/por-mes', authMiddleware, async (req, res) => {
                 id: row.IDEVENTO,
                 evento: row.EVENTO,
                 esFeriado: row.ESFERIADO === 'S' || row.ESFERIADO === true || row.ESFERIADO === 1,
-                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1
+                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1,
+                usarEnPresupuesto: row.USARENPRESUPUESTO === 'S' || row.USARENPRESUPUESTO === true || row.USARENPRESUPUESTO === 1
             });
         }
         res.json({ byDate });
@@ -2206,7 +2536,8 @@ app.get('/api/eventos/por-ano', authMiddleware, async (req, res) => {
                     E.IDEVENTO,
                     E.EVENTO,
                     E.ESFERIADO,
-                    E.ESINTERNO
+                    E.ESINTERNO,
+                    E.USARENPRESUPUESTO
                 FROM DIM_EVENTOS_FECHAS EF
                 INNER JOIN DIM_EVENTOS E ON E.IDEVENTO = EF.IDEVENTO
                 WHERE YEAR(EF.FECHA) = @year
@@ -2222,12 +2553,52 @@ app.get('/api/eventos/por-ano', authMiddleware, async (req, res) => {
                 id: row.IDEVENTO,
                 evento: row.EVENTO,
                 esFeriado: row.ESFERIADO === 'S' || row.ESFERIADO === true || row.ESFERIADO === 1,
-                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1
+                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1,
+                usarEnPresupuesto: row.USARENPRESUPUESTO === 'S' || row.USARENPRESUPUESTO === true || row.USARENPRESUPUESTO === 1
             });
         }
         res.json({ byDate });
     } catch (err) {
         console.error('Error in /api/eventos/por-ano:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/eventos-ajuste/all - All adjustment events (USARENPRESUPUESTO='S') across all years, no year filter
+app.get('/api/eventos-ajuste/all', authMiddleware, async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .query(`
+                SELECT 
+                    EF.FECHA,
+                    E.IDEVENTO,
+                    E.EVENTO,
+                    E.ESFERIADO,
+                    E.ESINTERNO,
+                    E.USARENPRESUPUESTO
+                FROM DIM_EVENTOS_FECHAS EF
+                INNER JOIN DIM_EVENTOS E ON E.IDEVENTO = EF.IDEVENTO
+                WHERE E.USARENPRESUPUESTO = 'S'
+                ORDER BY EF.FECHA
+            `);
+
+        const byDate = {};
+        for (const row of result.recordset) {
+            const dateStr = (row.FECHA instanceof Date ? row.FECHA : new Date(row.FECHA))
+                .toISOString().substring(0, 10);
+            if (!byDate[dateStr]) byDate[dateStr] = [];
+            byDate[dateStr].push({
+                id: row.IDEVENTO,
+                evento: row.EVENTO,
+                esFeriado: row.ESFERIADO === 'S' || row.ESFERIADO === true || row.ESFERIADO === 1,
+                esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1,
+                usarEnPresupuesto: true
+            });
+        }
+        res.json({ byDate });
+    } catch (err) {
+        console.error('Error in /api/eventos-ajuste/all:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -2489,6 +2860,71 @@ app.get('/api/invgate/sync-logs', authMiddleware, async (req, res) => {
     }
 });
 
+// ─── InvGate Views Management ─────────────────────────────────────
+
+// GET /api/invgate/views - List configured views
+app.get('/api/invgate/views', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const views = await invgateSyncService.getViewConfigs();
+        res.json(views);
+    } catch (err) {
+        console.error('Error getting InvGate views:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/invgate/views - Add a new view
+app.post('/api/invgate/views', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { viewId, nombre, columns } = req.body;
+        if (!viewId || !nombre) return res.status(400).json({ error: 'viewId y nombre son requeridos' });
+        const result = await invgateSyncService.saveView(parseInt(viewId), nombre, columns || []);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Error saving InvGate view:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/invgate/views/:id - Delete a view
+app.delete('/api/invgate/views/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        await invgateSyncService.deleteView(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error deleting InvGate view:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/invgate/views/:id/toggle - Enable/disable sync for a view
+app.put('/api/invgate/views/:id/toggle', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { enabled } = req.body;
+        await invgateSyncService.toggleView(parseInt(req.params.id), enabled);
+        res.json({ success: true, viewId: parseInt(req.params.id), enabled });
+    } catch (err) {
+        console.error('Error toggling InvGate view:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/invgate/views/:id/preview - Preview data from a view (live from InvGate API)
+app.get('/api/invgate/views/:id/preview', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const preview = await invgateService.getViewPreview(parseInt(req.params.id));
+        res.json(preview);
+    } catch (err) {
+        console.error('Error previewing InvGate view:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/invgate/tickets - Get tickets with filters and pagination
 app.get('/api/invgate/tickets', authMiddleware, async (req, res) => {
     try {
@@ -2692,6 +3128,149 @@ app.post('/api/invgate/test-connection', authMiddleware, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// ==========================================
+// PERSONAL MODULE ENDPOINTS
+// ==========================================
+
+// Ensure Personal tables exist
+(async () => {
+    try {
+        const pool = await poolPromise;
+
+        // TABLE: APP_PERSONAL_CARGOS (Catalog of job titles)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_PERSONAL_CARGOS' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_PERSONAL_CARGOS (
+                    ID INT IDENTITY(1,1) PRIMARY KEY,
+                    NOMBRE NVARCHAR(100) NOT NULL UNIQUE,
+                    ACTIVO BIT DEFAULT 1
+                );
+                
+                -- Seed default values
+                INSERT INTO APP_PERSONAL_CARGOS (NOMBRE) VALUES 
+                ('Administrador'), ('Mercadeo'), ('Supervisor'), ('Auditor'), 
+                ('Encargado'), ('Entrenador'), ('Cajero'), ('Salonero'), 
+                ('Cocinero'), ('Motorizado'), ('Miscelaneo');
+            END
+        `);
+
+        // TABLE: APP_PERSONAL (Staff members)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_PERSONAL' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_PERSONAL (
+                    ID INT IDENTITY(1,1) PRIMARY KEY,
+                    NOMBRE NVARCHAR(200) NOT NULL,
+                    CORREO NVARCHAR(200),
+                    CEDULA NVARCHAR(50),
+                    TELEFONO NVARCHAR(50),
+                    ACTIVO BIT DEFAULT 1,
+                    FECHA_CREACION DATETIME DEFAULT GETDATE()
+                );
+            END
+        `);
+
+        // TABLE: APP_PERSONAL_ASIGNACIONES (Assignments)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_PERSONAL_ASIGNACIONES' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_PERSONAL_ASIGNACIONES (
+                    ID INT IDENTITY(1,1) PRIMARY KEY,
+                    PERSONAL_ID INT NOT NULL,
+                    LOCAL NVARCHAR(100) NOT NULL,
+                    PERFIL NVARCHAR(100) NOT NULL, -- Storing name for simplicity, or could be FK to APP_PERSONAL_CARGOS
+                    FECHA_INICIO DATE NOT NULL,
+                    FECHA_FIN DATE,
+                    NOTAS NVARCHAR(MAX),
+                    ACTIVO BIT DEFAULT 1,
+                    FECHA_CREACION DATETIME DEFAULT GETDATE(),
+                    CONSTRAINT FK_Asignacion_Personal FOREIGN KEY (PERSONAL_ID) REFERENCES APP_PERSONAL(ID)
+                );
+            END
+        `);
+
+        console.log('✅ Personal module tables checked/created');
+    } catch (err) {
+        console.error('❌ Error initializing Personal tables:', err);
+    }
+})();
+
+// --- CARGOS (PROFILES) ENDPOINTS ---
+
+// GET /api/personal/cargos - List active cargos
+app.get('/api/personal/cargos', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const pool = await poolPromise;
+        const result = await pool.request().query('SELECT * FROM APP_PERSONAL_CARGOS WHERE ACTIVO = 1 ORDER BY NOMBRE');
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/personal/cargos - Create new cargo
+app.post('/api/personal/cargos', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { nombre } = req.body;
+        const pool = await poolPromise;
+        await pool.request()
+            .input('nombre', sql.NVarChar, nombre)
+            .query('INSERT INTO APP_PERSONAL_CARGOS (NOMBRE) VALUES (@nombre)');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/personal/cargos/:id - Delete (deactivate) cargo, optionally creating a migration for existing assignments
+app.delete('/api/personal/cargos/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const id = parseInt(req.params.id);
+        const { reassignTo } = req.body; // Name of the target profile to reassign to
+
+        const pool = await poolPromise;
+
+        // Get name of cargo to be deleted
+        const cargoResult = await pool.request().input('id', sql.Int, id).query('SELECT NOMBRE FROM APP_PERSONAL_CARGOS WHERE ID = @id');
+        if (cargoResult.recordset.length === 0) return res.status(404).json({ error: 'Cargo no encontrado' });
+        const oldName = cargoResult.recordset[0].NOMBRE;
+
+        // Start transaction
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        try {
+            const request = new sql.Request(transaction);
+
+            // Reassign if requested
+            if (reassignTo) {
+                await request
+                    .input('oldDetails', sql.NVarChar, oldName)
+                    .input('newDetails', sql.NVarChar, reassignTo)
+                    .query('UPDATE APP_PERSONAL_ASIGNACIONES SET PERFIL = @newDetails WHERE PERFIL = @oldDetails');
+            }
+
+            // Deactivate cargo
+            await request.input('idCargo', sql.Int, id).query('UPDATE APP_PERSONAL_CARGOS SET ACTIVO = 0 WHERE ID = @idCargo');
+
+            await transaction.commit();
+            res.json({ success: true });
+        } catch (err) {
+            await transaction.rollback();
+            throw err;
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+
 
 // ==========================================
 // MICROSOFT FORMS ENDPOINTS (admin only)
@@ -3146,9 +3725,9 @@ app.post('/api/invgate/sync', authMiddleware, async (req, res) => {
         res.json({ success: true, message: 'Sincronización iniciada en segundo plano' });
         // Run sync in background
         if (syncType === 'full') {
-            invgateSyncService.syncFull(initiatedBy).catch(err => console.error('Sync error:', err));
+            invgateSyncService.fullSync(initiatedBy).catch(err => console.error('Sync error:', err));
         } else {
-            invgateSyncService.syncIncremental(initiatedBy).catch(err => console.error('Sync error:', err));
+            invgateSyncService.incrementalSync(initiatedBy).catch(err => console.error('Sync error:', err));
         }
     } catch (err) {
         console.error('Error triggering InvGate sync:', err);
@@ -3265,6 +3844,124 @@ app.get('/api/invgate/reports/by-priority', authMiddleware, async (req, res) => 
     }
 });
 
+// GET /api/invgate/helpdesks - List all helpdesks from InvGate API + local config
+app.get('/api/invgate/helpdesks', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+
+        // Get local config (these are the helpdesks already known to us)
+        const localConfigs = await invgateSyncService.getHelpdeskConfigs();
+        const localMap = {};
+        localConfigs.forEach(h => { localMap[h.HelpdeskID] = h; });
+
+        // Try fetching from InvGate API — if it fails, fall back to local only
+        let apiHelpdesks = [];
+        let apiError = null;
+        try {
+            apiHelpdesks = await invgateService.getHelpdesks();
+        } catch (apiErr) {
+            apiError = apiErr.message;
+            console.warn('⚠️ Could not fetch helpdesks from InvGate API:', apiErr.message);
+        }
+
+        // Merge: API items override local with current names
+        const merged = [];
+        const seenIds = new Set();
+
+        for (const h of apiHelpdesks) {
+            const id = h.id;
+            seenIds.add(id);
+            merged.push({
+                id,
+                name: h.name || h.nombre || `Helpdesk ${id}`,
+                syncEnabled: localMap[id] ? !!localMap[id].SyncEnabled : false,
+                totalTickets: localMap[id] ? (localMap[id].TotalTickets || 0) : 0
+            });
+        }
+
+        // Add any local helpdesks not returned by API
+        for (const local of localConfigs) {
+            if (!seenIds.has(local.HelpdeskID)) {
+                merged.push({
+                    id: local.HelpdeskID,
+                    name: local.Nombre || `Helpdesk ${local.HelpdeskID}`,
+                    syncEnabled: !!local.SyncEnabled,
+                    totalTickets: local.TotalTickets || 0
+                });
+            }
+        }
+
+        res.json({ helpdesks: merged, apiError });
+    } catch (err) {
+        console.error('Error getting InvGate helpdesks:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// PUT /api/invgate/helpdesks/:id/toggle - Enable/disable helpdesk for sync
+app.put('/api/invgate/helpdesks/:id/toggle', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const helpdeskId = parseInt(req.params.id);
+        const { enabled, name } = req.body;
+        const pool = await invgateDb.getInvgatePool();
+        // Ensure helpdesk exists in local table first
+        await pool.request()
+            .input('id', sql.Int, helpdeskId)
+            .input('nombre', sql.NVarChar, name || `Helpdesk ${helpdeskId}`)
+            .query(`
+                IF NOT EXISTS (SELECT 1 FROM InvgateHelpdesks WHERE HelpdeskID = @id)
+                    INSERT INTO InvgateHelpdesks (HelpdeskID, Nombre, SyncEnabled) VALUES (@id, @nombre, 0)
+            `);
+        await invgateSyncService.toggleHelpdesk(helpdeskId, enabled);
+        res.json({ success: true, helpdeskId, enabled });
+    } catch (err) {
+        console.error('Error toggling InvGate helpdesk:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/invgate/custom-fields?helpdeskId=X - Get custom field definitions
+app.get('/api/invgate/custom-fields', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const helpdeskId = req.query.helpdeskId ? parseInt(req.query.helpdeskId) : null;
+        const defs = await invgateSyncService.getCustomFieldDefs(helpdeskId);
+        res.json(defs);
+    } catch (err) {
+        console.error('Error getting InvGate custom fields:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/invgate/custom-fields - Save custom field definitions
+app.put('/api/invgate/custom-fields', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { defs } = req.body; // [{fieldId, helpdeskId, fieldName, fieldType, showInDashboard, displayOrder}]
+        if (!Array.isArray(defs)) return res.status(400).json({ error: 'defs debe ser un array' });
+        const result = await invgateSyncService.saveCustomFieldDefs(defs);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Error saving InvGate custom fields:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/invgate/detect-fields/:helpdeskId - Auto-detect custom fields from API
+app.post('/api/invgate/detect-fields/:helpdeskId', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const helpdeskId = parseInt(req.params.helpdeskId);
+        const detected = await invgateService.detectCustomFields(helpdeskId);
+        res.json(detected);
+    } catch (err) {
+        console.error('Error detecting InvGate custom fields:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Start InvGate cron job on server startup
 (async () => {
     try {
@@ -3278,14 +3975,111 @@ app.get('/api/invgate/reports/by-priority', authMiddleware, async (req, res) => 
 
 
 // ==========================================
+// SHAREPOINT EVENTOS ROSTI ENDPOINTS
+// ==========================================
+
+// GET /api/sp-eventos/por-mes?year=2026&month=2 - Cached SP events for a month
+app.get('/api/sp-eventos/por-mes', authMiddleware, async (req, res) => {
+    try {
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+        const byDate = await spEventsService.getEventosPorMes(year, month);
+        res.json({ byDate });
+    } catch (err) {
+        console.error('Error in /api/sp-eventos/por-mes:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/sp-eventos/por-ano?year=2026 - Cached SP events for a year
+app.get('/api/sp-eventos/por-ano', authMiddleware, async (req, res) => {
+    try {
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const byDate = await spEventsService.getEventosPorAno(year);
+        res.json({ byDate });
+    } catch (err) {
+        console.error('Error in /api/sp-eventos/por-ano:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/sp-eventos/sync - Force sync from SharePoint (admin only)
+app.post('/api/sp-eventos/sync', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'Solo administradores pueden forzar sincronización' });
+        }
+        const result = await spEventsService.syncEventos();
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Error in /api/sp-eventos/sync:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/sp-eventos/debug-fields - Show SP list field names (admin only)
+app.get('/api/sp-eventos/debug-fields', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'Solo administradores' });
+        }
+        const result = await spEventsService.debugListFields();
+        res.json(result);
+    } catch (err) {
+        console.error('Error in /api/sp-eventos/debug-fields:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
 // SERVE FRONTEND STATIC FILES
 // ==========================================
 const distPath = path.join(__dirname, '../web-app/dist');
-app.use(express.static(distPath));
 
-// SPA fallback - todas las rutas no-API devuelven index.html
+// Serve static assets WITH cache (JS/CSS have hashes in filenames)
+app.use(express.static(distPath, {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+            // NEVER cache HTML - forces browser to always get latest
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+}));
+
+// SPA fallback - todas las rutas no-API devuelven index.html (SIN CACHE)
 app.get(/(.*)/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(distPath, 'index.html'));
+});
+
+// ==========================================
+// CRASH PROTECTION
+// ==========================================
+
+// Express error-catching middleware (must be last middleware)
+app.use((err, req, res, next) => {
+    console.error('❌ [Express Error]', new Date().toISOString(), err.stack || err.message || err);
+    if (!res.headersSent) {
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Global crash handlers — prevent process from dying
+process.on('uncaughtException', (err) => {
+    console.error('🔥 [UNCAUGHT EXCEPTION]', new Date().toISOString());
+    console.error(err.stack || err.message || err);
+    // Do NOT exit — keep the server alive
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️ [UNHANDLED REJECTION]', new Date().toISOString());
+    console.error('Promise:', promise);
+    console.error('Reason:', reason);
+    // Do NOT exit — keep the server alive
 });
 
 app.listen(port, '0.0.0.0', () => {
@@ -3293,4 +4087,5 @@ app.listen(port, '0.0.0.0', () => {
     console.log(`🌐 Frontend served from: ${distPath}`);
     const dbStatus = dbManager.getCurrentStatus();
     console.log(`📊 Database mode: ${dbStatus.activeMode}`);
+    console.log(`🛡️ Crash protection: ACTIVE`);
 });

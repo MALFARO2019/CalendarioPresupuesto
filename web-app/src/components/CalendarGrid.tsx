@@ -12,12 +12,13 @@ interface CalendarGridProps {
     comparisonType: string;
     kpi: string;
     eventsByDate?: Record<string, { id: number; evento: string; esFeriado: boolean; esInterno: boolean }[]>;
+    eventosAjusteByDate?: Record<string, { id: number; evento: string; esFeriado: boolean; esInterno: boolean }[]>;
 }
 
 // L = Lunes, K = Martes, M = Miércoles, J, V, S, D
 const DAYS_OF_WEEK = ['L', 'K', 'M', 'J', 'V', 'S', 'D'];
 
-export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, comparisonType, kpi, eventsByDate = {} }) => {
+export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, comparisonType, kpi, eventsByDate = {}, eventosAjusteByDate = {} }) => {
     const { formatPct100 } = useUserPreferences();
     const fc = useFormatCurrency();
     // Data is already filtered for the month by parent component
@@ -51,6 +52,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
         const pad = (n: number) => String(n).padStart(2, '0');
         const dateKey = `${year}-${pad(month + 1)}-${pad(d)}`;
         const dayEvents = eventsByDate[dateKey] || [];
+        const dayAjusteEvents = eventosAjusteByDate[dateKey] || [];
         cells.push(
             <div key={`day-${d}`} className="relative">
                 <DayCell
@@ -60,14 +62,15 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                     comparisonType={comparisonType}
                     kpi={kpi}
                 />
+                {/* Regular + SharePoint events */}
                 {dayEvents.length > 0 && (
                     <div className="absolute bottom-0.5 left-0 right-0 px-0.5 flex flex-col gap-0.5">
                         {dayEvents.slice(0, 2).map((ev, i) => (
                             <div key={i} className="group/ev relative">
                                 <div
                                     className={`text-[8px] leading-tight font-semibold truncate rounded px-0.5 cursor-default ${ev.esFeriado
-                                            ? 'bg-red-500 text-white'
-                                            : 'bg-amber-400 text-amber-900'
+                                        ? 'bg-red-500 text-white'
+                                        : 'bg-amber-400 text-amber-900'
                                         }`}
                                 >
                                     {ev.evento}
@@ -98,6 +101,36 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                             </div>
                         )}
                     </div>
+                )}
+                {/* Adjustment events (red line style) */}
+                {(dayAjusteEvents.length > 0 && dayEvents.length === 0) && (
+                    <div className="absolute bottom-0.5 left-0 right-0 px-0.5 flex flex-col gap-0.5">
+                        {dayAjusteEvents.slice(0, 2).map((ev, i) => (
+                            <div key={`aj-${i}`} className="group/ev relative">
+                                <div className="text-[8px] leading-tight font-semibold truncate rounded px-0.5 cursor-default bg-red-600 text-white">
+                                    {ev.evento}
+                                </div>
+                                <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/ev:flex flex-col min-w-[160px] max-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl p-2 text-left pointer-events-none">
+                                    <div className="text-[10px] font-bold px-1.5 py-0.5 rounded mb-1 inline-block bg-red-100 text-red-700">🔴 Ajuste</div>
+                                    <p className="text-xs font-semibold text-gray-800 leading-snug">{ev.evento}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {/* Adjustment events when regular events also present - show below */}
+                {(dayAjusteEvents.length > 0 && dayEvents.length > 0) && (
+                    dayAjusteEvents.slice(0, 1).map((ev, i) => (
+                        <div key={`aj2-${i}`} className="absolute bottom-0.5 right-0.5 group/ev">
+                            <div className="w-2.5 h-2.5 rounded-full bg-red-600 border border-white cursor-default" />
+                            <div className="absolute bottom-full right-0 mb-1 z-50 hidden group-hover/ev:flex flex-col min-w-[160px] max-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl p-2 text-left pointer-events-none">
+                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded mb-1 inline-block bg-red-100 text-red-700">🔴 Ajuste</div>
+                                {dayAjusteEvents.map((aev, j) => (
+                                    <p key={j} className="text-xs font-semibold text-gray-800 leading-snug">{aev.evento}</p>
+                                ))}
+                            </div>
+                        </div>
+                    ))
                 )}
             </div>
         );

@@ -83,7 +83,7 @@ INSERT INTO FormsConfig (ConfigKey, ConfigValue, Descripcion, UpdatedBy)
 VALUES 
     ('TENANT_ID', '70dff046e-e545-44c7-ae8c-21c53272ee6e', 'Azure AD Tenant ID', 'SYSTEM'),
     ('CLIENT_ID', '44490c35-76d8-451c-a10f-05c526df8e38', 'Azure AD Application (Client) ID', 'SYSTEM'),
-    ('CLIENT_SECRET', 'q2l8Q~F6ul3dMZHQUmmF5FCPa5eIHzEWOU5pIaZI', 'Azure AD Client Secret (expires 2028-02-17)', 'SYSTEM'),
+    ('CLIENT_SECRET', 'CONFIGURE_VIA_WEB_UI', 'Azure AD Client Secret (configure via admin panel)', 'SYSTEM'),
     ('SYNC_ENABLED', 'false', 'Enable automatic sync (true/false)', 'SYSTEM'),
     ('SYNC_INTERVAL_HOURS', '6', 'Sync interval in hours (1, 6, 12, 24)', 'SYSTEM'),
     ('FORM_IDS', '[]', 'JSON array of form IDs to sync', 'SYSTEM');

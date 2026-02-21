@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { login, API_BASE } from '../api';
-import { Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
+import { login, adminLogin, API_BASE } from '../api';
+import { Mail, Lock, Loader2, AlertCircle, Settings } from 'lucide-react';
 
 interface LoginPageProps {
     onLoginSuccess: () => void;
+    onAdminAccess: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminAccess }) => {
     const [email, setEmail] = useState('');
     const [clave, setClave] = useState('');
     const [loading, setLoading] = useState(false);
@@ -15,6 +16,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     const [forgotEmail, setForgotEmail] = useState('');
     const [sendingEmail, setSendingEmail] = useState(false);
     const [emailSent, setEmailSent] = useState(false);
+
+    // Admin access state
+    const [showAdminAccess, setShowAdminAccess] = useState(false);
+    const [adminPassword, setAdminPassword] = useState('');
+    const [adminLoading, setAdminLoading] = useState(false);
+    const [adminError, setAdminError] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -76,6 +83,31 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             setError('No se pudo conectar al servidor. Revisar conexión al VPN de Rosti.');
         } finally {
             setSendingEmail(false);
+        }
+    };
+
+    const handleAdminLogin = async () => {
+        if (!adminPassword.trim()) {
+            setAdminError('Ingrese la clave de administrador');
+            return;
+        }
+
+        setAdminLoading(true);
+        setAdminError('');
+
+        try {
+            const result = await adminLogin(adminPassword.trim());
+            if (result.success) {
+                setShowAdminAccess(false);
+                setAdminPassword('');
+                onAdminAccess();
+            } else {
+                setAdminError(result.error || 'Clave incorrecta');
+            }
+        } catch (err: any) {
+            setAdminError('No se pudo conectar al servidor.');
+        } finally {
+            setAdminLoading(false);
         }
     };
 
@@ -157,7 +189,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                         </button>
 
                         {/* Forgot Password Link */}
-                        <div className="text-center">
+                        <div className="text-center space-y-2">
                             <button
                                 type="button"
                                 onClick={() => { setShowForgotPassword(true); setError(''); setForgotEmail(email); }}
@@ -165,6 +197,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                             >
                                 ¿Olvidaste tu clave?
                             </button>
+                            <div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowAdminAccess(true); setAdminError(''); setAdminPassword(''); }}
+                                    className="text-white/40 hover:text-white/70 text-xs font-medium transition-colors flex items-center gap-1 mx-auto"
+                                >
+                                    <Settings className="w-3 h-3" />
+                                    Acceso Administrador
+                                </button>
+                            </div>
                         </div>
                     </form>
 
@@ -240,6 +282,75 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                                         </div>
                                     </>
                                 )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Admin Access Modal */}
+                    {showAdminAccess && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                                        <Settings className="w-5 h-5 text-amber-600" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-gray-800">Acceso Administrador</h3>
+                                </div>
+                                <p className="text-gray-500 text-sm mb-6">
+                                    Ingrese la clave de administrador para acceder a la configuración del sistema.
+                                </p>
+
+                                <div className="mb-4">
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Clave de Administrador
+                                    </label>
+                                    <div className="relative">
+                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                        <input
+                                            type="password"
+                                            value={adminPassword}
+                                            onChange={(e) => { setAdminPassword(e.target.value); setAdminError(''); }}
+                                            placeholder="••••••••"
+                                            className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 transition-all text-sm tracking-[0.2em]"
+                                            autoFocus
+                                            onKeyDown={(e) => { if (e.key === 'Enter') handleAdminLogin(); }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {adminError && (
+                                    <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+                                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                                        <span className="text-red-700 text-sm">{adminError}</span>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => { setShowAdminAccess(false); setAdminError(''); setAdminPassword(''); }}
+                                        className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all text-sm"
+                                        disabled={adminLoading}
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={handleAdminLogin}
+                                        disabled={adminLoading}
+                                        className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold rounded-xl transition-all text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        {adminLoading ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Verificando...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Settings className="w-4 h-4" />
+                                                Ingresar
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}

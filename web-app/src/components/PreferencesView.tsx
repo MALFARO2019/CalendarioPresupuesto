@@ -4,11 +4,6 @@ import { useUserPreferences } from '../context/UserPreferences';
 
 interface PreferencesViewProps {
     onBack: () => void;
-    verEventos: boolean;
-    onVerEventosChange: (v: boolean) => void;
-    eventosYear: number;
-    onEventosYearChange: (y: number) => void;
-    availableYears?: number[];
     groups?: string[];
     yearType: 'Año Anterior' | 'Año Anterior Ajustado';
     onYearTypeChange: (v: 'Año Anterior' | 'Año Anterior Ajustado') => void;
@@ -16,11 +11,6 @@ interface PreferencesViewProps {
 
 export const PreferencesView: React.FC<PreferencesViewProps> = ({
     onBack,
-    verEventos,
-    onVerEventosChange,
-    eventosYear,
-    onEventosYearChange,
-    availableYears = [2024, 2025, 2026, 2027],
     groups = [],
     yearType,
     onYearTypeChange,
@@ -55,52 +45,6 @@ export const PreferencesView: React.FC<PreferencesViewProps> = ({
 
             <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
-                {/* ── EVENTOS ── */}
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-5 py-4 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
-                        <span className="text-lg">📅</span>
-                        <h2 className="text-sm font-bold text-amber-800 uppercase tracking-wide">Calendario de Eventos</h2>
-                    </div>
-                    <div className="p-5 space-y-4">
-                        {/* Toggle */}
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm font-semibold text-gray-800">Mostrar eventos en gráficos</p>
-                                <p className="text-xs text-gray-500 mt-0.5">Activa líneas y chips de eventos en todas las vistas</p>
-                            </div>
-                            <button
-                                onClick={() => onVerEventosChange(!verEventos)}
-                                className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${verEventos ? 'bg-amber-400' : 'bg-gray-200'}`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${verEventos ? 'left-7' : 'left-1'}`} />
-                            </button>
-                        </div>
-
-                        {/* Year chips */}
-                        <div>
-                            <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Año de eventos</label>
-                            <div className="flex flex-wrap gap-2">
-                                {availableYears.map(y => (
-                                    <button
-                                        key={y}
-                                        onClick={() => onEventosYearChange(y)}
-                                        className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${eventosYear === y
-                                            ? 'bg-amber-100 border-amber-400 text-amber-800'
-                                            : 'bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:bg-amber-50'
-                                            }`}
-                                    >
-                                        {y}
-                                    </button>
-                                ))}
-                            </div>
-                            {verEventos && (
-                                <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-                                    <span>⚠️</span> Cargando eventos del año {eventosYear}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                </section>
 
                 {/* ── PORCENTAJES ── */}
                 <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
