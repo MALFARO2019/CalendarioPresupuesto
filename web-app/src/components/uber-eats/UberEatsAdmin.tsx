@@ -69,6 +69,7 @@ export const UberEatsAdmin: React.FC = () => {
     const [testLoading, setTestLoading] = useState(false);
     const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
     const [configMsg, setConfigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [tokenStatus, setTokenStatus] = useState<{ hasClientId: boolean; hasSecretInDb: boolean; canDecrypt: boolean; canGetToken: boolean; tokenError: string | null } | null>(null);
 
     // Stores tab
     const [stores, setStores] = useState<UberStore[]>([]);
@@ -112,6 +113,12 @@ export const UberEatsAdmin: React.FC = () => {
         } catch (e: any) {
             setConfigMsg({ type: 'error', text: e.message });
         } finally { setConfigLoading(false); }
+
+        // Also check token status
+        try {
+            const tsRes = await fetch(`${API_BASE}/api/uber-eats/token-status`, { headers });
+            if (tsRes.ok) setTokenStatus(await tsRes.json());
+        } catch { }
     }, []);
 
     const saveConfig = async () => {
@@ -133,7 +140,7 @@ export const UberEatsAdmin: React.FC = () => {
             parts.push('sync config');
             setConfigMsg({ type: 'success', text: `✅ Guardado: ${parts.join(', ')}` });
             setClientSecret('');
-            await loadConfig();
+            await loadConfig(); // this also reloads token status
         } catch (e: any) {
             console.error('[UberEats] Save error:', e);
             setConfigMsg({ type: 'error', text: e.message || 'Error desconocido al guardar' });
@@ -427,10 +434,30 @@ export const UberEatsAdmin: React.FC = () => {
                             <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3">
                                 <AlertTriangle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                                 <p className="text-xs text-blue-700">
-                                    Uber Eats usa OAuth 2.0 con <code>client_credentials</code>. El token dura 1 hora y se renueva automáticamente.
-                                    El reporte es asíncrono: el servidor solicita, espera y descarga el CSV sin intervención manual.
+                                    Uber Eats usa OAuth 2.0 con <code>client_credentials</code>. El token se genera dinámicamente con tu Client ID + Secret.
+                                    El token dura 1 hora y se renueva automáticamente. No se almacena ningún token — solo las credenciales encriptadas.
                                 </p>
                             </div>
+
+                            {/* Token status badge */}
+                            {tokenStatus && (
+                                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border-2 text-sm ${tokenStatus.canGetToken
+                                    ? 'bg-green-50 border-green-200 text-green-700'
+                                    : tokenStatus.hasSecretInDb && tokenStatus.canDecrypt
+                                        ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                                        : 'bg-red-50 border-red-200 text-red-700'
+                                    }`}>
+                                    {tokenStatus.canGetToken ? (
+                                        <><CheckCircle className="w-4 h-4" /> Token válido — conexión verificada con Uber Eats API</>
+                                    ) : tokenStatus.hasSecretInDb && tokenStatus.canDecrypt ? (
+                                        <><AlertTriangle className="w-4 h-4" /> Credenciales guardadas — {tokenStatus.tokenError || 'no se ha podido obtener token'}</>
+                                    ) : tokenStatus.hasSecretInDb && !tokenStatus.canDecrypt ? (
+                                        <><XCircle className="w-4 h-4" /> Error de encriptación — el secret no se puede desencriptar. Guarda uno nuevo.</>
+                                    ) : (
+                                        <><XCircle className="w-4 h-4" /> {!tokenStatus.hasClientId ? 'Falta Client ID' : 'Falta Client Secret'} — configura las credenciales</>
+                                    )}
+                                </div>
+                            )}
                         </>
                     )}
                 </div>
