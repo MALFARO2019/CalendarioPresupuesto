@@ -42,3 +42,6 @@ temp/
 .agent/.onenote_token.json
 server/fix_forms_config.js
 server/setup-forms.ps1
+
+# Server-side generated files
+server/server-versions.json

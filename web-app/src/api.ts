@@ -1158,10 +1158,18 @@ export interface DeployLog {
     entries: DeployLogEntry[];
 }
 
+export interface SetupGuideCommand {
+    label: string;
+    command: string;
+    automatable: boolean;
+    manualReason?: string;
+}
+
 export interface SetupGuideSection {
     title: string;
     description: string;
-    commands: { label: string; command: string }[];
+    target: 'remote' | 'local';
+    commands: SetupGuideCommand[];
 }
 
 export interface SetupGuide {
@@ -1207,11 +1215,57 @@ export async function deployToServer(
     return response.json();
 }
 
+export interface ServerVersionInfo {
+    version: string | null;
+    date: string | null;
+    deployedBy: string | null;
+}
+
+export async function fetchServerVersion(ip: string): Promise<ServerVersionInfo> {
+    const response = await fetch(`${API_BASE}/deploy/server-version?ip=${encodeURIComponent(ip)}`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error al obtener versión del servidor');
+    return response.json();
+}
+
 export async function fetchSetupGuide(): Promise<SetupGuide> {
     const response = await fetch(`${API_BASE}/deploy/setup-guide`, {
         headers: authHeaders()
     });
     if (!response.ok) throw new Error('Error al obtener guía');
+    return response.json();
+}
+
+export async function runSetupRemote(
+    serverIp: string,
+    user: string,
+    password: string
+): Promise<{ success: boolean; steps: { step: string; status: string; detail?: string }[] }> {
+    const response = await fetch(`${API_BASE}/deploy/setup-remote`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ serverIp, user, password })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Error al ejecutar configuración remota');
+    }
+    return response.json();
+}
+
+export async function runSetupLocal(
+    serverIp: string
+): Promise<{ success: boolean; steps: { step: string; status: string; detail?: string }[] }> {
+    const response = await fetch(`${API_BASE}/deploy/setup-local`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ serverIp })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Error al ejecutar configuración local');
+    }
     return response.json();
 }
 

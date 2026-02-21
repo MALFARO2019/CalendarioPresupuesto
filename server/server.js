@@ -53,6 +53,8 @@ const { registerKpiAdminEndpoints } = require('./kpiAdmin_endpoints');
 const deployModule = require('./deploy');
 const { getAlcanceTableName, invalidateAlcanceTableCache } = require('./alcanceConfig');
 const registerModeloPresupuestoEndpoints = require('./modeloPresupuesto_endpoints');
+const registerStoreAliasEndpoints = require('./storeAlias_endpoints');
+const { ensureStoreAliasTable } = require('./services/storeAliasService');
 
 const app = express();
 const port = process.env.PORT || 80;
@@ -71,6 +73,7 @@ app.use(express.json());
     try { await ensureUberEatsTables(); } catch (e) { console.error('UberEats DB error:', e.message); }
     // KPI Admin tables
     try { await ensureKpiAdminTables(); } catch (e) { console.error('KPI Admin DB error:', e.message); }
+    try { await ensureStoreAliasTable(); } catch (e) { console.error('StoreAlias DB error:', e.message); }
     try { await uberEatsCron.start(); } catch (e) { console.error('UberEats cron error:', e.message); }
     // SharePoint Eventos Rosti: initial sync + periodic refresh (every 60 min)
     try {
@@ -101,6 +104,11 @@ registerInvgateEndpoints(app, authMiddleware);
 // MODELO PRESUPUESTO ENDPOINTS
 // ==========================================
 registerModeloPresupuestoEndpoints(app, authMiddleware);
+
+// ==========================================
+// STORE ALIAS ENDPOINTS
+// ==========================================
+registerStoreAliasEndpoints(app, authMiddleware);
 
 // ==========================================
 // DEPLOY MANAGEMENT ENDPOINTS
@@ -134,6 +142,19 @@ app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Faltan parámetros: serverIp, user, password, appDir' });
         }
 
+        // Version downgrade validation
+        if (version && serverIp) {
+            const serverInfo = deployModule.getServerVersion(serverIp);
+            if (serverInfo && serverInfo.version) {
+                const cmp = deployModule.compareVersions(version, serverInfo.version);
+                if (cmp < 0) {
+                    return res.status(400).json({
+                        error: `No se puede desplegar ${version} porque el servidor ${serverIp} ya tiene ${serverInfo.version}. Solo se permiten versiones iguales o superiores.`
+                    });
+                }
+            }
+        }
+
         // Create log entry
         const entry = deployModule.addDeployEntry(
             version || 'sin versión',
@@ -156,6 +177,25 @@ app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+// GET version deployed on a specific server
+app.get('/api/deploy/server-version', authMiddleware, (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const { ip } = req.query;
+        if (!ip) return res.status(400).json({ error: 'Falta parámetro: ip' });
+        const info = deployModule.getServerVersion(ip);
+        res.json(info || { version: null, date: null, deployedBy: null });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET all server versions
+app.get('/api/deploy/server-versions', authMiddleware, (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        res.json(deployModule.getAllServerVersions());
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // GET server setup guide

@@ -6,6 +6,78 @@ const fs = require('fs');
 const path = require('path');
 
 const DEPLOY_LOG_PATH = path.join(__dirname, 'deploy-log.json');
+const SERVER_VERSIONS_PATH = path.join(__dirname, 'server-versions.json');
+
+// ==========================================
+// PER-SERVER VERSION TRACKING
+// ==========================================
+
+function readServerVersions() {
+    try {
+        if (fs.existsSync(SERVER_VERSIONS_PATH)) {
+            return JSON.parse(fs.readFileSync(SERVER_VERSIONS_PATH, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Error reading server versions:', e.message);
+    }
+    return {};
+}
+
+function writeServerVersions(data) {
+    fs.writeFileSync(SERVER_VERSIONS_PATH, JSON.stringify(data, null, 2), 'utf8');
+}
+
+/**
+ * Get the last successfully deployed version for a specific server IP
+ */
+function getServerVersion(serverIp) {
+    const versions = readServerVersions();
+    return versions[serverIp] || null;
+}
+
+/**
+ * Set the deployed version for a specific server IP
+ */
+function setServerVersion(serverIp, version, deployedBy) {
+    const versions = readServerVersions();
+    versions[serverIp] = {
+        version,
+        date: new Date().toISOString(),
+        deployedBy: deployedBy || 'deploy-system'
+    };
+    writeServerVersions(versions);
+}
+
+/**
+ * Parse version string like 'v1.2' into { major, minor }
+ */
+function parseVersion(versionStr) {
+    if (!versionStr) return { major: 0, minor: 0 };
+    const match = versionStr.match(/(\d+)\.(\d+)/);
+    if (match) return { major: parseInt(match[1]), minor: parseInt(match[2]) };
+    const singleMatch = versionStr.match(/(\d+)/);
+    if (singleMatch) return { major: parseInt(singleMatch[1]), minor: 0 };
+    return { major: 0, minor: 0 };
+}
+
+/**
+ * Compare two version strings. Returns:
+ *  -1 if a < b, 0 if equal, 1 if a > b
+ */
+function compareVersions(a, b) {
+    const va = parseVersion(a);
+    const vb = parseVersion(b);
+    if (va.major !== vb.major) return va.major < vb.major ? -1 : 1;
+    if (va.minor !== vb.minor) return va.minor < vb.minor ? -1 : 1;
+    return 0;
+}
+
+/**
+ * Get all server versions as a map { ip: { version, date, deployedBy } }
+ */
+function getAllServerVersions() {
+    return readServerVersions();
+}
 
 // ==========================================
 // DEPLOY LOG (CHANGELOG)
@@ -178,6 +250,11 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
     } catch (e) {
         steps[steps.length - 1] = { step: 'Reiniciando servicio', status: 'error', detail: e.message };
         return { success: false, steps };
+    }
+
+    // Record the deployed version for this server
+    if (deployVersion) {
+        setServerVersion(serverIp, deployVersion, 'deploy-system');
     }
 
     return { success: true, steps };
@@ -466,5 +543,9 @@ module.exports = {
     deployToServer,
     getServerSetupGuide,
     runRemoteSetupCommands,
-    runLocalSetupCommands
+    runLocalSetupCommands,
+    getServerVersion,
+    setServerVersion,
+    compareVersions,
+    getAllServerVersions
 };
