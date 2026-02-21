@@ -26,7 +26,7 @@ interface ServerConfig {
 }
 
 const DEFAULT_SERVERS: ServerConfig[] = [
-    { id: '1', ip: '10.29.1.25', user: 'Administrador', password: 'R0st1p017', appDir: 'C:\\Deploy\\CalendarioPresupuesto', label: 'Servidor Principal' },
+    { id: '1', ip: '10.29.1.25', user: 'Administrador', password: 'R0st1p017', appDir: 'C:\\Apps\\CalendarioPresupuesto', label: 'Servidor Principal' },
 ];
 
 function loadServers(): ServerConfig[] {
