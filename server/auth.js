@@ -132,6 +132,21 @@ async function ensureSecurityTables() {
             END
         `);
 
+        // Add Modelo Presupuesto permissions to APP_USUARIOS
+        const modeloPresupuestoColumns = [
+            'accesoModeloPresupuesto', 'verConfigModelo', 'verConsolidadoMensual',
+            'verAjustePresupuesto', 'verVersiones', 'verBitacora', 'verReferencias',
+            'editarConsolidado', 'ejecutarRecalculo', 'ajustarCurva', 'restaurarVersiones'
+        ];
+        for (const col of modeloPresupuestoColumns) {
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = '${col}')
+                BEGIN
+                    ALTER TABLE APP_USUARIOS ADD [${col}] BIT NOT NULL DEFAULT 0;
+                END
+            `);
+        }
+
         // Add DashboardLocales column for user-specific KPI config
         await pool.request().query(`
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'DashboardLocales')
@@ -255,7 +270,18 @@ async function ensureSecurityTables() {
                     AccesoInventarios = 1,
                     AccesoPersonal = 1,
                     EsAdmin = 1,
-                    EsProtegido = 1
+                    EsProtegido = 1,
+                    accesoModeloPresupuesto = 1,
+                    verConfigModelo = 1,
+                    verConsolidadoMensual = 1,
+                    verAjustePresupuesto = 1,
+                    verVersiones = 1,
+                    verBitacora = 1,
+                    verReferencias = 1,
+                    editarConsolidado = 1,
+                    ejecutarRecalculo = 1,
+                    ajustarCurva = 1,
+                    restaurarVersiones = 1
                 WHERE Email = 'soporte@rostipolloscr.com'
             `);
         }
@@ -383,6 +409,16 @@ IMPORTANTE:
             END
         `);
 
+        // Add Modelo Presupuesto permissions to APP_PERFILES
+        for (const col of modeloPresupuestoColumns) {
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_PERFILES') AND name = '${col}')
+                BEGIN
+                    ALTER TABLE APP_PERFILES ADD [${col}] BIT NOT NULL DEFAULT 0;
+                END
+            `);
+        }
+
         // Add PerfilId column to APP_USUARIOS if it doesn't exist
         await pool.request().query(`
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'PerfilId')
@@ -425,7 +461,7 @@ async function loginUser(email, clave) {
     const pool = await poolPromise;
     const result = await pool.request()
         .input('email', sql.NVarChar, email)
-        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido FROM APP_USUARIOS WHERE Email = @email');
+        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(restaurarVersiones,0) as restaurarVersiones FROM APP_USUARIOS WHERE Email = @email');
 
     if (result.recordset.length === 0) {
         return { success: false, message: 'Usuario no encontrado. Contacte al administrador.' };
@@ -484,6 +520,18 @@ async function loginUser(email, clave) {
             accesoEvaluaciones: user.AccesoEvaluaciones,
             accesoInventarios: user.AccesoInventarios,
             accesoPersonal: user.AccesoPersonal,
+            // Modelo Presupuesto
+            accesoModeloPresupuesto: user.accesoModeloPresupuesto,
+            verConfigModelo: user.verConfigModelo,
+            verConsolidadoMensual: user.verConsolidadoMensual,
+            verAjustePresupuesto: user.verAjustePresupuesto,
+            verVersiones: user.verVersiones,
+            verBitacora: user.verBitacora,
+            verReferencias: user.verReferencias,
+            editarConsolidado: user.editarConsolidado,
+            ejecutarRecalculo: user.ejecutarRecalculo,
+            ajustarCurva: user.ajustarCurva,
+            restaurarVersiones: user.restaurarVersiones,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido
         },
@@ -509,6 +557,18 @@ async function loginUser(email, clave) {
             accesoEvaluaciones: user.AccesoEvaluaciones,
             accesoInventarios: user.AccesoInventarios,
             accesoPersonal: user.AccesoPersonal,
+            // Modelo Presupuesto
+            accesoModeloPresupuesto: user.accesoModeloPresupuesto,
+            verConfigModelo: user.verConfigModelo,
+            verConsolidadoMensual: user.verConsolidadoMensual,
+            verAjustePresupuesto: user.verAjustePresupuesto,
+            verVersiones: user.verVersiones,
+            verBitacora: user.verBitacora,
+            verReferencias: user.verReferencias,
+            editarConsolidado: user.editarConsolidado,
+            ejecutarRecalculo: user.ejecutarRecalculo,
+            ajustarCurva: user.ajustarCurva,
+            restaurarVersiones: user.restaurarVersiones,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido,
             allowedStores,
@@ -587,6 +647,17 @@ async function getAllUsers() {
         SELECT u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.AccesoPresupuesto, u.AccesoPresupuestoMensual, u.AccesoPresupuestoAnual, u.AccesoPresupuestoRangos, u.AccesoTiempos, u.AccesoEvaluaciones, u.AccesoInventarios, u.AccesoPersonal, u.EsAdmin, u.EsProtegido, u.FechaCreacion,
                ISNULL(u.PermitirEnvioClave, 1) as PermitirEnvioClave,
                u.PerfilId,
+               ISNULL(u.accesoModeloPresupuesto, 0) as accesoModeloPresupuesto,
+               ISNULL(u.verConfigModelo, 0) as verConfigModelo,
+               ISNULL(u.verConsolidadoMensual, 0) as verConsolidadoMensual,
+               ISNULL(u.verAjustePresupuesto, 0) as verAjustePresupuesto,
+               ISNULL(u.verVersiones, 0) as verVersiones,
+               ISNULL(u.verBitacora, 0) as verBitacora,
+               ISNULL(u.verReferencias, 0) as verReferencias,
+               ISNULL(u.editarConsolidado, 0) as editarConsolidado,
+               ISNULL(u.ejecutarRecalculo, 0) as ejecutarRecalculo,
+               ISNULL(u.ajustarCurva, 0) as ajustarCurva,
+               ISNULL(u.restaurarVersiones, 0) as restaurarVersiones,
                (SELECT STRING_AGG(a2.Local, ', ') FROM APP_USUARIO_ALMACEN a2 WHERE a2.UsuarioId = u.Id) AS Almacenes,
                (SELECT STRING_AGG(c2.Canal, ', ') FROM APP_USUARIO_CANAL c2 WHERE c2.UsuarioId = u.Id) AS Canales
         FROM APP_USUARIOS u
@@ -611,6 +682,18 @@ async function getAllUsers() {
         accesoEvaluaciones: user.AccesoEvaluaciones,
         accesoInventarios: user.AccesoInventarios,
         accesoPersonal: user.AccesoPersonal,
+        // Modelo Presupuesto
+        accesoModeloPresupuesto: user.accesoModeloPresupuesto,
+        verConfigModelo: user.verConfigModelo,
+        verConsolidadoMensual: user.verConsolidadoMensual,
+        verAjustePresupuesto: user.verAjustePresupuesto,
+        verVersiones: user.verVersiones,
+        verBitacora: user.verBitacora,
+        verReferencias: user.verReferencias,
+        editarConsolidado: user.editarConsolidado,
+        ejecutarRecalculo: user.ejecutarRecalculo,
+        ajustarCurva: user.ajustarCurva,
+        restaurarVersiones: user.restaurarVersiones,
         esAdmin: user.EsAdmin,
         esProtegido: user.EsProtegido,
         permitirEnvioClave: user.PermitirEnvioClave,
@@ -624,7 +707,7 @@ async function getAllUsers() {
 /**
  * Create a new user with store access and PIN
  */
-async function createUser(email, nombre, clave, stores, canales, accesoTendencia = false, accesoTactica = false, accesoEventos = false, accesoPresupuesto = true, accesoPresupuestoMensual = true, accesoPresupuestoAnual = true, accesoPresupuestoRangos = true, accesoTiempos = false, accesoEvaluaciones = false, accesoInventarios = false, accesoPersonal = false, esAdmin = false) {
+async function createUser(email, nombre, clave, stores, canales, accesoTendencia = false, accesoTactica = false, accesoEventos = false, accesoPresupuesto = true, accesoPresupuestoMensual = true, accesoPresupuestoAnual = true, accesoPresupuestoRangos = true, accesoTiempos = false, accesoEvaluaciones = false, accesoInventarios = false, accesoPersonal = false, esAdmin = false, modeloPresupuestoPerms = {}) {
     const pool = await poolPromise;
 
     // Validate: at least one module permission must be active (unless admin)
@@ -656,10 +739,21 @@ async function createUser(email, nombre, clave, stores, canales, accesoTendencia
         .input('accesoInventarios', sql.Bit, accesoInventarios)
         .input('accesoPersonal', sql.Bit, accesoPersonal)
         .input('esAdmin', sql.Bit, esAdmin)
+        .input('accesoModeloPresupuesto', sql.Bit, modeloPresupuestoPerms.accesoModeloPresupuesto || false)
+        .input('verConfigModelo', sql.Bit, modeloPresupuestoPerms.verConfigModelo || false)
+        .input('verConsolidadoMensual', sql.Bit, modeloPresupuestoPerms.verConsolidadoMensual || false)
+        .input('verAjustePresupuesto', sql.Bit, modeloPresupuestoPerms.verAjustePresupuesto || false)
+        .input('verVersiones', sql.Bit, modeloPresupuestoPerms.verVersiones || false)
+        .input('verBitacora', sql.Bit, modeloPresupuestoPerms.verBitacora || false)
+        .input('verReferencias', sql.Bit, modeloPresupuestoPerms.verReferencias || false)
+        .input('editarConsolidado', sql.Bit, modeloPresupuestoPerms.editarConsolidado || false)
+        .input('ejecutarRecalculo', sql.Bit, modeloPresupuestoPerms.ejecutarRecalculo || false)
+        .input('ajustarCurva', sql.Bit, modeloPresupuestoPerms.ajustarCurva || false)
+        .input('restaurarVersiones', sql.Bit, modeloPresupuestoPerms.restaurarVersiones || false)
         .query(`
-            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin) 
+            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones) 
             OUTPUT INSERTED.Id, INSERTED.Clave
-            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @accesoPresupuesto, @accesoPresupuestoMensual, @accesoPresupuestoAnual, @accesoPresupuestoRangos, @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @accesoPersonal, @esAdmin)
+            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @accesoPresupuesto, @accesoPresupuestoMensual, @accesoPresupuestoAnual, @accesoPresupuestoRangos, @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @accesoPersonal, @esAdmin, @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual, @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias, @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones)
         `);
 
     const userId = userResult.recordset[0].Id;
@@ -689,7 +783,7 @@ async function createUser(email, nombre, clave, stores, canales, accesoTendencia
 /**
  * Update user (including PIN change)
  */
-async function updateUser(userId, email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId = null) {
+async function updateUser(userId, email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId = null, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones) {
     const pool = await poolPromise;
 
     // Protect superadmin user
@@ -720,6 +814,17 @@ async function updateUser(userId, email, nombre, activo, clave, stores, canales,
             AccesoTiempos = @accesoTiempos, AccesoEvaluaciones = @accesoEvaluaciones, AccesoInventarios = @accesoInventarios, AccesoPersonal = @accesoPersonal,
             EsAdmin = @esAdmin, PermitirEnvioClave = @permitirEnvioClave,
             PerfilId = @perfilId,
+            accesoModeloPresupuesto = @accesoModeloPresupuesto,
+            verConfigModelo = @verConfigModelo,
+            verConsolidadoMensual = @verConsolidadoMensual,
+            verAjustePresupuesto = @verAjustePresupuesto,
+            verVersiones = @verVersiones,
+            verBitacora = @verBitacora,
+            verReferencias = @verReferencias,
+            editarConsolidado = @editarConsolidado,
+            ejecutarRecalculo = @ejecutarRecalculo,
+            ajustarCurva = @ajustarCurva,
+            restaurarVersiones = @restaurarVersiones,
             FechaModificacion = GETDATE()
     `;
     const request = pool.request()
@@ -740,7 +845,18 @@ async function updateUser(userId, email, nombre, activo, clave, stores, canales,
         .input('accesoPersonal', sql.Bit, accesoPersonal)
         .input('esAdmin', sql.Bit, esAdmin)
         .input('permitirEnvioClave', sql.Bit, permitirEnvioClave !== undefined ? permitirEnvioClave : true)
-        .input('perfilId', sql.Int, perfilId);
+        .input('perfilId', sql.Int, perfilId)
+        .input('accesoModeloPresupuesto', sql.Bit, accesoModeloPresupuesto || false)
+        .input('verConfigModelo', sql.Bit, verConfigModelo || false)
+        .input('verConsolidadoMensual', sql.Bit, verConsolidadoMensual || false)
+        .input('verAjustePresupuesto', sql.Bit, verAjustePresupuesto || false)
+        .input('verVersiones', sql.Bit, verVersiones || false)
+        .input('verBitacora', sql.Bit, verBitacora || false)
+        .input('verReferencias', sql.Bit, verReferencias || false)
+        .input('editarConsolidado', sql.Bit, editarConsolidado || false)
+        .input('ejecutarRecalculo', sql.Bit, ejecutarRecalculo || false)
+        .input('ajustarCurva', sql.Bit, ajustarCurva || false)
+        .input('restaurarVersiones', sql.Bit, restaurarVersiones || false);
 
     if (clave) {
         updateQuery += ', Clave = @clave';
@@ -824,6 +940,18 @@ async function getAllProfiles() {
         accesoEvaluaciones: p.AccesoEvaluaciones,
         accesoInventarios: p.AccesoInventarios,
         accesoPersonal: p.AccesoPersonal,
+        // Modelo Presupuesto
+        accesoModeloPresupuesto: p.accesoModeloPresupuesto || false,
+        verConfigModelo: p.verConfigModelo || false,
+        verConsolidadoMensual: p.verConsolidadoMensual || false,
+        verAjustePresupuesto: p.verAjustePresupuesto || false,
+        verVersiones: p.verVersiones || false,
+        verBitacora: p.verBitacora || false,
+        verReferencias: p.verReferencias || false,
+        editarConsolidado: p.editarConsolidado || false,
+        ejecutarRecalculo: p.ejecutarRecalculo || false,
+        ajustarCurva: p.ajustarCurva || false,
+        restaurarVersiones: p.restaurarVersiones || false,
         esAdmin: p.EsAdmin,
         permitirEnvioClave: p.PermitirEnvioClave,
         usuariosAsignados: p.UsuariosAsignados,

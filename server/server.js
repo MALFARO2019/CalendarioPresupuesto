@@ -50,6 +50,7 @@ const { ensureKpiAdminTables } = require('./kpiAdminDb');
 const { registerKpiAdminEndpoints } = require('./kpiAdmin_endpoints');
 const deployModule = require('./deploy');
 const { getAlcanceTableName, invalidateAlcanceTableCache } = require('./alcanceConfig');
+const registerModeloPresupuestoEndpoints = require('./modeloPresupuesto_endpoints');
 
 const app = express();
 const port = process.env.PORT || 80;
@@ -93,6 +94,11 @@ registerUberEatsEndpoints(app, authMiddleware);
 // INVGATE ENDPOINTS
 // ==========================================
 registerInvgateEndpoints(app, authMiddleware);
+
+// ==========================================
+// MODELO PRESUPUESTO ENDPOINTS
+// ==========================================
+registerModeloPresupuestoEndpoints(app, authMiddleware);
 
 // ==========================================
 // DEPLOY MANAGEMENT ENDPOINTS
@@ -401,6 +407,18 @@ app.post('/api/auth/admin-login', (req, res) => {
                 accesoEvaluaciones: false,
                 accesoInventarios: false,
                 accesoPersonal: false,
+                // Modelo Presupuesto
+                accesoModeloPresupuesto: true,
+                verConfigModelo: true,
+                verConsolidadoMensual: true,
+                verAjustePresupuesto: true,
+                verVersiones: true,
+                verBitacora: true,
+                verReferencias: true,
+                editarConsolidado: true,
+                ejecutarRecalculo: true,
+                ajustarCurva: true,
+                restaurarVersiones: true,
                 esAdmin: true,
                 esProtegido: false,
                 offlineAdmin: true
@@ -430,6 +448,18 @@ app.post('/api/auth/admin-login', (req, res) => {
                 accesoEvaluaciones: false,
                 accesoInventarios: false,
                 accesoPersonal: false,
+                // Modelo Presupuesto
+                accesoModeloPresupuesto: true,
+                verConfigModelo: true,
+                verConsolidadoMensual: true,
+                verAjustePresupuesto: true,
+                verVersiones: true,
+                verBitacora: true,
+                verReferencias: true,
+                editarConsolidado: true,
+                ejecutarRecalculo: true,
+                ajustarCurva: true,
+                restaurarVersiones: true,
                 esProtegido: false,
                 allowedStores: [],
                 allowedCanales: []
