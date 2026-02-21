@@ -144,7 +144,7 @@ app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
         );
 
         // Execute deploy
-        const result = await deployModule.deployToServer(serverIp, user, password, appDir);
+        const result = await deployModule.deployToServer(serverIp, user, password, appDir, version);
 
         // Update log entry with result
         deployModule.updateDeployEntry(entry.id, {
@@ -166,6 +166,32 @@ app.get('/api/deploy/setup-guide', authMiddleware, (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST run remote setup commands on target server
+app.post('/api/deploy/setup-remote', authMiddleware, async (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const { serverIp, user, password } = req.body;
+        if (!serverIp || !user || !password) {
+            return res.status(400).json({ error: 'Faltan parámetros: serverIp, user, password' });
+        }
+        const result = await deployModule.runRemoteSetupCommands(serverIp, user, password);
+        res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST run local setup commands
+app.post('/api/deploy/setup-local', authMiddleware, async (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const { serverIp } = req.body;
+        if (!serverIp) {
+            return res.status(400).json({ error: 'Falta parámetro: serverIp' });
+        }
+        const result = await deployModule.runLocalSetupCommands(serverIp);
+        res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // TEST ENDPOINT
 app.get('/api/test', (req, res) => {
     res.json({ message: 'Server is working!' });
@@ -173,7 +199,7 @@ app.get('/api/test', (req, res) => {
 
 app.get('/api/version-check', (req, res) => {
     res.json({
-        version: 'v2.0 - FIX',
+        version: deployModule.getCurrentVersion(),
         timestamp: new Date().toISOString(),
         env: 'production',
         db: dbManager.activeMode
