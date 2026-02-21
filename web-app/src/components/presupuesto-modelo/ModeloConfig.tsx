@@ -18,7 +18,7 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
     const [configs, setConfigs] = useState<ModeloConfigType[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
     // Form state
     const [showForm, setShowForm] = useState(false);
@@ -116,10 +116,9 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
     };
 
     const handleRecalc = async (config: ModeloConfigType) => {
-        if (!confirm(`¿Ejecutar recálculo para "${config.nombrePresupuesto}"? Esto puede tomar unos segundos.`)) return;
         try {
             setRecalcId(config.id);
-            setMessage(null);
+            setMessage({ type: 'info', text: `Recalculando "${config.nombrePresupuesto}"... esto puede tomar varios minutos.` });
             const result = await ejecutarRecalculo(config.nombrePresupuesto);
             setMessage({ type: 'success', text: `Recálculo completado: ${result.totalRegistros?.toLocaleString() || '—'} registros generados` });
             await loadConfigs();
@@ -129,7 +128,6 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
             setRecalcId(null);
         }
     };
-
     const handleToggleJob = async (config: ModeloConfigType) => {
         try {
             setTogglingJobId(config.id);
@@ -159,14 +157,22 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
         try {
             setLoadingVal(true);
             setMessage(null);
+            setValidacion([]);
             const data = await fetchValidacion(sel.nombrePresupuesto);
             setValidacion(data);
             if (data.length === 0) {
-                setMessage({ type: 'success', text: 'No hay datos para validar aún (tablas vacías o sin presupuesto calculado)' });
+                setMessage({ type: 'success', text: `✅ Validación completada para "${sel.nombrePresupuesto}": no se encontraron discrepancias entre el presupuesto diario y el consolidado mensual.` });
+            } else {
+                setMessage({ type: 'error', text: `⚠️ Se encontraron ${data.length} discrepancia(s) entre el presupuesto diario y el consolidado mensual.` });
             }
-        } catch {
+        } catch (err: any) {
             setValidacion([]);
-            setMessage({ type: 'success', text: 'No hay datos para validar aún. Ejecute primero un recálculo.' });
+            const errorMsg = err?.message || 'Error desconocido';
+            if (errorMsg.includes('Invalid object') || errorMsg.includes('does not exist')) {
+                setMessage({ type: 'info', text: 'No hay datos para validar aún. Ejecute primero un recálculo.' });
+            } else {
+                setMessage({ type: 'error', text: `Error al validar: ${errorMsg}` });
+            }
         } finally {
             setLoadingVal(false);
         }
@@ -246,8 +252,11 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
 
             {/* Messages */}
             {message && (
-                <div className={`p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                    {message.type === 'success' ? '✅' : '❌'} {message.text}
+                <div className={`p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
+                    message.type === 'info' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                        'bg-red-50 text-red-700 border border-red-200'
+                    }`}>
+                    {message.type === 'success' ? '✅' : message.type === 'info' ? '⏳' : '❌'} {message.text}
                 </div>
             )}
 

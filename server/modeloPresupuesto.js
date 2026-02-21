@@ -124,6 +124,34 @@ async function deleteConfig(id) {
  */
 async function ejecutarCalculo(usuario, codAlmacen = null, mes = null, nombrePresupuesto = null) {
     const pool = await poolPromise;
+
+    // Create a pre-calculation version snapshot if we know the presupuesto
+    if (nombrePresupuesto) {
+        try {
+            // Look up config to get TablaDestino
+            const configResult = await pool.request()
+                .input('nombre', sql.NVarChar(100), nombrePresupuesto)
+                .query(`SELECT TablaDestino FROM MODELO_PRESUPUESTO_CONFIG WHERE NombrePresupuesto = @nombre`);
+
+            const tablaDestino = configResult.recordset[0]?.TablaDestino || 'RSM_ALCANCE_DIARIO';
+
+            // Create snapshot before calculation
+            const versionReq = pool.request();
+            versionReq.timeout = 300000; // 5 min - snapshot can be large
+            versionReq.input('NombrePresupuesto', sql.NVarChar(100), nombrePresupuesto);
+            versionReq.input('TablaDestino', sql.NVarChar(100), tablaDestino);
+            versionReq.input('Usuario', sql.NVarChar(200), usuario);
+            versionReq.input('Origen', sql.NVarChar(50), 'Manual');
+            versionReq.input('Modo', sql.NVarChar(20), 'CREAR');
+            versionReq.input('Notas', sql.NVarChar(500), 'Pre-calculation snapshot');
+            await versionReq.execute('SP_VERSION_PRESUPUESTO');
+            console.log(`📸 Pre-calculation snapshot created for "${nombrePresupuesto}"`);
+        } catch (vErr) {
+            console.warn(`⚠️ Failed to create pre-calculation snapshot: ${vErr.message}`);
+            // Don't block the calculation if versioning fails
+        }
+    }
+
     const request = pool.request();
     request.timeout = 300000; // 5 minutes for full budget calculation
     request.input('Usuario', sql.NVarChar(200), usuario);
