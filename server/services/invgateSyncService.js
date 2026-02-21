@@ -59,6 +59,31 @@ class InvGateSyncService {
                         FieldValueRaw NVARCHAR(MAX) NULL,
                         CONSTRAINT UQ_TicketField UNIQUE (TicketID, FieldID)
                     );
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'InvgateViews')
+                    CREATE TABLE InvgateViews (
+                        ViewID        INT           PRIMARY KEY,
+                        Nombre        NVARCHAR(200) NOT NULL,
+                        SyncEnabled   BIT           NOT NULL DEFAULT 0,
+                        TotalTickets  INT           NOT NULL DEFAULT 0,
+                        ColumnsJSON   NVARCHAR(MAX) NULL,
+                        UltimaSync    DATETIME      NULL,
+                        CreatedAt     DATETIME      DEFAULT GETDATE()
+                    );
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'InvgateViewData')
+                    CREATE TABLE InvgateViewData (
+                        ID            INT IDENTITY(1,1) PRIMARY KEY,
+                        ViewID        INT           NOT NULL,
+                        TicketID      NVARCHAR(50)  NOT NULL,
+                        ColumnName    NVARCHAR(200) NOT NULL,
+                        ColumnValue   NVARCHAR(MAX) NULL,
+                        SyncedAt      DATETIME      DEFAULT GETDATE(),
+                        CONSTRAINT UQ_ViewTicketCol UNIQUE (ViewID, TicketID, ColumnName)
+                    );
+
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ViewData_ViewID')
+                    CREATE INDEX IX_ViewData_ViewID ON InvgateViewData(ViewID);
             `);
             this._tablesEnsured = true;
             console.log('✅ InvGate tables verified/created');
@@ -134,24 +159,34 @@ class InvGateSyncService {
         const errors = [];
 
         try {
-            console.log('🔄 Starting FULL synchronization with InvGate (v1 API)...');
+            console.log('🔄 Starting FULL synchronization with InvGate...');
+            await this.ensureTables();
 
             // Step 1: sync lookup tables
             await this.syncLookupTables();
 
-            // Step 2: fetch all incidents from enabled helpdesks
-            const tickets = await invgateService.getAllIncidents();
-            console.log(`  📊 Processing ${tickets.length} total incidents...`);
+            // Step 2: Sync data from enabled VIEWS (primary method)
+            const viewResult = await this.syncViewData();
+            totalProcessed += viewResult.totalProcessed;
+            totalNew += viewResult.totalNew;
+            totalUpdated += viewResult.totalUpdated;
+            if (viewResult.errors.length > 0) errors.push(...viewResult.errors);
 
-            for (const ticket of tickets) {
-                try {
-                    const result = await this.syncTicket(ticket);
-                    totalProcessed++;
-                    if (result.isNew) totalNew++; else totalUpdated++;
-                } catch (err) {
-                    errors.push({ ticketId: ticket.id || 'unknown', error: err.message });
-                    console.error(`  ❌ Ticket ${ticket.id}:`, err.message);
+            // Step 3: Also sync from enabled helpdesks (legacy/complementary)
+            try {
+                const tickets = await invgateService.getAllIncidents();
+                console.log(`  📊 Processing ${tickets.length} helpdesk incidents...`);
+                for (const ticket of tickets) {
+                    try {
+                        const result = await this.syncTicket(ticket);
+                        totalProcessed++;
+                        if (result.isNew) totalNew++; else totalUpdated++;
+                    } catch (err) {
+                        errors.push({ ticketId: ticket.id || 'unknown', error: err.message });
+                    }
                 }
+            } catch (hdErr) {
+                console.warn('  ⚠️ Helpdesk sync skipped:', hdErr.message);
             }
 
             const duration = Date.now() - startTime;
@@ -169,6 +204,131 @@ class InvGateSyncService {
             await this.logSync({ tipoSync: 'FULL', registrosProcesados: totalProcessed, registrosNuevos: totalNew, registrosActualizados: totalUpdated, estado: 'ERROR', mensajeError: err.message, tiempoEjecucionMs: duration, iniciadoPor: initiatedBy });
             throw err;
         }
+    }
+
+    // ================================================================
+    // SYNC VIEW DATA — create a dedicated table per view
+    // Table name: InvgateView_{viewId} (e.g. InvgateView_25)
+    // ================================================================
+    async syncViewData() {
+        let totalProcessed = 0, totalNew = 0, totalUpdated = 0;
+        const errors = [];
+        try {
+            const views = await this.getViewConfigs();
+            const enabledViews = views.filter(v => v.syncEnabled);
+            if (enabledViews.length === 0) {
+                console.log('  ℹ️ No enabled views to sync');
+                return { totalProcessed, totalNew, totalUpdated, errors };
+            }
+
+            const pool = await getInvgatePool();
+
+            for (const view of enabledViews) {
+                try {
+                    console.log(`  👁️ Syncing view "${view.nombre}" (ID: ${view.viewId})...`);
+                    const tickets = await invgateService.getAllIncidentsByView(view.viewId);
+                    console.log(`    📊 Got ${tickets.length} tickets from view ${view.viewId}`);
+
+                    if (tickets.length === 0) {
+                        console.log(`    ⚠️ No tickets, skipping table creation`);
+                        await this.updateViewSyncMeta(view.viewId, 0);
+                        continue;
+                    }
+
+                    const tableName = this._viewTableName(view.viewId);
+
+                    // Detect all columns from all tickets
+                    const columnSet = new Set();
+                    for (const ticket of tickets) {
+                        for (const key of Object.keys(ticket)) {
+                            columnSet.add(key);
+                        }
+                    }
+                    const columns = Array.from(columnSet);
+                    const safeColumns = columns.map(c => this._safeColumnName(c));
+
+                    // Drop and recreate table
+                    await pool.request().query(`
+                        IF OBJECT_ID('${tableName}', 'U') IS NOT NULL DROP TABLE [${tableName}];
+                    `);
+
+                    // Build CREATE TABLE with all columns as NVARCHAR(MAX)
+                    const colDefs = safeColumns.map(c => `[${c}] NVARCHAR(MAX) NULL`).join(',\n                        ');
+                    await pool.request().query(`
+                        CREATE TABLE [${tableName}] (
+                            [_RowId] INT IDENTITY(1,1) PRIMARY KEY,
+                            [_SyncedAt] DATETIME DEFAULT GETDATE(),
+                            ${colDefs}
+                        )
+                    `);
+                    console.log(`    🏗️ Created table [${tableName}] with ${safeColumns.length} columns`);
+
+                    // Insert all tickets
+                    let insertedCount = 0;
+                    for (const ticket of tickets) {
+                        try {
+                            const req = pool.request();
+                            const colNames = [];
+                            const paramNames = [];
+                            let paramIdx = 0;
+
+                            for (let i = 0; i < columns.length; i++) {
+                                const rawValue = ticket[columns[i]];
+                                const valueStr = rawValue === null || rawValue === undefined ? null
+                                    : typeof rawValue === 'object' ? JSON.stringify(rawValue)
+                                        : String(rawValue);
+                                const paramName = `p${paramIdx++}`;
+                                colNames.push(`[${safeColumns[i]}]`);
+                                paramNames.push(`@${paramName}`);
+                                req.input(paramName, sql.NVarChar(sql.MAX), valueStr);
+                            }
+
+                            await req.query(`
+                                INSERT INTO [${tableName}] (${colNames.join(', ')})
+                                VALUES (${paramNames.join(', ')})
+                            `);
+                            insertedCount++;
+                        } catch (insertErr) {
+                            // Log but don't fail the whole sync
+                            if (insertedCount === 0) console.error(`    ⚠️ Insert error:`, insertErr.message);
+                        }
+                    }
+
+                    totalProcessed += insertedCount;
+                    totalNew += insertedCount;
+
+                    // Update columns in InvgateViews config
+                    await pool.request()
+                        .input('viewId', sql.Int, view.viewId)
+                        .input('cols', sql.NVarChar(sql.MAX), JSON.stringify(safeColumns))
+                        .query('UPDATE InvgateViews SET ColumnsJSON = @cols WHERE ViewID = @viewId');
+
+                    await this.updateViewSyncMeta(view.viewId, insertedCount);
+                    console.log(`    ✅ View "${view.nombre}": ${insertedCount} rows inserted into [${tableName}]`);
+                } catch (viewErr) {
+                    console.error(`  ❌ View ${view.viewId} sync error:`, viewErr.message);
+                    errors.push({ viewId: view.viewId, error: viewErr.message });
+                }
+            }
+        } catch (err) {
+            console.error('❌ syncViewData error:', err.message);
+            errors.push({ error: err.message });
+        }
+        return { totalProcessed, totalNew, totalUpdated, errors };
+    }
+
+    /** Sanitize column name for SQL — remove special chars, limit length */
+    _safeColumnName(name) {
+        // Replace anything that's not alphanumeric or underscore
+        let safe = String(name).replace(/[^a-zA-Z0-9_áéíóúñÁÉÍÓÚÑ]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+        if (!safe) safe = 'Col';
+        if (/^\d/.test(safe)) safe = 'C_' + safe; // Can't start with number
+        return safe.substring(0, 128); // SQL Server max identifier length
+    }
+
+    /** Get table name for a view */
+    _viewTableName(viewId) {
+        return `InvgateView_${parseInt(viewId)}`;
     }
 
     // ================================================================
@@ -580,6 +740,113 @@ class InvGateSyncService {
             }
         }
         return { saved };
+    }
+
+    // ─── View management helpers ─────────────────────────────────
+
+    /** Get all configured views */
+    async getViewConfigs() {
+        await this.ensureTables();
+        try {
+            const pool = await getInvgatePool();
+            const result = await pool.request().query(
+                'SELECT ViewID, Nombre, SyncEnabled, TotalTickets, ColumnsJSON, UltimaSync FROM InvgateViews ORDER BY ViewID'
+            );
+            return result.recordset.map(r => ({
+                viewId: r.ViewID,
+                nombre: r.Nombre,
+                syncEnabled: !!r.SyncEnabled,
+                totalTickets: r.TotalTickets || 0,
+                columns: r.ColumnsJSON ? JSON.parse(r.ColumnsJSON) : [],
+                ultimaSync: r.UltimaSync
+            }));
+        } catch (e) {
+            console.warn('InvgateViews query error:', e.message);
+            return [];
+        }
+    }
+
+    /** Save/update a view configuration */
+    async saveView(viewId, nombre, columns = []) {
+        await this.ensureTables();
+        const pool = await getInvgatePool();
+        const columnsJson = JSON.stringify(columns);
+        await pool.request()
+            .input('viewId', sql.Int, viewId)
+            .input('nombre', sql.NVarChar, nombre)
+            .input('columnsJson', sql.NVarChar, columnsJson)
+            .query(`
+                MERGE InvgateViews AS target
+                USING (SELECT @viewId AS vid) AS src ON target.ViewID = src.vid
+                WHEN MATCHED THEN UPDATE SET
+                    Nombre = @nombre, ColumnsJSON = @columnsJson
+                WHEN NOT MATCHED THEN INSERT
+                    (ViewID, Nombre, ColumnsJSON, SyncEnabled) VALUES (@viewId, @nombre, @columnsJson, 0);
+            `);
+        return { viewId, nombre };
+    }
+
+    /** Delete a view configuration and its data table */
+    async deleteView(viewId) {
+        await this.ensureTables();
+        const pool = await getInvgatePool();
+        // Drop the per-view data table
+        const tableName = this._viewTableName(viewId);
+        await pool.request().query(`IF OBJECT_ID('${tableName}', 'U') IS NOT NULL DROP TABLE [${tableName}]`);
+        // Delete config
+        await pool.request()
+            .input('viewId', sql.Int, viewId)
+            .query('DELETE FROM InvgateViews WHERE ViewID = @viewId');
+    }
+
+    /** Toggle sync for a view */
+    async toggleView(viewId, enabled) {
+        await this.ensureTables();
+        const pool = await getInvgatePool();
+        await pool.request()
+            .input('viewId', sql.Int, viewId)
+            .input('enabled', sql.Bit, enabled ? 1 : 0)
+            .query('UPDATE InvgateViews SET SyncEnabled = @enabled WHERE ViewID = @viewId');
+    }
+
+    /** Update view sync metadata after a successful sync */
+    async updateViewSyncMeta(viewId, totalTickets) {
+        const pool = await getInvgatePool();
+        await pool.request()
+            .input('viewId', sql.Int, viewId)
+            .input('total', sql.Int, totalTickets)
+            .query('UPDATE InvgateViews SET TotalTickets = @total, UltimaSync = GETDATE() WHERE ViewID = @viewId');
+    }
+
+    /** Get synced data for a given view from its dedicated table */
+    async getViewData(viewId) {
+        const pool = await getInvgatePool();
+        const tableName = this._viewTableName(viewId);
+
+        // Check if table exists
+        const exists = await pool.request()
+            .query(`SELECT OBJECT_ID('${tableName}', 'U') AS tid`);
+        if (!exists.recordset[0]?.tid) {
+            return { viewId, tableName, columns: [], totalRows: 0, data: [] };
+        }
+
+        // Get columns (exclude internal _RowId and _SyncedAt)
+        const colResult = await pool.request()
+            .input('tbl', sql.NVarChar, tableName)
+            .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl AND COLUMN_NAME NOT LIKE '\\_%' ESCAPE '\\' ORDER BY ORDINAL_POSITION`);
+        const columns = colResult.recordset.map(r => r.COLUMN_NAME);
+
+        // Get data
+        const result = await pool.request().query(`SELECT * FROM [${tableName}] ORDER BY [_RowId]`);
+        const data = result.recordset.map(row => {
+            const clean = {};
+            for (const col of columns) {
+                clean[col] = row[col] || '';
+            }
+            return clean;
+        });
+
+        return { viewId, tableName, columns, totalRows: data.length, data };
     }
 }
 

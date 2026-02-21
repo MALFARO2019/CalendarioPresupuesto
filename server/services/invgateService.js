@@ -403,6 +403,126 @@ class InvGateService {
 
 
     // ================================================================
+    // VIEW-BASED API METHODS
+    // ================================================================
+
+    /**
+     * Get incidents by InvGate view (single page).
+     * Uses /incidents.details.by.view endpoint.
+     * Returns: { tickets: [...], totalCount, page, columns: [...] }
+     */
+    async getIncidentsByView(viewId, page = 1) {
+        try {
+            const data = await this.makeRequest('/incidents.details.by.view', 'GET', null, {
+                view_id: viewId,
+                page: page
+            });
+            if (!data || typeof data !== 'object') {
+                return { tickets: [], totalCount: 0, page, columns: [] };
+            }
+
+            // Normalize response — InvGate v1 may return object {id: ticketData} or array
+            let tickets = [];
+            if (Array.isArray(data)) {
+                tickets = data;
+            } else if (data.data && Array.isArray(data.data)) {
+                tickets = data.data;
+            } else if (data.error) {
+                throw new Error(`InvGate view error: ${data.error}`);
+            } else {
+                // Object format {id: {...}, id2: {...}}
+                tickets = Object.entries(data).map(([id, ticket]) => ({
+                    ...ticket,
+                    id: parseInt(id)
+                }));
+            }
+
+            // Auto-detect columns from first ticket
+            const columns = [];
+            if (tickets.length > 0) {
+                const sample = tickets[0];
+                for (const key of Object.keys(sample)) {
+                    if (key.startsWith('_')) continue; // skip internal fields
+                    columns.push(key);
+                }
+            }
+
+            return {
+                tickets,
+                totalCount: data.total || data.count || tickets.length,
+                page,
+                columns
+            };
+        } catch (err) {
+            console.error(`❌ Error getting incidents by view ${viewId}:`, err.message);
+            throw err;
+        }
+    }
+
+    /**
+     * Preview a view — returns first page of data with detected columns.
+     * Used in the admin UI to let the user see what a view contains before enabling sync.
+     */
+    async getViewPreview(viewId) {
+        const result = await this.getIncidentsByView(viewId, 1);
+        // Limit to first 10 rows for preview
+        const previewTickets = result.tickets.slice(0, 10);
+
+        // Build column info with sample values
+        const columnInfo = result.columns.map(col => {
+            const samples = previewTickets
+                .map(t => {
+                    const val = t[col];
+                    if (val === null || val === undefined) return null;
+                    if (typeof val === 'object') return JSON.stringify(val);
+                    return String(val);
+                })
+                .filter(v => v !== null)
+                .slice(0, 3);
+            return { name: col, sampleValues: samples };
+        });
+
+        return {
+            viewId,
+            totalCount: result.totalCount,
+            previewRows: previewTickets.length,
+            columns: columnInfo,
+            data: previewTickets
+        };
+    }
+
+    /**
+     * Get ALL incidents from a view (paginated fetch).
+     * Used during sync to get complete data set.
+     */
+    async getAllIncidentsByView(viewId) {
+        const allTickets = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+            console.log(`  📄 View ${viewId}: fetching page ${page}...`);
+            const result = await this.getIncidentsByView(viewId, page);
+            allTickets.push(...result.tickets);
+
+            // Stop if we got fewer tickets than expected or empty page
+            if (result.tickets.length === 0) {
+                hasMore = false;
+            } else {
+                // InvGate v1 typically returns 100 per page
+                hasMore = result.tickets.length >= 100;
+                page++;
+            }
+
+            // Rate limit protection
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        console.log(`  ✅ View ${viewId}: total ${allTickets.length} incidents fetched`);
+        return allTickets;
+    }
+
+    // ================================================================
     // CONNECTION TEST
     // ================================================================
 

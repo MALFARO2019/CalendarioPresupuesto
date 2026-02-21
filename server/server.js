@@ -44,11 +44,12 @@ const personalModule = require('./personal');
 const { ensureUberEatsTables } = require('./uberEatsDb');
 const uberEatsCron = require('./jobs/uberEatsCron');
 const registerUberEatsEndpoints = require('./uberEats_endpoints');
+const registerInvgateEndpoints = require('./invgate_endpoints');
 const spEventsService = require('./services/sharepointEventsService');
 const { ensureKpiAdminTables } = require('./kpiAdminDb');
 const { registerKpiAdminEndpoints } = require('./kpiAdmin_endpoints');
 const deployModule = require('./deploy');
-
+const { getAlcanceTableName, invalidateAlcanceTableCache } = require('./alcanceConfig');
 
 const app = express();
 const port = process.env.PORT || 80;
@@ -87,6 +88,11 @@ registerKpiAdminEndpoints(app, authMiddleware);
 // UBER EATS ENDPOINTS
 // ==========================================
 registerUberEatsEndpoints(app, authMiddleware);
+
+// ==========================================
+// INVGATE ENDPOINTS
+// ==========================================
+registerInvgateEndpoints(app, authMiddleware);
 
 // ==========================================
 // DEPLOY MANAGEMENT ENDPOINTS
@@ -1114,6 +1120,8 @@ app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
                 WHEN MATCHED THEN UPDATE SET Valor = @valor, FechaModificacion = GETDATE(), UsuarioModificacion = @usuario
                 WHEN NOT MATCHED THEN INSERT (Clave, Valor, FechaModificacion, UsuarioModificacion) VALUES (@clave, @valor, GETDATE(), @usuario);
             `);
+        // Invalidate alcance table cache if this key was changed
+        if (req.params.key === 'ALCANCE_TABLE_NAME') invalidateAlcanceTableCache();
         res.json({ success: true });
     } catch (err) {
         console.error('Error in PUT /api/admin/config:', err);
@@ -1129,6 +1137,7 @@ app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
 app.get('/api/budget', authMiddleware, async (req, res) => {
     try {
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const year = parseInt(req.query.year) || 2026;
         const local = req.query.local;
         let canal = req.query.canal || 'Todos';
@@ -1181,7 +1190,7 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
             if (memberCodes.length > 0) {
                 const localsQuery = `
                     SELECT DISTINCT Local
-                    FROM RSM_ALCANCE_DIARIO
+                    FROM ${alcanceTable}
                     WHERE Año = @year
                     AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
                     AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
@@ -1242,7 +1251,7 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
                 SUM(MontoAnterior_Acumulado) AS MontoAnterior_Acumulado, 
                 SUM(MontoAnteriorAjustado) AS MontoAnteriorAjustado, 
                 SUM(MontoAnteriorAjustado_Acumulado) AS MontoAnteriorAjustado_Acumulado
-            FROM RSM_ALCANCE_DIARIO 
+            FROM ${alcanceTable} 
             WHERE Año = @year AND ${localFilter} AND ${canalFilter} AND Tipo = @tipo
                 AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
                 ${dateFilter}
@@ -1297,7 +1306,8 @@ app.get('/api/stores', authMiddleware, async (req, res) => {
         console.log('ðŸ“‹ Official group names from GRUPOSALMACENCAB:', Array.from(officialGroupNames));
 
         // Then get all locals from budget data
-        let localsQuery = 'SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026';
+        const alcanceTable = await getAlcanceTableName(pool);
+        let localsQuery = `SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026`;
 
         if (userStores.length > 0) {
             // User has specific store permissions
@@ -1343,7 +1353,8 @@ app.get('/api/stores', authMiddleware, async (req, res) => {
 app.get('/api/test-stores', async (req, res) => {
     try {
         const pool = await poolPromise;
-        const query = 'SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026 ORDER BY Local';
+        const alcanceTable = await getAlcanceTableName(pool);
+        const query = `SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026 ORDER BY Local`;
         const result = await pool.request().query(query);
         const allLocals = result.recordset.map(r => r.Local);
 
@@ -1374,9 +1385,10 @@ app.get('/api/stores-v2', authMiddleware, async (req, res) => {
         const currentMonth = new Date().getMonth() + 1; // 1-12
 
         // Query to get groups: Local with CODALMACEN starting with 'G'
+        const alcanceTable = await getAlcanceTableName(pool);
         let groupsQuery = `
             SELECT DISTINCT Local
-            FROM RSM_ALCANCE_DIARIO 
+            FROM ${alcanceTable} 
             WHERE Año = 2026 
             AND Canal = 'Todos' 
             AND Tipo = 'Ventas' 
@@ -1385,7 +1397,7 @@ app.get('/api/stores-v2', authMiddleware, async (req, res) => {
         `;
 
         // Query to get all locals
-        let allLocalsQuery = `SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026`;
+        let allLocalsQuery = `SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026`;
 
         if (userStores.length > 0) {
             // User has specific store permissions
@@ -1455,7 +1467,7 @@ app.get('/api/group-stores/:groupName', authMiddleware, async (req, res) => {
         console.log(`ðŸ” Looking up group members for: "${groupName}"`);
 
         // Step 1: Find the IDGRUPO from GRUPOSALMACENCAB using the group name
-        // The Local name in RSM_ALCANCE_DIARIO matches DESCRIPCION in GRUPOSALMACENCAB
+        // The Local name in the alcance table matches DESCRIPCION in GRUPOSALMACENCAB
         const idGrupoQuery = `
             SELECT GA.IDGRUPO, GA.DESCRIPCION
             FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENCAB GA
@@ -1497,10 +1509,11 @@ app.get('/api/group-stores/:groupName', authMiddleware, async (req, res) => {
             return res.json({ stores: [] });
         }
 
-        // Step 3: Map member CODALMACEN to Local names via RSM_ALCANCE_DIARIO
+        // Step 3: Map member CODALMACEN to Local names via alcance table
+        const alcanceTable = await getAlcanceTableName(pool);
         const storesQuery = `
             SELECT DISTINCT Local
-            FROM RSM_ALCANCE_DIARIO
+            FROM ${alcanceTable}
             WHERE Año = 2026
             AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
             ORDER BY Local
@@ -1527,8 +1540,9 @@ app.get('/api/all-stores', authMiddleware, async (req, res) => {
     try {
         // No permission check needed - all authenticated users can see stores
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const result = await pool.request()
-            .query('SELECT DISTINCT Local FROM RSM_ALCANCE_DIARIO WHERE Año = 2026 ORDER BY Local');
+            .query(`SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026 ORDER BY Local`);
         const stores = result.recordset.map(r => r.Local);
         res.json(stores);
     } catch (err) {
@@ -1541,8 +1555,9 @@ app.get('/api/all-stores', authMiddleware, async (req, res) => {
 app.get('/api/columns', async (req, res) => {
     try {
         const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
         const result = await pool.request()
-            .query("SELECT TOP 1 * FROM RSM_ALCANCE_DIARIO WHERE Año = 2026");
+            .query(`SELECT TOP 1 * FROM ${alcanceTable} WHERE Año = 2026`);
 
         if (result.recordset.length > 0) {
             res.json({
@@ -1584,9 +1599,10 @@ app.get('/api/fecha-limite', authMiddleware, async (req, res) => {
         const pool = await poolPromise;
         const year = parseInt(req.query.year) || 2026;
 
+        const alcanceTable = await getAlcanceTableName(pool);
         const result = await pool.request()
             .input('year', sql.Int, year)
-            .query('SELECT MAX(Fecha) as FechaLimite FROM RSM_ALCANCE_DIARIO WHERE MontoReal > 0 AND Año = @year');
+            .query(`SELECT MAX(Fecha) as FechaLimite FROM ${alcanceTable} WHERE MontoReal > 0 AND Año = @year`);
 
         const fechaLimite = result.recordset[0]?.FechaLimite;
         if (fechaLimite) {
@@ -2134,6 +2150,8 @@ app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
             `);
 
         console.log(`âœ… Config '${req.params.key}' updated by ${req.user.email}`);
+        // Invalidate alcance table cache if this key was changed
+        if (req.params.key === 'ALCANCE_TABLE_NAME') invalidateAlcanceTableCache();
         res.json({ success: true });
     } catch (err) {
         console.error('Error in PUT /api/admin/config:', err);
@@ -2788,6 +2806,71 @@ app.get('/api/invgate/sync-logs', authMiddleware, async (req, res) => {
         res.json(logs);
     } catch (err) {
         console.error('Error getting sync logs:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── InvGate Views Management ─────────────────────────────────────
+
+// GET /api/invgate/views - List configured views
+app.get('/api/invgate/views', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const views = await invgateSyncService.getViewConfigs();
+        res.json(views);
+    } catch (err) {
+        console.error('Error getting InvGate views:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/invgate/views - Add a new view
+app.post('/api/invgate/views', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { viewId, nombre, columns } = req.body;
+        if (!viewId || !nombre) return res.status(400).json({ error: 'viewId y nombre son requeridos' });
+        const result = await invgateSyncService.saveView(parseInt(viewId), nombre, columns || []);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Error saving InvGate view:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/invgate/views/:id - Delete a view
+app.delete('/api/invgate/views/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        await invgateSyncService.deleteView(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error deleting InvGate view:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/invgate/views/:id/toggle - Enable/disable sync for a view
+app.put('/api/invgate/views/:id/toggle', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const { enabled } = req.body;
+        await invgateSyncService.toggleView(parseInt(req.params.id), enabled);
+        res.json({ success: true, viewId: parseInt(req.params.id), enabled });
+    } catch (err) {
+        console.error('Error toggling InvGate view:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/invgate/views/:id/preview - Preview data from a view (live from InvGate API)
+app.get('/api/invgate/views/:id/preview', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        const preview = await invgateService.getViewPreview(parseInt(req.params.id));
+        res.json(preview);
+    } catch (err) {
+        console.error('Error previewing InvGate view:', err);
         res.status(500).json({ error: err.message });
     }
 });

@@ -26,6 +26,8 @@ import { PersonalManagement } from './PersonalManagement';
 import { UberEatsAdmin } from './uber-eats/UberEatsAdmin';
 import { KpiAdminPage } from './KpiAdminPage';
 import { DeployManagement } from './deploy/DeployManagement';
+import { UserProfilesReport } from './UserProfilesReport';
+import { GeneralSettings } from './GeneralSettings';
 
 interface AdminPageProps {
     onBack: () => void;
@@ -74,7 +76,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
 
     // Auto-select tab based on permissions: if user has eventos but not admin, default to eventos
     const defaultTab = isOfflineAdmin ? 'database' : (canAccessUsers ? 'users' : 'events');
-    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy'>(defaultTab);
+    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [allStores, setAllStores] = useState<string[]>([]);
@@ -492,12 +494,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             {canAccessUsers && <option value="personal">👥 Personal</option>}
                             {canAccessEvents && <option value="events">📅 Eventos</option>}
                             {canAccessUsers && <option value="ia">🤖 IA Táctica</option>}
+                            {canAccessUsers && <option value="general">⚙️ General</option>}
                             {canAccessUsers && <option value="database">🗄️ Base de Datos</option>}
                             {canAccessUsers && <option value="invgate">🎫 InvGate</option>}
                             {canAccessUsers && <option value="forms">📋 Forms</option>}
                             {canAccessUsers && <option value="uber-eats">🍔 Uber Eats</option>}
                             {canAccessUsers && <option value="kpi-admin">📊 Admin KPIs</option>}
                             {canAccessUsers && <option value="deploy">🚀 Publicación</option>}
+
                         </select>
                     </div>
                 </div>
@@ -525,6 +529,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                 Personal
                             </button>
                         )}
+
 
                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-3 pt-3 pb-1.5">Integraciones</div>
                         {canAccessEvents && (
@@ -555,6 +560,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                         )}
 
                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-3 pt-3 pb-1.5">Sistema</div>
+                        {canAccessUsers && (
+                            <button onClick={() => setActiveTab('general')}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'general' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                General
+                            </button>
+                        )}
                         {canAccessUsers && (
                             <button onClick={() => setActiveTab('ia')}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'ia' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
@@ -1453,7 +1465,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                         ) : activeTab === 'database' ? (
                             <DatabaseConfigPanel />
                         ) : activeTab === 'profiles' ? (
-                            <ProfilesManagement users={users} onUserUpdate={loadData} />
+                            <>
+                                <ProfilesManagement users={users} onUserUpdate={loadData} />
+                                <div className="mt-8">
+                                    <UserProfilesReport users={users} profiles={profiles} />
+                                </div>
+                            </>
                         ) : activeTab === 'invgate' ? (
                             <InvgateAdmin />
                         ) : activeTab === 'forms' ? (
@@ -1466,6 +1483,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             <KpiAdminPage />
                         ) : activeTab === 'deploy' ? (
                             <DeployManagement />
+
+                        ) : activeTab === 'general' ? (
+                            <GeneralSettings />
                         ) : (
                             /* T&E (Táctica y Estrategia) Tab */
                             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">

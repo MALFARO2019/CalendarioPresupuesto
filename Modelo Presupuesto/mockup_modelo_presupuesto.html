@@ -1,0 +1,1704 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockup — Modelo de Presupuesto</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #f1f5f9;
+            color: #1e293b
+        }
+
+        .app {
+            display: flex;
+            min-height: 100vh
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 210px;
+            background: #fafbfc;
+            border-right: 1px solid #e2e8f0;
+            padding: 12px 8px;
+            flex-shrink: 0;
+            overflow-y: auto
+        }
+
+        .sidebar h2 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            letter-spacing: 1px;
+            padding: 8px 12px 4px;
+            font-weight: 700
+        }
+
+        .sidebar button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 9px 12px;
+            border: none;
+            background: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            text-align: left;
+            transition: all .15s
+        }
+
+        .sidebar button:hover {
+            background: #f1f5f9
+        }
+
+        .sidebar button.active {
+            background: #eef2ff;
+            color: #4f46e5;
+            font-weight: 600
+        }
+
+        .sidebar .section-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 16px 12px 4px
+        }
+
+        /* Header */
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: rgba(255, 255, 255, .92);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid #e2e8f0;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px
+        }
+
+        .header .back {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f1f5f9;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            color: #64748b;
+            font-size: 18px
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0f172a
+        }
+
+        .header p {
+            font-size: 11px;
+            color: #94a3b8
+        }
+
+        /* Main */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column
+        }
+
+        .content {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 2px;
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 24px;
+            overflow-x: auto
+        }
+
+        .tabs button {
+            padding: 10px 16px;
+            border: none;
+            background: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all .15s
+        }
+
+        .tabs button:hover {
+            color: #4f46e5
+        }
+
+        .tabs button.active {
+            background: #fff;
+            color: #4f46e5;
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .08)
+        }
+
+        /* Cards */
+        .card {
+            background: #fff;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .04)
+        }
+
+        .card h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px
+        }
+
+        .config-item {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 16px
+        }
+
+        .config-item label {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #94a3b8;
+            letter-spacing: .5px;
+            margin-bottom: 6px
+        }
+
+        .config-item .value {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1e293b
+        }
+
+        .config-item select,
+        .config-item input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #fff;
+            color: #1e293b;
+            font-weight: 500
+        }
+
+        .config-item select:focus,
+        .config-item input:focus {
+            border-color: #818cf8;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(129, 140, 248, .15)
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all .15s
+        }
+
+        .btn-primary {
+            background: #4f46e5;
+            color: #fff
+        }
+
+        .btn-primary:hover {
+            background: #4338ca
+        }
+
+        .btn-success {
+            background: #059669;
+            color: #fff
+        }
+
+        .btn-success:hover {
+            background: #047857
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: #fff
+        }
+
+        .btn-danger:hover {
+            background: #b91c1c
+        }
+
+        .btn-outline {
+            background: #fff;
+            color: #64748b;
+            border: 1px solid #e2e8f0
+        }
+
+        .btn-outline:hover {
+            background: #f8fafc
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+            border-radius: 8px
+        }
+
+        /* Status bar */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 10px;
+            font-size: 13px;
+            color: #166534;
+            margin-bottom: 16px
+        }
+
+        .status-bar.warning {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px
+        }
+
+        th {
+            text-align: left;
+            padding: 10px 12px;
+            background: #f8fafc;
+            color: #64748b;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            border-bottom: 2px solid #e2e8f0
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f1f5f9;
+            color: #334155
+        }
+
+        tr:hover {
+            background: #fafbff
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600
+        }
+
+        .badge-green {
+            background: #dcfce7;
+            color: #166534
+        }
+
+        .badge-blue {
+            background: #dbeafe;
+            color: #1e40af
+        }
+
+        .badge-amber {
+            background: #fef3c7;
+            color: #92400e
+        }
+
+        .badge-red {
+            background: #fee2e2;
+            color: #991b1b
+        }
+
+        /* Grid editable */
+        .grid-table {
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden
+        }
+
+        .grid-table table {
+            margin: 0
+        }
+
+        .grid-table th {
+            background: #eef2ff;
+            color: #4f46e5;
+            font-size: 12px
+        }
+
+        .grid-table td {
+            padding: 0
+        }
+
+        .grid-table td input {
+            width: 100%;
+            padding: 10px 12px;
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: #1e293b;
+            text-align: right;
+            font-family: inherit
+        }
+
+        .grid-table td input:focus {
+            background: #eef2ff;
+            outline: none
+        }
+
+        .grid-table .total-row {
+            background: #f8fafc;
+            font-weight: 700
+        }
+
+        .grid-table .total-row td {
+            padding: 10px 12px;
+            font-weight: 700;
+            color: #4f46e5
+        }
+
+        /* Filters row */
+        .filters {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            align-items: end
+        }
+
+        .filter-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px
+        }
+
+        .filter-item label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #94a3b8;
+            letter-spacing: .5px
+        }
+
+        .filter-item select,
+        .filter-item input[type=text] {
+            padding: 8px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 13px;
+            background: #fff;
+            min-width: 150px
+        }
+
+        /* Chart placeholder */
+        .chart-area {
+            background: linear-gradient(135deg, #eef2ff 0%, #f0fdf4 50%, #fefce8 100%);
+            border: 2px dashed #c7d2fe;
+            border-radius: 16px;
+            height: 320px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 20px
+        }
+
+        .chart-area .chart-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #4f46e5;
+            margin-bottom: 8px
+        }
+
+        .chart-area .chart-desc {
+            font-size: 12px;
+            color: #64748b;
+            text-align: center;
+            max-width: 400px
+        }
+
+        /* Fake chart lines */
+        .chart-lines {
+            position: absolute;
+            inset: 40px 20px 60px;
+            display: flex;
+            align-items: flex-end
+        }
+
+        .chart-line {
+            position: absolute;
+            left: 0;
+            right: 0
+        }
+
+        .line-real {
+            bottom: 65%;
+            height: 3px;
+            background: linear-gradient(90deg, #059669, #10b981, #34d399, #059669, #10b981);
+            border-radius: 2px;
+            opacity: .7
+        }
+
+        .line-ppto {
+            bottom: 55%;
+            height: 3px;
+            background: linear-gradient(90deg, #4f46e5, #818cf8, #a5b4fc, #4f46e5);
+            border-radius: 2px;
+            opacity: .5
+        }
+
+        .line-ant {
+            bottom: 45%;
+            height: 2px;
+            background: linear-gradient(90deg, #f59e0b, #fbbf24, #fcd34d, #f59e0b);
+            border-radius: 2px;
+            opacity: .4;
+            border: 1px dashed #f59e0b;
+            background: none
+        }
+
+        .area-fill {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            top: 40%;
+            background: linear-gradient(180deg, rgba(79, 70, 229, .08) 0%, rgba(79, 70, 229, .02) 100%);
+            border-top: 2px solid rgba(79, 70, 229, .3);
+            border-radius: 0 0 14px 14px
+        }
+
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 12px
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 500
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px
+        }
+
+        /* Check list */
+        .check-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 0
+        }
+
+        .check-row input[type=checkbox] {
+            width: 16px;
+            height: 16px;
+            accent-color: #4f46e5
+        }
+
+        .check-row span {
+            font-size: 13px;
+            color: #475569
+        }
+
+        /* Adjustment panel */
+        .adjust-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            padding: 16px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0
+        }
+
+        .adjust-panel .full {
+            grid-column: 1/-1
+        }
+
+        /* Radio group */
+        .radio-group {
+            display: flex;
+            gap: 12px
+        }
+
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: #475569;
+            cursor: pointer
+        }
+
+        .radio-group input {
+            accent-color: #4f46e5
+        }
+
+        /* Timeline */
+        .timeline-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid #f1f5f9
+        }
+
+        .timeline-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-top: 6px;
+            flex-shrink: 0
+        }
+
+        .timeline-content {
+            flex: 1
+        }
+
+        .timeline-header {
+            font-size: 12px;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 2px
+        }
+
+        .timeline-meta {
+            font-size: 11px;
+            color: #94a3b8
+        }
+
+        .timeline-detail {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 4px;
+            padding: 8px;
+            background: #f8fafc;
+            border-radius: 8px
+        }
+
+        /* Impact bar */
+        .impact-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            border-radius: 10px;
+            margin-top: 12px
+        }
+
+        .impact-bar .impact-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #4f46e5
+        }
+
+        .impact-bar .impact-value {
+            font-size: 14px;
+            font-weight: 700;
+            color: #059669
+        }
+
+        /* Responsive */
+        @media(max-width:768px) {
+            .app {
+                flex-direction: column
+            }
+
+            .sidebar {
+                width: 100%;
+                flex-direction: row;
+                overflow-x: auto;
+                padding: 8px;
+                border-right: none;
+                border-bottom: 1px solid #e2e8f0;
+                display: none
+            }
+
+            .card-grid {
+                grid-template-columns: 1fr
+            }
+
+            .adjust-panel {
+                grid-template-columns: 1fr
+            }
+
+            .filters {
+                flex-direction: column
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <h2>Personas</h2>
+            <button>👤 Usuarios</button>
+            <button>🛡️ Perfiles</button>
+            <button>👥 Personal</button>
+            <div class="section-label">Integraciones</div>
+            <button>📅 Eventos</button>
+            <button>🎫 InvGate</button>
+            <button>📋 Forms</button>
+            <button>🍔 Uber Eats</button>
+            <div class="section-label">Sistema</div>
+            <button>⚙️ General</button>
+            <button>🤖 IA Táctica</button>
+            <button>🗄️ Base de Datos</button>
+            <button class="active">📊 Modelo Presupuesto</button>
+            <button>📈 Admin KPIs</button>
+            <button>🚀 Publicación</button>
+        </nav>
+
+        <div class="main">
+            <!-- Header -->
+            <div class="header">
+                <button class="back">←</button>
+                <div>
+                    <h1>Panel de Configuración</h1>
+                    <p>Administrar usuarios, integraciones y sistema</p>
+                </div>
+            </div>
+
+            <div class="content">
+                <h2
+                    style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+                    📊 Modelo de Presupuesto</h2>
+
+                <!-- Sub-tabs -->
+                <div class="tabs" id="mainTabs">
+                    <button class="active" onclick="showView('config')">⚙️ Configuración</button>
+                    <button onclick="showView('consolidado')">📋 Consolidado Mensual</button>
+                    <button onclick="showView('ajuste')">📈 Ajuste Presupuesto</button>
+                    <button onclick="showView('versiones')">🕐 Versiones</button>
+                    <button onclick="showView('bitacora')">📝 Bitácora</button>
+                    <button onclick="showView('referencias')">🔗 Referencias</button>
+                </div>
+
+                <!-- ===================== VIEW 1: CONFIG ===================== -->
+                <div id="view-config" class="view">
+                    <div class="status-bar">
+                        ✅ Último cálculo: <strong>20 Feb 2026 06:00</strong> por <strong>JOB automático</strong> —
+                        156,420 registros generados
+                    </div>
+
+                    <div class="card-grid">
+                        <div class="config-item">
+                            <label>📝 Nombre del Presupuesto</label>
+                            <input type="text" value="Presupuesto 2026">
+                        </div>
+                        <div class="config-item">
+                            <label>📅 Año del Modelo</label>
+                            <input type="number" value="2026" min="2024" max="2030">
+                        </div>
+                        <div class="config-item">
+                            <label>🗄️ Tabla Destino</label>
+                            <select>
+                                <option selected>RSM_ALCANCE_DIARIO</option>
+                                <option>RSM_ALCANCE_DIARIO_TEST</option>
+                            </select>
+                        </div>
+                        <div class="config-item">
+                            <label>⏰ Hora de Cálculo Automático</label>
+                            <input type="time" value="06:00">
+                        </div>
+                    </div>
+
+                    <div style="display:flex;gap:8px;margin-bottom:24px">
+                        <button class="btn btn-primary">🔄 Ejecutar Recálculo</button>
+                        <button class="btn btn-success">💾 Guardar Configuración</button>
+                    </div>
+
+                    <div class="card">
+                        <h3>📊 Validación de Integridad</h3>
+                        <p style="font-size:12px;color:#64748b;margin-bottom:12px">Compara las sumatorias mensuales del
+                            modelo contra KpisRosti_Consolidado_Mensual</p>
+                        <div class="grid-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Local</th>
+                                        <th>Mes</th>
+                                        <th>Canal</th>
+                                        <th>Tipo</th>
+                                        <th>Consolidado</th>
+                                        <th>Modelo</th>
+                                        <th>Diferencia</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Alajuela S01</td>
+                                        <td>Enero</td>
+                                        <td>Salón</td>
+                                        <td>Ventas</td>
+                                        <td style="text-align:right">₡12,500,000</td>
+                                        <td style="text-align:right">₡12,500,000</td>
+                                        <td style="text-align:right;color:#059669">₡0</td>
+                                        <td><span class="badge badge-green">✅ OK</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Alajuela S01</td>
+                                        <td>Enero</td>
+                                        <td>Llevar</td>
+                                        <td>Ventas</td>
+                                        <td style="text-align:right">₡8,200,000</td>
+                                        <td style="text-align:right">₡8,200,000</td>
+                                        <td style="text-align:right;color:#059669">₡0</td>
+                                        <td><span class="badge badge-green">✅ OK</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Alajuela S01</td>
+                                        <td>Enero</td>
+                                        <td>AutoPollo</td>
+                                        <td>Ventas</td>
+                                        <td style="text-align:right">₡3,100,000</td>
+                                        <td style="text-align:right">₡3,100,000</td>
+                                        <td style="text-align:right;color:#059669">₡0</td>
+                                        <td><span class="badge badge-green">✅ OK</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Alajuela S01</td>
+                                        <td>Febrero</td>
+                                        <td>Salón</td>
+                                        <td>Ventas</td>
+                                        <td style="text-align:right">₡11,800,000</td>
+                                        <td style="text-align:right">₡11,800,000</td>
+                                        <td style="text-align:right;color:#059669">₡0</td>
+                                        <td><span class="badge badge-green">✅ OK</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Lincoln S32</td>
+                                        <td>Enero</td>
+                                        <td>Todos</td>
+                                        <td>Transacc.</td>
+                                        <td style="text-align:right">45,320</td>
+                                        <td style="text-align:right">45,320</td>
+                                        <td style="text-align:right;color:#059669">0</td>
+                                        <td><span class="badge badge-green">✅ OK</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Permissions Reference Panel -->
+                    <div class="card" style="margin-top:20px;border:2px solid #c7d2fe">
+                        <h3 style="font-size:14px;margin-bottom:12px">🔐 Permisos del Módulo <span
+                                style="font-size:11px;font-weight:400;color:#94a3b8">(se configuran en Usuarios y
+                                Perfiles)</span></h3>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                            <!-- View permissions -->
+                            <div style="background:#f8fafc;border-radius:10px;padding:12px;border:1px solid #e2e8f0">
+                                <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:8px">📋
+                                    Visibilidad de Tabs</div>
+                                <div style="display:flex;flex-direction:column;gap:6px">
+                                    <label style="font-size:12px;display:flex;align-items:center;gap:8px"><input
+                                            type="checkbox" checked style="accent-color:#4f46e5"> <span
+                                            style="font-weight:600">accesoModeloPresupuesto</span> <span
+                                            style="color:#94a3b8;font-size:10px">— Acceso general</span></label>
+                                    <label
+                                        style="font-size:12px;display:flex;align-items:center;gap:8px;margin-left:16px"><input
+                                            type="checkbox" checked> <span>verConfigModelo</span> <span
+                                            style="color:#94a3b8;font-size:10px">→ ⚙️ Configuración</span></label>
+                                    <label
+                                        style="font-size:12px;display:flex;align-items:center;gap:8px;margin-left:16px"><input
+                                            type="checkbox" checked> <span>verConsolidadoMensual</span> <span
+                                            style="color:#94a3b8;font-size:10px">→ 📋 Consolidado</span></label>
+                                    <label
+                                        style="font-size:12px;display:flex;align-items:center;gap:8px;margin-left:16px"><input
+                                            type="checkbox" checked> <span>verAjustePresupuesto</span> <span
+                                            style="color:#94a3b8;font-size:10px">→ 📈 Ajuste</span></label>
+                                    <label
+                                        style="font-size:12px;display:flex;align-items:center;gap:8px;margin-left:16px"><input
+                                            type="checkbox"> <span>verVersiones</span> <span
+                                            style="color:#94a3b8;font-size:10px">→ 🕐 Versiones</span></label>
+                                    <label
+                                        style="font-size:12px;display:flex;align-items:center;gap:8px;margin-left:16px"><input
+                                            type="checkbox"> <span>verBitacora</span> <span
+                                            style="color:#94a3b8;font-size:10px">→ 📝 Bitácora</span></label>
+                                    <label
+                                        style="font-size:12px;display:flex;align-items:center;gap:8px;margin-left:16px"><input
+                                            type="checkbox"> <span>verReferencias</span> <span
+                                            style="color:#94a3b8;font-size:10px">→ 🔗 Referencias</span></label>
+                                </div>
+                            </div>
+                            <!-- Action permissions -->
+                            <div style="background:#f8fafc;border-radius:10px;padding:12px;border:1px solid #e2e8f0">
+                                <div style="font-size:12px;font-weight:700;color:#059669;margin-bottom:8px">✏️ Acciones
+                                    Permitidas</div>
+                                <div style="display:flex;flex-direction:column;gap:6px">
+                                    <label style="font-size:12px;display:flex;align-items:center;gap:8px"><input
+                                            type="checkbox" checked> <span>editarConsolidado</span> <span
+                                            style="color:#94a3b8;font-size:10px">— Editar cuadrícula
+                                            mensual</span></label>
+                                    <label style="font-size:12px;display:flex;align-items:center;gap:8px"><input
+                                            type="checkbox" checked> <span>ejecutarRecalculo</span> <span
+                                            style="color:#94a3b8;font-size:10px">— Botón Ejecutar
+                                            Recálculo</span></label>
+                                    <label style="font-size:12px;display:flex;align-items:center;gap:8px"><input
+                                            type="checkbox" checked> <span>ajustarCurva</span> <span
+                                            style="color:#94a3b8;font-size:10px">— Drag en gráfico de
+                                            ajuste</span></label>
+                                    <label style="font-size:12px;display:flex;align-items:center;gap:8px"><input
+                                            type="checkbox"> <span>restaurarVersiones</span> <span
+                                            style="color:#94a3b8;font-size:10px">— Restaurar snapshot
+                                            anterior</span></label>
+                                </div>
+                                <div
+                                    style="margin-top:12px;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;font-size:11px;color:#92400e">
+                                    ⚠️ <strong>Herencia:</strong> Permisos de perfil se heredan al usuario. El usuario
+                                    puede tener overrides individuales. Si <code>accesoModeloPresupuesto = false</code>,
+                                    ningún sub-permiso aplica.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===================== VIEW 2: CONSOLIDADO ===================== -->
+                <div id="view-consolidado" class="view" style="display:none">
+                    <div class="filters">
+                        <div class="filter-item">
+                            <label>Año</label>
+                            <select>
+                                <option>2026</option>
+                                <option>2025</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label>Local</label>
+                            <select>
+                                <option>Alajuela S01</option>
+                                <option>Lincoln S32</option>
+                                <option>Desamparados S04</option>
+                                <option>Heredia S05</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label>Tipo</label>
+                            <select>
+                                <option>Ventas</option>
+                                <option>Transacciones</option>
+                                <option>TQP</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:end">
+                            <button class="btn btn-outline btn-sm">📋 Pegar desde Excel</button>
+                            <button class="btn btn-success btn-sm">💾 Guardar Cambios</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="grid-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Mes</th>
+                                        <th style="text-align:right">Salón</th>
+                                        <th style="text-align:right">Llevar</th>
+                                        <th style="text-align:right">AutoPollo</th>
+                                        <th style="text-align:right">Express</th>
+                                        <th style="text-align:right">ECommerce</th>
+                                        <th style="text-align:right">UberEats</th>
+                                        <th style="text-align:right;color:#4f46e5">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Enero</strong></td>
+                                        <td><input value="₡12,500,000"></td>
+                                        <td><input value="₡8,200,000"></td>
+                                        <td><input value="₡3,100,000"></td>
+                                        <td><input value="₡2,400,000"></td>
+                                        <td><input value="₡950,000"></td>
+                                        <td><input value="₡1,200,000"></td>
+                                        <td style="text-align:right;font-weight:700;padding:10px 12px;color:#4f46e5">
+                                            ₡28,350,000</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Febrero</strong></td>
+                                        <td><input value="₡11,800,000"></td>
+                                        <td><input value="₡7,900,000"></td>
+                                        <td><input value="₡2,950,000"></td>
+                                        <td><input value="₡2,200,000"></td>
+                                        <td><input value="₡880,000"></td>
+                                        <td><input value="₡1,100,000"></td>
+                                        <td style="text-align:right;font-weight:700;padding:10px 12px;color:#4f46e5">
+                                            ₡26,830,000</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Marzo</strong></td>
+                                        <td><input value="₡13,200,000"></td>
+                                        <td><input value="₡8,600,000"></td>
+                                        <td><input value="₡3,300,000"></td>
+                                        <td><input value="₡2,500,000"></td>
+                                        <td><input value="₡1,020,000"></td>
+                                        <td><input value="₡1,350,000"></td>
+                                        <td style="text-align:right;font-weight:700;padding:10px 12px;color:#4f46e5">
+                                            ₡29,970,000</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Abril</strong></td>
+                                        <td><input value="₡12,100,000"></td>
+                                        <td><input value="₡8,000,000"></td>
+                                        <td><input value="₡3,050,000"></td>
+                                        <td><input value="₡2,300,000"></td>
+                                        <td><input value="₡920,000"></td>
+                                        <td><input value="₡1,150,000"></td>
+                                        <td style="text-align:right;font-weight:700;padding:10px 12px;color:#4f46e5">
+                                            ₡27,520,000</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Mayo</strong></td>
+                                        <td><input value="₡12,800,000"></td>
+                                        <td><input value="₡8,400,000"></td>
+                                        <td><input value="₡3,200,000"></td>
+                                        <td><input value="₡2,450,000"></td>
+                                        <td><input value="₡980,000"></td>
+                                        <td><input value="₡1,250,000"></td>
+                                        <td style="text-align:right;font-weight:700;padding:10px 12px;color:#4f46e5">
+                                            ₡29,080,000</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Junio</strong></td>
+                                        <td><input value="₡11,500,000"></td>
+                                        <td><input value="₡7,600,000"></td>
+                                        <td><input value="₡2,850,000"></td>
+                                        <td><input value="₡2,100,000"></td>
+                                        <td><input value="₡840,000"></td>
+                                        <td><input value="₡1,050,000"></td>
+                                        <td style="text-align:right;font-weight:700;padding:10px 12px;color:#4f46e5">
+                                            ₡25,940,000</td>
+                                    </tr>
+                                    <tr class="total-row">
+                                        <td><strong>TOTAL</strong></td>
+                                        <td>₡73,900,000</td>
+                                        <td>₡48,700,000</td>
+                                        <td>₡18,450,000</td>
+                                        <td>₡13,950,000</td>
+                                        <td>₡5,590,000</td>
+                                        <td>₡7,100,000</td>
+                                        <td style="color:#4f46e5;font-weight:800">₡167,690,000</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="display:flex;gap:12px;margin-top:12px;align-items:center">
+                            <span class="badge badge-green">✅ Sin valores negativos</span>
+                            <span class="badge badge-green">✅ Sin nulos</span>
+                            <span class="badge badge-amber">⚠️ 2 celdas modificadas</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===================== VIEW 3: AJUSTE ===================== -->
+                <div id="view-ajuste" class="view" style="display:none">
+                    <!-- Row 1: Filtros -->
+                    <div class="filters">
+                        <div class="filter-item">
+                            <label>Local</label>
+                            <select>
+                                <option>Alajuela S01</option>
+                                <option>Lincoln S32</option>
+                                <option>Desamparados S04</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label>Mes</label>
+                            <select>
+                                <option>Febrero</option>
+                                <option>Enero</option>
+                                <option>Marzo</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label>Canales</label>
+                            <div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:2px;align-items:center">
+                                <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input
+                                        type="checkbox" checked> Salón</label>
+                                <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input
+                                        type="checkbox" checked> Llevar</label>
+                                <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input
+                                        type="checkbox"> AutoPollo</label>
+                                <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input
+                                        type="checkbox"> Express</label>
+                                <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input
+                                        type="checkbox"> ECommerce</label>
+                                <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input
+                                        type="checkbox"> UberEats</label>
+                                <span style="width:1px;height:16px;background:#cbd5e1;margin:0 2px"></span>
+                                <label
+                                    style="font-size:12px;display:flex;align-items:center;gap:4px;font-weight:600;color:#4f46e5;background:#eef2ff;padding:2px 8px;border-radius:6px;border:1px solid #c7d2fe"
+                                    title="Seleccionar Todos deshabilita canales individuales. Ajustar Todos redistribuye proporcionalmente a cada canal."><input
+                                        type="checkbox"> Todos ∑</label>
+                            </div>
+                            <div style="font-size:10px;color:#94a3b8;margin-top:4px;font-style:italic">⚠️ «Todos» =
+                                sumatoria. Si se marca, deshabilita individuales. Ajustar un canal recalcula Todos.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Drag instruction banner -->
+                    <div
+                        style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;font-size:13px;color:#4338ca;margin-bottom:16px">
+                        <span style="font-size:18px">🖱️</span>
+                        <span><strong>Arrastra los puntos de la línea azul (Presupuesto)</strong> para ajustar la curva.
+                            El sistema calculará automáticamente el cambio porcentual y redistribuirá el excedente para
+                            mantener el total mensual.</span>
+                    </div>
+
+                    <div class="card" style="padding:16px">
+                        <!-- Title + options -->
+                        <div
+                            style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+                            <h3 style="margin:0">📈 Curva de Presupuesto — Alajuela S01 — Febrero 2026</h3>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <!-- Event buttons -->
+                                <button
+                                    style="padding:6px 14px;border:1px solid #e2e8f0;background:#fff;border-radius:8px;font-size:12px;font-weight:500;color:#475569;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s"
+                                    onmouseover="this.style.background='#f0fdf4';this.style.borderColor='#86efac'"
+                                    onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0'">📅 Ver
+                                    Eventos</button>
+                                <button
+                                    style="padding:6px 14px;border:1px solid #e2e8f0;background:#fff;border-radius:8px;font-size:12px;font-weight:500;color:#475569;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s"
+                                    onmouseover="this.style.background='#fef3c7';this.style.borderColor='#fcd34d'"
+                                    onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0'">📅
+                                    Eventos Anterior</button>
+                                <span style="width:1px;height:24px;background:#e2e8f0"></span>
+                                <label
+                                    style="font-size:12px;color:#64748b;display:flex;align-items:center;gap:6px;cursor:pointer"><input
+                                        type="checkbox"> Ver año completo</label>
+                                <select
+                                    style="padding:5px 10px;border:2px solid #e2e8f0;border-radius:8px;font-size:12px">
+                                    <option>Ventas</option>
+                                    <option>Transacciones</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Row 2: Series checkboxes + Etiquetar + Límites + Fechas Ajustadas -->
+                        <div
+                            style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+                            <!-- Date range -->
+                            <span style="font-size:11px;color:#94a3b8;margin-right:4px">📅 31-ene – 28-feb 2026</span>
+                            <span style="width:1px;height:20px;background:#e2e8f0"></span>
+                            <!-- Series toggles -->
+                            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input
+                                    type="checkbox" checked style="accent-color:#059669"> <span
+                                    style="width:10px;height:10px;background:#059669;border-radius:3px;display:inline-block"></span>
+                                Real</label>
+                            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input
+                                    type="checkbox" checked style="accent-color:#4f46e5"> <span
+                                    style="width:10px;height:10px;background:#4f46e5;border-radius:3px;display:inline-block"></span>
+                                Presupuesto</label>
+                            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input
+                                    type="checkbox" style="accent-color:#f59e0b"> <span
+                                    style="width:10px;height:10px;background:#f59e0b;border-radius:3px;display:inline-block"></span>
+                                Año Anterior</label>
+                            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input
+                                    type="checkbox" style="accent-color:#dc2626"> <span
+                                    style="width:10px;height:10px;background:#dc2626;border-radius:3px;display:inline-block"></span>
+                                Año Anterior Ajust.</label>
+                            <span style="width:1px;height:20px;background:#e2e8f0;margin:0 4px"></span>
+                            <!-- Etiquetar -->
+                            <span style="font-size:11px;font-weight:600;color:#64748b">Etiquetar:</span>
+                            <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer"><input
+                                    type="checkbox" checked> Real</label>
+                            <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer"><input
+                                    type="checkbox"> Pres.</label>
+                            <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer"><input
+                                    type="checkbox"> Ant.</label>
+                            <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer"><input
+                                    type="checkbox"> Ajust.</label>
+                            <span style="width:1px;height:20px;background:#e2e8f0;margin:0 4px"></span>
+                            <!-- Límites de semana -->
+                            <label
+                                style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;color:#4f46e5;font-weight:600"><input
+                                    type="checkbox" checked style="accent-color:#4f46e5"> 📐 Límites de Semana</label>
+                            <span style="width:1px;height:20px;background:#e2e8f0;margin:0 4px"></span>
+                            <!-- Fechas Ajustadas Manualmente -->
+                            <label
+                                style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;color:#dc2626;font-weight:600"><input
+                                    type="checkbox" checked style="accent-color:#dc2626"> 🔴 Fechas Ajustadas</label>
+                        </div>
+
+                        <!-- CHART AREA -->
+                        <div class="chart-area"
+                            style="cursor:crosshair;border:2px solid #c7d2fe;height:380px;background:linear-gradient(180deg, #f8faff 0%, #f0f4ff 50%, #e8f4ff 100%)">
+                            <svg viewBox="0 0 800 240"
+                                style="position:absolute;inset:25px 50px 45px 50px;overflow:visible" id="chartSvg">
+                                <defs>
+                                    <!-- Area fill gradient between ppto and real -->
+                                    <linearGradient id="pptoFill" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#4f46e5" stop-opacity="0.12" />
+                                        <stop offset="100%" stop-color="#4f46e5" stop-opacity="0.02" />
+                                    </linearGradient>
+                                    <linearGradient id="realFill" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#059669" stop-opacity="0.08" />
+                                        <stop offset="100%" stop-color="#059669" stop-opacity="0.01" />
+                                    </linearGradient>
+                                </defs>
+
+                                <!-- Horizontal grid lines -->
+                                <line x1="0" y1="0" x2="800" y2="0" stroke="#e2e8f0" stroke-width="0.5" />
+                                <line x1="0" y1="48" x2="800" y2="48" stroke="#e2e8f0" stroke-width="0.5" />
+                                <line x1="0" y1="96" x2="800" y2="96" stroke="#e2e8f0" stroke-width="0.5" />
+                                <line x1="0" y1="144" x2="800" y2="144" stroke="#e2e8f0" stroke-width="0.5" />
+                                <line x1="0" y1="192" x2="800" y2="192" stroke="#e2e8f0" stroke-width="0.5" />
+                                <line x1="0" y1="240" x2="800" y2="240" stroke="#e2e8f0" stroke-width="0.5" />
+
+                                <!-- WEEK BOUNDARY LINES (vertical dashed gray) -->
+                                <!-- Sem 6: day 2 (Mon) -->
+                                <line x1="57" y1="-5" x2="57" y2="245" stroke="#94a3b8" stroke-width="1"
+                                    stroke-dasharray="4,3" opacity=".35" />
+                                <text x="57" y="-8" text-anchor="middle" fill="#94a3b8" font-size="8"
+                                    font-weight="600">Sem 6</text>
+                                <!-- Sem 7: day 9 (Mon) -->
+                                <line x1="229" y1="-5" x2="229" y2="245" stroke="#94a3b8" stroke-width="1"
+                                    stroke-dasharray="4,3" opacity=".35" />
+                                <text x="229" y="-8" text-anchor="middle" fill="#94a3b8" font-size="8"
+                                    font-weight="600">Sem 7</text>
+                                <!-- Sem 8: day 16 (Mon) -->
+                                <line x1="429" y1="-5" x2="429" y2="245" stroke="#94a3b8" stroke-width="1"
+                                    stroke-dasharray="4,3" opacity=".35" />
+                                <text x="429" y="-8" text-anchor="middle" fill="#94a3b8" font-size="8"
+                                    font-weight="600">Sem 8</text>
+                                <!-- Sem 9: day 23 (Mon) -->
+                                <line x1="629" y1="-5" x2="629" y2="245" stroke="#94a3b8" stroke-width="1"
+                                    stroke-dasharray="4,3" opacity=".35" />
+                                <text x="629" y="-8" text-anchor="middle" fill="#94a3b8" font-size="8"
+                                    font-weight="600">Sem 9</text>
+
+                                <!-- FECHAS AJUSTADAS MANUALMENTE (red vertical lines) -->
+                                <!-- Day 6 - Adjusted -->
+                                <line x1="143" y1="-5" x2="143" y2="245" stroke="#dc2626" stroke-width="1.5"
+                                    stroke-dasharray="5,3" opacity=".55" />
+                                <circle cx="143" cy="-5" r="3" fill="#dc2626" opacity=".7" />
+                                <!-- Day 14 - Adjusted (active drag point) -->
+                                <line x1="400" y1="-5" x2="400" y2="245" stroke="#dc2626" stroke-width="1.5"
+                                    stroke-dasharray="5,3" opacity=".55" />
+                                <circle cx="400" cy="-5" r="3" fill="#dc2626" opacity=".7" />
+                                <!-- Day 21 - Adjusted -->
+                                <line x1="571" y1="-5" x2="571" y2="245" stroke="#dc2626" stroke-width="1.5"
+                                    stroke-dasharray="5,3" opacity=".55" />
+                                <circle cx="571" cy="-5" r="3" fill="#dc2626" opacity=".7" />
+
+                                <!-- AREA FILLS (presupuesto and real) -->
+                                <path
+                                    d="M0,125 C15,115 20,100 28,98 C40,94 50,92 57,88 C80,80 95,55 114,50 C140,44 160,52 186,60 C210,67 230,45 257,40 C285,35 305,60 343,55 C370,51 385,40 400,30 C420,35 435,55 457,60 C475,64 495,50 514,45 C540,40 555,60 571,70 C590,78 610,80 629,85 C650,88 670,72 686,65 C710,57 735,78 757,90 C772,97 785,90 800,85 L800,240 L0,240 Z"
+                                    fill="url(#pptoFill)" />
+                                <path
+                                    d="M0,105 C15,98 25,78 43,72 C60,67 75,80 86,85 C105,65 125,40 143,30 C165,50 180,68 200,75 C225,50 240,38 257,30 C280,45 300,55 314,60 C335,50 350,42 371,35 C395,30 400,48 429,55 C450,40 465,35 486,30 C510,38 525,52 543,60 C560,55 575,70 600,82 C625,75 640,60 660,55 C685,60 700,80 729,100 C745,95 760,85 780,78"
+                                    fill="url(#realFill)" />
+
+                                <!-- SMOOTH CURVES using SVG path C (cubic bezier) -->
+
+                                <!-- Real (green - thick, area fill, smooth) -->
+                                <path
+                                    d="M0,105 C15,98 25,78 43,72 C60,67 75,80 86,85 C105,65 125,40 143,30 C165,50 180,68 200,75 C225,50 240,38 257,30 C280,45 300,55 314,60 C335,50 350,42 371,35 C395,30 400,48 429,55 C450,40 465,35 486,30 C510,38 525,52 543,60 C560,55 575,70 600,82 C625,75 640,60 660,55 C685,60 700,80 729,100 C745,95 760,85 780,78"
+                                    fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+
+                                <!-- Presupuesto Original (blue, thin, ghost reference) -->
+                                <path
+                                    d="M0,125 C15,115 20,100 28,98 C40,94 50,92 57,88 C80,80 95,55 114,50 C140,44 160,52 186,60 C210,67 230,45 257,40 C285,35 305,60 343,55 C370,51 385,40 400,38 C420,40 435,55 457,60 C475,64 495,50 514,45 C540,40 555,60 571,70 C590,78 610,80 629,85 C650,88 670,72 686,65 C710,57 735,78 757,90 C772,97 785,90 800,85"
+                                    fill="none" stroke="#4f46e5" stroke-width="1.5" stroke-linecap="round"
+                                    stroke-linejoin="round" opacity=".25" />
+
+                                <!-- Presupuesto Ajustado (blue, thick solid, editable) -->
+                                <path id="adjustedLine"
+                                    d="M0,125 C15,115 20,100 28,98 C40,94 50,92 57,88 C80,80 95,55 114,50 C140,44 160,52 186,60 C210,67 230,45 257,40 C285,35 305,60 343,55 C370,51 385,28 400,18 C420,25 435,55 457,60 C475,64 495,50 514,45 C540,40 555,60 571,70 C590,78 610,80 629,85 C650,88 670,72 686,65 C710,57 735,78 757,90 C772,97 785,90 800,85"
+                                    fill="none" stroke="#4f46e5" stroke-width="3" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+
+                                <!-- VALUE LABELS on Real curve (green) -->
+                                <text x="0" y="97" fill="#059669" font-size="8" font-weight="600">₡2.0M</text>
+                                <text x="72" y="77" fill="#059669" font-size="8" font-weight="600">₡2.2M</text>
+                                <text x="133" y="22" fill="#059669" font-size="8" font-weight="600">₡2.7M</text>
+                                <text x="245" y="22" fill="#059669" font-size="8" font-weight="600">₡3.0M</text>
+                                <text x="360" y="27" fill="#059669" font-size="8" font-weight="600">₡2.2M</text>
+                                <text x="470" y="22" fill="#059669" font-size="8" font-weight="600">₡2.7M</text>
+                                <text x="540" y="52" fill="#059669" font-size="8" font-weight="600">₡1.9M</text>
+                                <text x="640" y="47" fill="#059669" font-size="8" font-weight="600">₡2.4M</text>
+                                <text x="720" y="92" fill="#059669" font-size="8" font-weight="600">₡1.9M</text>
+                                <!-- Low point label in red -->
+                                <text x="308" y="68" fill="#dc2626" font-size="8" font-weight="700">₡1.5M</text>
+
+                                <!-- VALUE LABELS on Presupuesto curve (blue) - only where different from original -->
+                                <text x="0" y="118" fill="#4f46e5" font-size="8" font-weight="500"
+                                    opacity=".6">₡1.7M</text>
+                                <text x="100" y="42" fill="#4f46e5" font-size="8" font-weight="500"
+                                    opacity=".6">₡2.4M</text>
+                                <text x="245" y="33" fill="#4f46e5" font-size="8" font-weight="500"
+                                    opacity=".6">₡2.5M</text>
+
+                                <!-- Draggable handles on the Presupuesto line (only some visible for clarity) -->
+                                <circle cx="0" cy="125" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="57" cy="88" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="114" cy="50" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="186" cy="60" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="257" cy="40" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="343" cy="55" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+
+                                <!-- ACTIVELY DRAGGED POINT (day 14 - S 14/02/26) -->
+                                <!-- Vertical crosshair line for active point -->
+                                <line x1="400" y1="-5" x2="400" y2="245" stroke="#4f46e5" stroke-width="1"
+                                    opacity=".2" />
+                                <!-- Ghost position (original) -->
+                                <circle cx="400" cy="38" r="5" fill="none" stroke="#4f46e5" stroke-width="1"
+                                    stroke-dasharray="3,2" opacity=".3" />
+                                <!-- Arrow showing drag direction -->
+                                <line x1="400" y1="38" x2="400" y2="18" stroke="#4f46e5" stroke-width="1.5"
+                                    stroke-dasharray="3,2" opacity=".5" />
+                                <polygon points="396,22 400,15 404,22" fill="#4f46e5" opacity=".5" />
+                                <!-- Active dragged handle (larger, highlighted) -->
+                                <circle cx="400" cy="18" r="10" fill="rgba(79,70,229,.12)" stroke="#4f46e5"
+                                    stroke-width="2" />
+                                <circle cx="400" cy="18" r="4" fill="#4f46e5" />
+
+                                <!-- TOOLTIP (rich like reference image) -->
+                                <g transform="translate(418, -5)">
+                                    <rect x="0" y="0" width="145" height="72" rx="8" fill="#fff" stroke="#e2e8f0"
+                                        stroke-width="1" filter="drop-shadow(0 2px 6px rgba(0,0,0,.1))" />
+                                    <!-- Day header -->
+                                    <text x="10" y="16" fill="#1e293b" font-size="11" font-weight="700">S
+                                        14/02/26</text>
+                                    <!-- Presupuesto row -->
+                                    <circle cx="14" cy="30" r="4" fill="#4f46e5" />
+                                    <text x="22" y="33" fill="#64748b" font-size="9">Presupuesto:</text>
+                                    <text x="85" y="33" fill="#1e293b" font-size="9" font-weight="600">₡2 348 177</text>
+                                    <!-- Real row -->
+                                    <circle cx="14" cy="44" r="4" fill="#059669" />
+                                    <text x="22" y="47" fill="#64748b" font-size="9">Real:</text>
+                                    <text x="85" y="47" fill="#1e293b" font-size="9" font-weight="600">₡2 967 204</text>
+                                    <!-- Separator -->
+                                    <line x1="10" y1="54" x2="135" y2="54" stroke="#e2e8f0" stroke-width="0.5" />
+                                    <!-- Diff row -->
+                                    <text x="10" y="66" fill="#64748b" font-size="9">Dif. Ppto:</text>
+                                    <text x="60" y="66" fill="#059669" font-size="9" font-weight="700">+₡619 028</text>
+                                    <text x="112" y="66" fill="#059669" font-size="9" font-weight="700">(+26%)</text>
+                                </g>
+
+                                <!-- More draggable handles after the active point -->
+                                <circle cx="457" cy="60" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="514" cy="45" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="571" cy="70" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="629" cy="85" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="686" cy="65" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="757" cy="90" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                                <circle cx="800" cy="85" r="4" fill="#4f46e5" opacity=".3" style="cursor:ns-resize" />
+                            </svg>
+                            <!-- EVENT CHIPS (current year - green) -->
+                            <div style="position:absolute;bottom:35px;left:50px;right:20px;pointer-events:none">
+                                <!-- Day 6 event -->
+                                <span
+                                    style="position:absolute;left:calc((5/27)*100%);transform:translateX(-50%);background:#dcfce7;color:#166534;font-size:7px;font-weight:600;padding:2px 5px;border-radius:4px;white-space:nowrap;border:1px solid #86efac"
+                                    title="Suspensión de luz Desamparados 8am-4pm">⚡ Susp. Luz</span>
+                                <!-- Day 14 event -->
+                                <span
+                                    style="position:absolute;left:calc((13/27)*100%);transform:translateX(-50%);background:#dcfce7;color:#166534;font-size:7px;font-weight:600;padding:2px 5px;border-radius:4px;white-space:nowrap;border:1px solid #86efac"
+                                    title="Día de San Valentín">💝 San Valentín</span>
+                                <!-- Day 25 event -->
+                                <span
+                                    style="position:absolute;left:calc((24/27)*100%);transform:translateX(-50%);background:#dcfce7;color:#166534;font-size:7px;font-weight:600;padding:2px 5px;border-radius:4px;white-space:nowrap;border:1px solid #86efac"
+                                    title="Capacitación Regional">📋 Capacitac.</span>
+                            </div>
+                            <!-- EVENT CHIPS (previous year - amber) -->
+                            <div style="position:absolute;bottom:23px;left:50px;right:20px;pointer-events:none">
+                                <!-- Day 14 prev year event -->
+                                <span
+                                    style="position:absolute;left:calc((13/27)*100%);transform:translateX(-50%);background:#fef3c7;color:#92400e;font-size:7px;font-weight:600;padding:2px 5px;border-radius:4px;white-space:nowrap;border:1px solid #fcd34d;opacity:.7"
+                                    title="[2025] Día de San Valentín">💝 '25 San Val.</span>
+                            </div>
+                            <!-- X axis labels -->
+                            <div
+                                style="position:absolute;bottom:8px;left:50px;right:20px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8">
+                                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span
+                                    style="color:#dc2626;font-weight:600">6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span
+                                    style="color:#4f46e5;font-weight:700;font-size:10px">14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span
+                                    style="color:#dc2626;font-weight:600">21</span><span>22</span><span>23</span><span>24</span><span>25</span><span>26</span><span>27</span><span>28</span>
+                            </div>
+                            <!-- Y axis labels -->
+                            <div
+                                style="position:absolute;top:25px;left:4px;bottom:45px;display:flex;flex-direction:column;justify-content:space-between;font-size:9px;color:#94a3b8;text-align:right;width:44px">
+                                <span>₡3.2M</span><span>₡2.4M</span><span>₡1.6M</span><span>₡800k</span>
+                            </div>
+                        </div>
+
+                        <!-- Detected changes panel (appears after dragging) -->
+                        <div
+                            style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+                            <span style="font-size:16px">⚡</span>
+                            <div style="flex:1">
+                                <div style="font-size:13px;font-weight:600;color:#92400e">Cambio detectado — Día 14:
+                                    ₡2,383,000 → ₡2,750,000 <span
+                                        style="background:#fef3c7;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">+₡367,000
+                                        (+15.4%)</span></div>
+                                <div style="font-size:11px;color:#a16207;margin-top:2px">El excedente de ₡367,000 se
+                                    redistribuirá en los demás días para mantener el total mensual de ₡26,830,000</div>
+                            </div>
+                        </div>
+
+                        <div class="card" style="background:#f8fafc;margin:0">
+                            <h3 style="font-size:13px">📋 Confirmar Ajuste</h3>
+                            <div class="adjust-panel" style="grid-template-columns:1fr 1fr 1fr">
+                                <div>
+                                    <label
+                                        style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;display:block;margin-bottom:6px">Redistribución
+                                        del excedente</label>
+                                    <select
+                                        style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:13px;width:100%">
+                                        <option>Distribuir en todo el mes</option>
+                                        <option>Distribuir en la semana</option>
+                                        <option>Distribuir en mismo tipo de día (viernes)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label
+                                        style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;display:block;margin-bottom:6px">Solo
+                                        Tipo</label>
+                                    <select
+                                        style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:13px;width:100%">
+                                        <option>Ventas</option>
+                                        <option>Transacciones</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label
+                                        style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;display:block;margin-bottom:6px">Motivo
+                                        (obligatorio)</label>
+                                    <input type="text" placeholder="Ej: Evento especial día 14"
+                                        style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:13px;width:100%">
+                                </div>
+                                <div class="full"
+                                    style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+                                    <div class="impact-bar" style="margin:0;flex:1">
+                                        <span class="impact-label">Total mes:</span>
+                                        <span class="impact-value">₡26,830,000 → ₡26,830,000 (neto: ₡0)</span>
+                                    </div>
+                                    <button class="btn btn-success">💾 Guardar Ajuste</button>
+                                    <button class="btn btn-danger btn-sm">❌ Descartar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===================== VIEW 4: VERSIONES ===================== -->
+                <div id="view-versiones" class="view" style="display:none">
+                    <div class="status-bar warning">
+                        ⚠️ Restaurar una versión reemplazará los datos del presupuesto actual para "Presupuesto 2026"
+                    </div>
+                    <div class="card">
+                        <h3>🕐 Versiones del Modelo — Presupuesto 2026</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Versión</th>
+                                    <th>Fecha/Hora</th>
+                                    <th>Usuario</th>
+                                    <th>Origen</th>
+                                    <th>Registros</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge badge-blue">v15</span></td>
+                                    <td>20 Feb 2026 06:00</td>
+                                    <td>JOB</td>
+                                    <td><span class="badge badge-green">Job</span></td>
+                                    <td>156,420</td>
+                                    <td><button class="btn btn-primary btn-sm">🔄 Restaurar</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-blue">v14</span></td>
+                                    <td>19 Feb 2026 14:30</td>
+                                    <td>Marco Alfaro</td>
+                                    <td><span class="badge badge-amber">Manual</span></td>
+                                    <td>156,420</td>
+                                    <td><button class="btn btn-outline btn-sm">🔄 Restaurar</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-blue">v13</span></td>
+                                    <td>19 Feb 2026 06:00</td>
+                                    <td>JOB</td>
+                                    <td><span class="badge badge-green">Job</span></td>
+                                    <td>156,420</td>
+                                    <td><button class="btn btn-outline btn-sm">🔄 Restaurar</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-blue">v12</span></td>
+                                    <td>18 Feb 2026 06:00</td>
+                                    <td>JOB</td>
+                                    <td><span class="badge badge-green">Job</span></td>
+                                    <td>156,420</td>
+                                    <td><button class="btn btn-outline btn-sm">🔄 Restaurar</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-blue">v11</span></td>
+                                    <td>17 Feb 2026 15:20</td>
+                                    <td>Ana García</td>
+                                    <td><span class="badge badge-amber">Manual</span></td>
+                                    <td>156,420</td>
+                                    <td><button class="btn btn-outline btn-sm">🔄 Restaurar</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-blue">v10</span></td>
+                                    <td>17 Feb 2026 06:00</td>
+                                    <td>JOB</td>
+                                    <td><span class="badge badge-green">Job</span></td>
+                                    <td>156,420</td>
+                                    <td><button class="btn btn-outline btn-sm">🔄 Restaurar</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p style="font-size:11px;color:#94a3b8;margin-top:12px">Política de retención: máximo 15
+                            versiones. Las más antiguas se eliminan automáticamente.</p>
+                    </div>
+                </div>
+
+                <!-- ===================== VIEW 5: BITÁCORA ===================== -->
+                <div id="view-bitacora" class="view" style="display:none">
+                    <div class="filters">
+                        <div class="filter-item">
+                            <label>Usuario</label>
+                            <select>
+                                <option>Todos</option>
+                                <option>Marco Alfaro</option>
+                                <option>Ana García</option>
+                                <option>JOB</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label>Origen</label>
+                            <select>
+                                <option>Todos</option>
+                                <option>Manual</option>
+                                <option>Recálculo</option>
+                                <option>Restore</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label>Desde</label>
+                            <input type="date" value="2026-02-01">
+                        </div>
+                        <div class="filter-item">
+                            <label>Hasta</label>
+                            <input type="date" value="2026-02-20">
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>📝 Bitácora de Cambios</h3>
+                        <div class="timeline-item">
+                            <span class="timeline-dot" style="background:#f59e0b"></span>
+                            <div class="timeline-content">
+                                <div class="timeline-header">Marco Alfaro — <span
+                                        class="badge badge-amber">Manual</span></div>
+                                <div class="timeline-meta">20 Feb 2026 14:30 — Alajuela S01 — Febrero — Salón — Ventas
+                                </div>
+                                <div class="timeline-detail">
+                                    <strong>₡2,500,000 → ₡2,575,000</strong> (+3%)<br>
+                                    <em>Motivo: Ajuste por evento especial del fin de semana</em>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <span class="timeline-dot" style="background:#059669"></span>
+                            <div class="timeline-content">
+                                <div class="timeline-header">JOB — <span class="badge badge-green">Recálculo</span>
+                                </div>
+                                <div class="timeline-meta">20 Feb 2026 06:00 — Todos los locales — Todos los meses</div>
+                                <div class="timeline-detail">Ejecución automática diaria. 156,420 registros
+                                    actualizados. Datos reales hasta 19 Feb 2026.</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <span class="timeline-dot" style="background:#f59e0b"></span>
+                            <div class="timeline-content">
+                                <div class="timeline-header">Ana García — <span class="badge badge-amber">Manual</span>
+                                </div>
+                                <div class="timeline-meta">19 Feb 2026 15:20 — Lincoln S32 — Marzo — Todos — Ventas
+                                </div>
+                                <div class="timeline-detail">
+                                    <strong>₡45,200,000 → ₡46,556,000</strong> (+3%)<br>
+                                    <em>Motivo: Corrección por apertura de nuevo restaurante en la zona</em>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <span class="timeline-dot" style="background:#4f46e5"></span>
+                            <div class="timeline-content">
+                                <div class="timeline-header">Marco Alfaro — <span
+                                        class="badge badge-blue">Restore</span></div>
+                                <div class="timeline-meta">18 Feb 2026 10:15 — Restauración de versión v10</div>
+                                <div class="timeline-detail">Restauración completa de Presupuesto 2026 desde snapshot
+                                    v10.</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <span class="timeline-dot" style="background:#059669"></span>
+                            <div class="timeline-content">
+                                <div class="timeline-header">JOB — <span class="badge badge-green">Recálculo</span>
+                                </div>
+                                <div class="timeline-meta">18 Feb 2026 06:00 — Todos los locales — Todos los meses</div>
+                                <div class="timeline-detail">Ejecución automática diaria. 156,420 registros
+                                    actualizados.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===================== VIEW 6: REFERENCIAS ===================== -->
+                <div id="view-referencias" class="view" style="display:none">
+                    <div class="card">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                            <div>
+                                <h3 style="margin:0">🔗 Referencias de Locales Nuevos</h3>
+                                <p style="font-size:12px;color:#64748b;margin-top:4px">Locales sin datos históricos que
+                                    usan la curva de participación de otro local como referencia.</p>
+                            </div>
+                            <button class="btn btn-primary btn-sm">+ Agregar Referencia</button>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Local Nuevo</th>
+                                    <th>CodAlmacén</th>
+                                    <th>Local Referencia</th>
+                                    <th>CodAlmacén Ref.</th>
+                                    <th>Canal</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Mall San Pedro</strong></td>
+                                    <td>S84</td>
+                                    <td>Lincoln</td>
+                                    <td>S32</td>
+                                    <td><span class="badge badge-blue">Todos</span></td>
+                                    <td><span class="badge badge-green">Activo</span></td>
+                                    <td><button class="btn btn-outline btn-sm">✏️</button> <button
+                                            class="btn btn-danger btn-sm">🗑️</button></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Multicentro</strong></td>
+                                    <td>S85</td>
+                                    <td>Desamparados</td>
+                                    <td>S04</td>
+                                    <td><span class="badge badge-blue">Todos</span></td>
+                                    <td><span class="badge badge-green">Activo</span></td>
+                                    <td><button class="btn btn-outline btn-sm">✏️</button> <button
+                                            class="btn btn-danger btn-sm">🗑️</button></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>San Isidro</strong></td>
+                                    <td>V26</td>
+                                    <td>Ventanita Sabanilla</td>
+                                    <td>V01</td>
+                                    <td><span class="badge badge-blue">Todos</span></td>
+                                    <td><span class="badge badge-green">Activo</span></td>
+                                    <td><button class="btn btn-outline btn-sm">✏️</button> <button
+                                            class="btn btn-danger btn-sm">🗑️</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showView(name) {
+            document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+            document.getElementById('view-' + name).style.display = 'block';
+            document.querySelectorAll('#mainTabs button').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+
+</html>
