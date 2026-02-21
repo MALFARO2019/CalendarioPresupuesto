@@ -7,4 +7,4 @@
 |-------|------|--------|-------------|
 | Botones de Forms | main (sin rama) | ✅ Completado | Fix de botones de acciones cortados en la tabla de Forms admin |
 | prueba de chat | chat/prueba-de-chat | 🔵 Activo | Prueba de chat |
-| Actualización prefijos KPIsRosti | chat/actualizacion-prefijos-kpisrosti | 🔵 Activo | Renombrar DBs WindowsFormsData→KPIsRosti_WForms, InvGateData→KPIsRosti_InvGate |
+| Actualización prefijos KPIsRosti | chat/actualizacion-prefijos-kpisrosti | ✅ Completado | Renombrar DBs WindowsFormsData→KPIsRosti_WForms, InvGateData→KPIsRosti_InvGate |
