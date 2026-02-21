@@ -362,11 +362,11 @@ export const FormsAdmin: React.FC = () => {
         finally { setResolvingId(null); }
     };
 
-    const syncSource = async (src: FormSource) => {
+    const syncSource = async (src: FormSource, type: 'FULL' | 'INCREMENTAL' = 'FULL') => {
         setSyncingId(src.SourceID);
         try {
-            const r = await axios.post(`${API_BASE}/forms/sources/${src.SourceID}/sync`, {}, { headers: headers() });
-            alert(`✅ Sync: ${r.data.registrosNuevos} nuevos, ${r.data.registrosActualizados} actualizados`);
+            const r = await axios.post(`${API_BASE}/forms/sources/${src.SourceID}/sync`, { type }, { headers: headers() });
+            alert(`✅ Sync ${type}: ${r.data.registrosNuevos} nuevos, ${r.data.registrosActualizados} actualizados`);
             await loadSources(); await loadLogs();
         } catch (e: any) { alert('❌ Error: ' + (e.response?.data?.error || e.message)); }
         finally { setSyncingId(null); }
@@ -602,9 +602,14 @@ export const FormsAdmin: React.FC = () => {
                                                         </button>
                                                     )}
                                                     {src.DriveId && src.Activo && (
-                                                        <button className="btn-sync-src btn-icon" onClick={() => syncSource(src)} disabled={syncingId === src.SourceID} title="Sync">
-                                                            {syncingId === src.SourceID ? '⏳' : '🔄'}
-                                                        </button>
+                                                        <>
+                                                            <button className="btn-sync-src btn-icon" onClick={() => syncSource(src, 'INCREMENTAL')} disabled={syncingId === src.SourceID} title="Sync incremental">
+                                                                {syncingId === src.SourceID ? '⏳' : '🔄'}
+                                                            </button>
+                                                            <button className="btn-sync-full-src btn-icon" onClick={() => syncSource(src, 'FULL')} disabled={syncingId === src.SourceID} title="Sync completo">
+                                                                {syncingId === src.SourceID ? '⏳' : '🔁'}
+                                                            </button>
+                                                        </>
                                                     )}
                                                     <button className="btn-edit btn-icon" onClick={() => openEdit(src)} title="Editar">✏️</button>
                                                     <button className={`btn-toggle btn-icon ${src.Activo ? 'deactivate' : 'activate'}`} onClick={() => toggleActive(src)} title={src.Activo ? 'Desactivar' : 'Activar'}>
