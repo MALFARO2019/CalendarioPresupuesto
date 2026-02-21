@@ -183,7 +183,32 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
                     OUTPUT INSERTED.*
                     VALUES (@alias, @excelUrl, @ownerEmail, @by, @by)
                 `);
-            res.json(result.recordset[0]);
+            const newSource = result.recordset[0];
+
+            // Auto-resolve DriveId/ItemId in background (fire-and-forget)
+            (async () => {
+                try {
+                    console.log(`🔍 Auto-resolving DriveId/ItemId for "${alias}"...`);
+                    const resolved = await formsService.resolveExcelFromUrl(normalizedUrl, ownerEmail.toLowerCase().trim());
+                    await pool.request()
+                        .input('id', sql.Int, newSource.SourceID)
+                        .input('driveId', sql.NVarChar, resolved.driveId)
+                        .input('itemId', sql.NVarChar, resolved.itemId)
+                        .input('sheetName', sql.NVarChar, resolved.sheetName || 'Sheet1')
+                        .input('by', sql.NVarChar, req.user.email)
+                        .query(`
+                            UPDATE FormsSources 
+                            SET DriveId = @driveId, ItemId = @itemId, SheetName = @sheetName,
+                                UpdatedAt = GETDATE(), UpdatedBy = @by
+                            WHERE SourceID = @id
+                        `);
+                    console.log(`✅ Auto-resolved "${alias}": DriveId=${resolved.driveId?.substring(0, 20)}... ItemId=${resolved.itemId?.substring(0, 20)}...`);
+                } catch (resolveErr) {
+                    console.warn(`⚠️ Auto-resolve failed for "${alias}": ${resolveErr.message.substring(0, 120)}. User can resolve manually.`);
+                }
+            })();
+
+            res.json(newSource);
         } catch (err) {
             // Catch DB-level unique constraint violation as fallback
             if (err.message.includes('duplicate key') || err.message.includes('UQ_FormsSources')) {

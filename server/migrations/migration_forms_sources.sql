@@ -21,7 +21,8 @@ BEGIN
         CreatedAt    DATETIME DEFAULT GETDATE(),
         UpdatedAt    DATETIME DEFAULT GETDATE(),
         CreatedBy    NVARCHAR(100) DEFAULT 'SYSTEM',
-        UpdatedBy    NVARCHAR(100) DEFAULT 'SYSTEM'
+        UpdatedBy    NVARCHAR(100) DEFAULT 'SYSTEM',
+        TableName    NVARCHAR(200) NULL
     );
     CREATE INDEX IX_FormsSources_Activo ON FormsSources(Activo);
     PRINT '✅ Created FormsSources table';

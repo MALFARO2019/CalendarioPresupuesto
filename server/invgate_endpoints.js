@@ -111,64 +111,8 @@ function registerInvgateEndpoints(app, authMiddleware) {
         }
     });
 
-    // ══════════════════════════════════════════
-    // HELPDESKS (Solicitudes)
-    // ══════════════════════════════════════════
 
-    app.get('/api/invgate/helpdesks', authMiddleware, async (req, res) => {
-        if (!requireAdmin(req, res)) return;
-        try {
-            // Try API first, fall back to local DB
-            let helpdesks = [];
-            let apiError = null;
-            try {
-                const apiHelpdesks = await invgateService.getHelpdesks();
-                // Sync to DB while we're at it
-                const pool = await getInvgatePool();
-                for (const hd of apiHelpdesks) {
-                    await pool.request()
-                        .input('id', sql.Int, hd.id)
-                        .input('nombre', sql.NVarChar, hd.name || '')
-                        .query(`
-                            IF NOT EXISTS (SELECT 1 FROM InvgateHelpdesks WHERE HelpdeskID = @id)
-                                INSERT INTO InvgateHelpdesks (HelpdeskID, Nombre) VALUES (@id, @nombre)
-                            ELSE
-                                UPDATE InvgateHelpdesks SET Nombre = @nombre WHERE HelpdeskID = @id
-                        `);
-                }
-            } catch (e) {
-                apiError = e.message;
-            }
-            // Always return from DB (has SyncEnabled flag)
-            const pool = await getInvgatePool();
-            const result = await pool.request().query(`
-                SELECT h.HelpdeskID as id, h.Nombre as name, h.SyncEnabled as syncEnabled,
-                       ISNULL((SELECT COUNT(*) FROM InvgateTickets t WHERE t.HelpdeskID = h.HelpdeskID), 0) as totalTickets
-                FROM InvgateHelpdesks h ORDER BY h.Nombre
-            `);
-            helpdesks = result.recordset.map(r => ({
-                id: r.id, name: r.name, syncEnabled: !!r.syncEnabled, totalTickets: r.totalTickets
-            }));
-            res.json({ helpdesks, apiError });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
 
-    app.put('/api/invgate/helpdesks/:id/toggle', authMiddleware, async (req, res) => {
-        if (!requireAdmin(req, res)) return;
-        try {
-            const pool = await getInvgatePool();
-            const { enabled, name } = req.body;
-            await pool.request()
-                .input('id', sql.Int, parseInt(req.params.id))
-                .input('enabled', sql.Bit, enabled ? 1 : 0)
-                .query('UPDATE InvgateHelpdesks SET SyncEnabled = @enabled WHERE HelpdeskID = @id');
-            res.json({ success: true });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
 
     // ══════════════════════════════════════════
     // VIEWS — Configuration & Data

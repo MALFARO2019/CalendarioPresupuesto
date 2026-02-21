@@ -19,9 +19,7 @@ interface SyncStatus {
     lastSync: SyncLog | null;
     cronJob: { isActive: boolean; isRunning: boolean; schedule: string | null; };
 }
-interface Helpdesk {
-    id: number; name: string; syncEnabled: boolean; totalTickets: number;
-}
+
 interface ViewConfig {
     viewId: number; nombre: string; syncEnabled: boolean;
     totalTickets: number; columns: string[]; ultimaSync: string | null;
@@ -37,7 +35,7 @@ interface ViewData {
 }
 
 // ─── Tab enum ─────────────────────────────────────────────────────
-type Tab = 'auth' | 'helpdesks' | 'views' | 'sync';
+type Tab = 'auth' | 'views' | 'sync';
 
 export const InvgateAdmin: React.FC = () => {
     // Config state
@@ -57,10 +55,7 @@ export const InvgateAdmin: React.FC = () => {
     const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
     const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
 
-    // Helpdesks state
-    const [helpdesks, setHelpdesks] = useState<Helpdesk[]>([]);
-    const [loadingHelpdesks, setLoadingHelpdesks] = useState(false);
-    const [helpdeskError, setHelpdeskError] = useState<string | null>(null);
+
 
     // Views state
     const [views, setViews] = useState<ViewConfig[]>([]);
@@ -94,38 +89,7 @@ export const InvgateAdmin: React.FC = () => {
         } finally { setLoading(false); }
     };
 
-    // ─── Load helpdesks from API ──────────────────────────────────
-    const loadHelpdesks = async () => {
-        setLoadingHelpdesks(true);
-        setHelpdeskError(null);
-        try {
-            const r = await axios.get(`${API_BASE}/invgate/helpdesks`, { headers: authHeaders() });
-            // Support both old array format and new {helpdesks, apiError} format
-            const list: Helpdesk[] = Array.isArray(r.data) ? r.data : (r.data.helpdesks || []);
-            const apiErr: string | null = r.data.apiError || null;
-            setHelpdesks(list);
-            if (apiErr) {
-                setHelpdeskError(`⚠️ API de InvGate no disponible: ${apiErr}. Se muestran las solicitudes guardadas localmente.`);
-            }
-        } catch (e: any) {
-            setHelpdeskError('Error cargando helpdesks: ' + (e.response?.data?.error || e.message));
-        } finally { setLoadingHelpdesks(false); }
-    };
 
-    // ─── Toggle helpdesk sync ─────────────────────────────────────
-    const toggleHelpdesk = async (hd: Helpdesk) => {
-        const newEnabled = !hd.syncEnabled;
-        // Optimistic update
-        setHelpdesks(prev => prev.map(h => h.id === hd.id ? { ...h, syncEnabled: newEnabled } : h));
-        try {
-            await axios.put(`${API_BASE}/invgate/helpdesks/${hd.id}/toggle`,
-                { enabled: newEnabled, name: hd.name }, { headers: authHeaders() });
-        } catch (e: any) {
-            // Rollback
-            setHelpdesks(prev => prev.map(h => h.id === hd.id ? { ...h, syncEnabled: hd.syncEnabled } : h));
-            alert('Error: ' + (e.response?.data?.error || e.message));
-        }
-    };
 
     // ─── Load views ────────────────────────────────────────────────
     const loadViews = useCallback(async () => {
@@ -269,7 +233,7 @@ export const InvgateAdmin: React.FC = () => {
         dropdown: '#f59e0b', email: '#ec4899', phone: '#8b5cf6'
     };
 
-    const enabledHelpdesks = helpdesks.filter(h => h.syncEnabled);
+
 
     if (loading) return <div className="invgate-admin-loading">Cargando configuración...</div>;
 
@@ -281,7 +245,6 @@ export const InvgateAdmin: React.FC = () => {
             <div className="invgate-tabs">
                 {([
                     { key: 'auth', label: '🔑 Autenticación' },
-                    { key: 'helpdesks', label: '📂 Solicitudes' },
                     { key: 'views', label: '👁️ Vistas' },
                     { key: 'sync', label: '🔄 Sincronización' },
                 ] as { key: Tab; label: string }[]).map(t => (
@@ -350,53 +313,7 @@ export const InvgateAdmin: React.FC = () => {
                 </div>
             )}
 
-            {/* ════════════════════════════════════════════════════
-                TAB: HELPDESKS
-            ════════════════════════════════════════════════════ */}
-            {tab === 'helpdesks' && (
-                <div className="config-section">
-                    <div className="section-header-row">
-                        <h3>Solicitudes a Sincronizar</h3>
-                        <button onClick={loadHelpdesks} disabled={loadingHelpdesks} className="btn-secondary btn-sm">
-                            {loadingHelpdesks ? '⏳ Cargando...' : '🔄 Cargar desde InvGate'}
-                        </button>
-                    </div>
-                    <p className="config-description">
-                        Activa el toggle en las solicitudes que deseas sincronizar.
-                        {enabledHelpdesks.length > 0 && <strong> ({enabledHelpdesks.length} activas)</strong>}
-                    </p>
-                    {helpdeskError && (
-                        <div style={{ background: '#fef9c3', border: '1px solid #fde047', borderRadius: '6px', padding: '10px 14px', marginBottom: '12px', color: '#92400e', fontSize: '13px' }}>
-                            {helpdeskError}
-                        </div>
-                    )}
-                    {helpdesks.length === 0 && !loadingHelpdesks && (
-                        <div className="empty-state">
-                            <p>📂 Haz clic en "Cargar desde InvGate" para ver las solicitudes disponibles.</p>
-                        </div>
-                    )}
 
-                    <div className="helpdesk-grid">
-                        {helpdesks.map(hd => (
-                            <div key={hd.id} className={`helpdesk-card ${hd.syncEnabled ? 'enabled' : ''}`}>
-                                <div className="helpdesk-card-body">
-                                    <div className="helpdesk-info">
-                                        <span className="helpdesk-name">📁 {hd.name}</span>
-                                        {hd.totalTickets > 0 && (
-                                            <span className="helpdesk-count">{hd.totalTickets} tickets</span>
-                                        )}
-                                    </div>
-                                    <label className="toggle-switch">
-                                        <input type="checkbox" checked={hd.syncEnabled}
-                                            onChange={() => toggleHelpdesk(hd)} />
-                                        <span className="toggle-slider"></span>
-                                    </label>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
 
             {/* ════════════════════════════════════════════════════
                 TAB: VIEWS
