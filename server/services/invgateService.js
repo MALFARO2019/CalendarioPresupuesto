@@ -15,6 +15,7 @@ class InvGateService {
         this.accessToken = null;
         this.tokenExpiry = null;
         this.initialized = false;
+        this.dbScopes = null; // scopes loaded from DB (production-configurable)
         // In-memory lookup caches (TTL: 1 hour)
         this._helpdeskCache = null;
         this._helpdeskCacheExpiry = 0;
@@ -46,6 +47,17 @@ class InvGateService {
             this.apiBaseUrl = config.API_BASE_URL || 'https://rostipollos.cloud.invgate.net/api/v1';
             this.initialized = !!(this.clientId && this.clientSecret && this.tokenUrl);
 
+            // Load configurable scopes from DB
+            try {
+                const scopeResult = await pool.request().query(
+                    `SELECT ConfigValue FROM InvgateConfig WHERE ConfigKey = 'OAUTH_SCOPES'`
+                );
+                if (scopeResult.recordset.length > 0 && scopeResult.recordset[0].ConfigValue) {
+                    this.dbScopes = scopeResult.recordset[0].ConfigValue;
+                    console.log(`  📋 Using DB-configured scopes (${this.dbScopes.split(' ').length} scopes)`);
+                }
+            } catch (e) { /* OAUTH_SCOPES key not in DB — use defaults */ }
+
             if (this.initialized) {
                 console.log(`✅ InvGate Service initialized (OAuth 2.0) — base: ${this.apiBaseUrl}`);
             } else {
@@ -72,7 +84,8 @@ class InvGateService {
             params.append('client_id', this.clientId);
             params.append('client_secret', this.clientSecret);
             // InvGate REQUIRES explicit scopes — without this the JWT has scopes:[] and all API calls return 403
-            params.append('scope', [
+            // Use DB-configured scopes if available, otherwise use hardcoded defaults
+            const DEFAULT_SCOPES = [
                 'api.v1.incidents:get',
                 'api.v1.incident:get',
                 'api.v1.helpdesks:get',
@@ -85,7 +98,8 @@ class InvGateService {
                 'api.v1.incident.attributes.priority:get',
                 'api.v1.incident.attributes.category:get',
                 'api.v1.incident.comment:get',
-            ].join(' '));
+            ].join(' ');
+            params.append('scope', this.dbScopes || DEFAULT_SCOPES);
 
             const response = await axios.post(this.tokenUrl, params, {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -134,7 +148,7 @@ class InvGateService {
     // HTTP HELPER
     // ================================================================
 
-    async makeRequest(endpoint, method = 'GET', data = null, params = {}) {
+    async makeRequest(endpoint, method = 'GET', data = null, params = {}, _isRetry = false) {
         if (!this.initialized) {
             await this.initialize();
         }
@@ -163,6 +177,13 @@ class InvGateService {
             const response = await axios(config);
             return response.data;
         } catch (err) {
+            // Auto-retry on 403: force a fresh token and try once more
+            if (!_isRetry && err.response?.status === 403) {
+                console.warn(`⚠️ InvGate 403 on ${endpoint} — forcing token refresh and retrying...`);
+                this.accessToken = null;
+                this.tokenExpiry = null;
+                return this.makeRequest(endpoint, method, data, params, true);
+            }
             console.error(`❌ InvGate API Error (${endpoint}):`, err.message);
             if (err.response) {
                 console.error('   Status:', err.response.status);

@@ -5,19 +5,9 @@
  */
 const { getUberEatsPool, sql } = require('./uberEatsDb');
 const uberEatsService = require('./services/uberEatsService');
+// Import encrypt from single source (avoid duplication)
+const { encryptValue } = require('./services/uberEatsService');
 const uberEatsCron = require('./jobs/uberEatsCron');
-const crypto = require('crypto');
-
-function getEncKey() {
-    const k = process.env.DB_ENCRYPTION_KEY || 'default-key-change-in-production-32';
-    return Buffer.from(k.padEnd(32, '0').substring(0, 32));
-}
-function encryptValue(text) {
-    if (!text) return null;
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv('aes-256-cbc', getEncKey(), iv);
-    return iv.toString('hex') + ':' + cipher.update(text, 'utf8', 'hex') + cipher.final('hex');
-}
 
 function requireAdmin(req, res) {
     if (!req.user?.esAdmin) {
@@ -65,20 +55,20 @@ function registerUberEatsEndpoints(app, authMiddleware) {
         try {
             console.log('📝 UberEats config save - body:', JSON.stringify({
                 clientId: req.body.clientId ? `[${req.body.clientId.length} chars]` : undefined,
-                clientSecret: req.body.clientSecret ? '[SET]' : undefined,
+                clientSecret: req.body.clientSecret ? `[SET, ${req.body.clientSecret.length} chars]` : undefined,
                 syncEnabled: req.body.syncEnabled,
                 syncHour: req.body.syncHour,
                 daysBack: req.body.daysBack,
                 reportTypes: req.body.reportTypes
             }));
             const pool = await getUberEatsPool();
-            console.log('📝 UberEats DB pool connected:', pool.connected);
             const { clientId, clientSecret, syncEnabled, syncHour, daysBack, reportTypes } = req.body;
 
             async function setKey(key, value) {
+                console.log(`  ➜ setKey('${key}', ${key === 'CLIENT_SECRET' ? '[ENCRYPTED]' : value})`);
                 await pool.request()
-                    .input('k', sql.NVarChar, key)
-                    .input('v', sql.NVarChar, value)
+                    .input('k', sql.NVarChar(100), key)
+                    .input('v', sql.NVarChar(sql.MAX), value)
                     .query(`
                         MERGE UberEatsConfig AS t USING (SELECT @k AS k) AS s ON t.ConfigKey = s.k
                         WHEN MATCHED THEN UPDATE SET ConfigValue = @v, FechaModificacion = GETDATE()
@@ -87,27 +77,33 @@ function registerUberEatsEndpoints(app, authMiddleware) {
             }
 
             if (clientId !== undefined) {
-                console.log('📝 Saving CLIENT_ID:', clientId);
                 await setKey('CLIENT_ID', clientId);
             }
             if (clientSecret !== undefined && clientSecret !== '') {
-                console.log('📝 Saving CLIENT_SECRET (encrypted)');
-                await setKey('CLIENT_SECRET', encryptValue(clientSecret));
+                const encrypted = encryptValue(clientSecret);
+                console.log(`📝 Encrypting CLIENT_SECRET: input=${clientSecret.length} chars, output=${encrypted ? encrypted.length + ' chars' : 'NULL'}`);
+                await setKey('CLIENT_SECRET', encrypted);
+
+                // Verify it was actually saved
+                const verify = await pool.request()
+                    .query(`SELECT ConfigValue FROM UberEatsConfig WHERE ConfigKey = 'CLIENT_SECRET'`);
+                const savedVal = verify.recordset[0]?.ConfigValue;
+                if (savedVal && savedVal === encrypted) {
+                    console.log('✅ CLIENT_SECRET verified in DB (' + savedVal.length + ' chars)');
+                } else {
+                    console.error('❌ CLIENT_SECRET verification FAILED! DB has:', savedVal ? savedVal.length + ' chars' : 'NULL');
+                }
             }
             if (syncEnabled !== undefined) {
-                console.log('📝 Saving SYNC_ENABLED:', syncEnabled);
                 await setKey('SYNC_ENABLED', syncEnabled ? 'true' : 'false');
             }
             if (syncHour !== undefined) {
-                console.log('📝 Saving SYNC_HOUR:', syncHour);
                 await setKey('SYNC_HOUR', String(syncHour));
             }
             if (daysBack !== undefined) {
-                console.log('📝 Saving DAYS_BACK:', daysBack);
                 await setKey('DAYS_BACK', String(daysBack));
             }
             if (reportTypes !== undefined) {
-                console.log('📝 Saving REPORT_TYPES:', reportTypes);
                 await setKey('REPORT_TYPES', String(reportTypes));
             }
 
@@ -123,7 +119,7 @@ function registerUberEatsEndpoints(app, authMiddleware) {
             console.log('✅ UberEats config saved successfully');
             res.json({ success: true, message: 'Configuración guardada' });
         } catch (err) {
-            console.error('❌ UberEats config save error:', err.message);
+            console.error('❌ UberEats config save error:', err.message, err.stack);
             res.status(500).json({ error: err.message });
         }
     });
@@ -392,6 +388,17 @@ function registerUberEatsEndpoints(app, authMiddleware) {
             });
         } catch (err) {
             res.status(500).json({ error: err.message });
+        }
+    });
+
+    // GET /api/uber-eats/token-status — Check token health
+    app.get('/api/uber-eats/token-status', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const status = await uberEatsService.getTokenStatus();
+            res.json(status);
+        } catch (err) {
+            res.json({ hasClientId: false, hasSecretInDb: false, canDecrypt: false, canGetToken: false, tokenError: err.message });
         }
     });
 

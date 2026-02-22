@@ -2663,7 +2663,7 @@ app.post('/api/invgate/config', authMiddleware, async (req, res) => {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
 
-        const { clientId, clientSecret, tokenUrl, apiBaseUrl, syncIntervalHours, syncEnabled } = req.body;
+        const { clientId, clientSecret, tokenUrl, apiBaseUrl, syncIntervalHours, syncEnabled, oauthScopes } = req.body;
         const pool = await getInvgatePool();
 
         const upsert = async (key, value) => {
@@ -2673,13 +2673,13 @@ app.post('/api/invgate/config', authMiddleware, async (req, res) => {
                 .query(`SELECT COUNT(*) as cnt FROM InvgateConfig WHERE ConfigKey = @key`);
             if (existing.recordset[0].cnt > 0) {
                 await pool.request()
-                    .input('value', invgateSql.NVarChar, value)
+                    .input('value', invgateSql.NVarChar(4000), value)
                     .input('key', invgateSql.NVarChar, key)
                     .query(`UPDATE InvgateConfig SET ConfigValue = @value, UpdatedAt = GETDATE() WHERE ConfigKey = @key`);
             } else {
                 await pool.request()
                     .input('key', invgateSql.NVarChar, key)
-                    .input('value', invgateSql.NVarChar, value)
+                    .input('value', invgateSql.NVarChar(4000), value)
                     .query(`INSERT INTO InvgateConfig (ConfigKey, ConfigValue) VALUES (@key, @value)`);
             }
         };
@@ -2690,6 +2690,7 @@ app.post('/api/invgate/config', authMiddleware, async (req, res) => {
         await upsert('API_BASE_URL', apiBaseUrl);
         await upsert('SYNC_INTERVAL_HOURS', syncIntervalHours !== undefined ? String(syncIntervalHours) : undefined);
         await upsert('SYNC_ENABLED', syncEnabled !== undefined ? (syncEnabled ? 'true' : 'false') : undefined);
+        if (oauthScopes !== undefined) await upsert('OAUTH_SCOPES', oauthScopes);
 
         // Reinitialize service and restart cron if config changed
         await invgateService.initialize();
@@ -2713,7 +2714,7 @@ app.get('/api/invgate/config', authMiddleware, async (req, res) => {
         const result = await pool.request().query(`
             SELECT ConfigKey, ConfigValue 
             FROM InvgateConfig 
-            WHERE ConfigKey IN ('CLIENT_ID', 'CLIENT_SECRET', 'TOKEN_URL', 'API_BASE_URL', 'SYNC_INTERVAL_HOURS', 'SYNC_ENABLED', 'LAST_SYNC_DATE')
+            WHERE ConfigKey IN ('CLIENT_ID', 'CLIENT_SECRET', 'TOKEN_URL', 'API_BASE_URL', 'SYNC_INTERVAL_HOURS', 'SYNC_ENABLED', 'LAST_SYNC_DATE', 'OAUTH_SCOPES')
         `);
 
         const raw = {};
@@ -2726,7 +2727,8 @@ app.get('/api/invgate/config', authMiddleware, async (req, res) => {
             apiBaseUrl: raw.API_BASE_URL || '',
             sync_interval_hours: raw.SYNC_INTERVAL_HOURS || '1',
             sync_enabled: raw.SYNC_ENABLED || 'true',
-            last_sync_date: raw.LAST_SYNC_DATE || null
+            last_sync_date: raw.LAST_SYNC_DATE || null,
+            oauthScopes: raw.OAUTH_SCOPES || ''
         });
     } catch (err) {
         console.error('Error getting InvGate config:', err);

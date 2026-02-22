@@ -46,7 +46,7 @@ class UberEatsService {
         try {
             const pool = await getUberEatsPool();
             const result = await pool.request()
-                .input('key', sql.NVarChar, key)
+                .input('key', sql.NVarChar(100), key)
                 .query('SELECT ConfigValue FROM UberEatsConfig WHERE ConfigKey = @key');
             return result.recordset[0]?.ConfigValue ?? null;
         } catch { return null; }
@@ -55,8 +55,8 @@ class UberEatsService {
     async setConfig(key, value) {
         const pool = await getUberEatsPool();
         await pool.request()
-            .input('key', sql.NVarChar, key)
-            .input('val', sql.NVarChar, value)
+            .input('key', sql.NVarChar(100), key)
+            .input('val', sql.NVarChar(sql.MAX), value)
             .query(`
                 MERGE UberEatsConfig AS t
                 USING (SELECT @key AS k) AS s ON t.ConfigKey = s.k
@@ -78,7 +78,19 @@ class UberEatsService {
 
             this.clientId = cfg.CLIENT_ID || null;
             const encSecret = cfg.CLIENT_SECRET || null;
-            this.clientSecret = encSecret ? decryptValue(encSecret) : null;
+            console.log(`🔍 UberEats init: CLIENT_ID=${this.clientId ? this.clientId.substring(0, 8) + '...' : 'NULL'}, CLIENT_SECRET in DB=${encSecret ? 'YES (' + encSecret.length + ' chars)' : 'NULL'}`);
+
+            if (encSecret) {
+                try {
+                    this.clientSecret = decryptValue(encSecret);
+                    console.log(`🔓 UberEats: secret decrypted OK (${this.clientSecret.length} chars)`);
+                } catch (decErr) {
+                    console.error('❌ UberEats: FAILED to decrypt CLIENT_SECRET:', decErr.message);
+                    this.clientSecret = null;
+                }
+            } else {
+                this.clientSecret = null;
+            }
             this.initialized = !!(this.clientId && this.clientSecret);
 
             if (this.initialized) {
@@ -398,6 +410,52 @@ class UberEatsService {
             return { success: false, message: err.message };
         }
     }
+
+    // ─── Token/secret status check ────────────────────────
+    async getTokenStatus() {
+        try {
+            const pool = await getUberEatsPool();
+            const result = await pool.request().query(
+                `SELECT ConfigKey, ConfigValue FROM UberEatsConfig WHERE ConfigKey IN ('CLIENT_ID', 'CLIENT_SECRET')`
+            );
+            const cfg = {};
+            result.recordset.forEach(r => { cfg[r.ConfigKey] = r.ConfigValue; });
+
+            const hasClientId = !!(cfg.CLIENT_ID && cfg.CLIENT_ID.trim());
+            const hasSecretInDb = !!(cfg.CLIENT_SECRET && cfg.CLIENT_SECRET.trim());
+            let canDecrypt = false;
+            let canGetToken = false;
+            let tokenError = null;
+
+            if (hasSecretInDb) {
+                try {
+                    const decrypted = decryptValue(cfg.CLIENT_SECRET);
+                    canDecrypt = !!(decrypted && decrypted.length > 0);
+                } catch (e) {
+                    console.error('❌ UberEats: cannot decrypt stored secret:', e.message);
+                }
+            }
+
+            if (hasClientId && canDecrypt) {
+                try {
+                    await this.initialize();
+                    this.accessToken = null;
+                    this.tokenExpiry = null;
+                    await this.getAccessToken();
+                    canGetToken = true;
+                } catch (e) {
+                    tokenError = e.message;
+                }
+            }
+
+            return { hasClientId, hasSecretInDb, canDecrypt, canGetToken, tokenError };
+        } catch (err) {
+            return { hasClientId: false, hasSecretInDb: false, canDecrypt: false, canGetToken: false, tokenError: err.message };
+        }
+    }
 }
 
-module.exports = new UberEatsService();
+const instance = new UberEatsService();
+module.exports = instance;
+module.exports.encryptValue = encryptValue;
+module.exports.decryptValue = decryptValue;

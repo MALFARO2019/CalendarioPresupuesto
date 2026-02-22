@@ -47,6 +47,7 @@ export const InvgateAdmin: React.FC = () => {
     const [apiBaseUrl, setApiBaseUrl] = useState('https://rostipollos.cloud.invgate.net/api/v1');
     const [syncInterval, setSyncInterval] = useState('1');
     const [syncEnabled, setSyncEnabled] = useState(true);
+    const [oauthScopes, setOauthScopes] = useState('');
 
     // UI state
     const [tab, setTab] = useState<Tab>('auth');
@@ -90,6 +91,7 @@ export const InvgateAdmin: React.FC = () => {
             setApiBaseUrl(r.data.apiBaseUrl || 'https://rostipollos.cloud.invgate.net/api/v1');
             setSyncInterval(r.data.sync_interval_hours || '1');
             setSyncEnabled(r.data.sync_enabled === 'true');
+            setOauthScopes(r.data.oauthScopes || '');
         } catch (e: any) {
             console.error('Error loading config:', e);
         } finally { setLoading(false); }
@@ -234,7 +236,7 @@ export const InvgateAdmin: React.FC = () => {
         setSavingConfig(true);
         try {
             await axios.post(`${API_BASE}/invgate/config`,
-                { clientId, clientSecret, tokenUrl, apiBaseUrl, syncIntervalHours: parseInt(syncInterval), syncEnabled },
+                { clientId, clientSecret, tokenUrl, apiBaseUrl, syncIntervalHours: parseInt(syncInterval), syncEnabled, oauthScopes: oauthScopes || undefined },
                 { headers: authHeaders() });
             alert('✅ Configuración guardada');
         } catch (e: any) {
@@ -352,6 +354,14 @@ export const InvgateAdmin: React.FC = () => {
                         <div className="form-group checkbox-group">
                             <input type="checkbox" id="syncEnabled" checked={syncEnabled} onChange={e => setSyncEnabled(e.target.checked)} />
                             <label htmlFor="syncEnabled">Habilitar sincronización automática</label>
+                        </div>
+                        <div className="form-group">
+                            <label>OAuth Scopes <small style={{ color: '#94a3b8', fontWeight: 400 }}>(opcional — vacío = defaults)</small>:</label>
+                            <textarea value={oauthScopes} onChange={e => setOauthScopes(e.target.value)}
+                                placeholder="api.v1.incidents:get api.v1.incident:get api.v1.helpdesks:get ..."
+                                className="config-input" rows={3}
+                                style={{ fontFamily: 'monospace', fontSize: '12px', resize: 'vertical' }} />
+                            <small>Separar con espacios. Si está vacío se usan los scopes por defecto del servidor.</small>
                         </div>
                         <div className="config-actions">
                             <button onClick={saveConfig} disabled={savingConfig} className="btn-primary">
