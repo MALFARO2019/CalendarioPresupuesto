@@ -114,12 +114,33 @@ async function getTendenciaData(req, res) {
             canalParams['canal'] = dbCanal;
         }
 
-        // EMERGENCY SIMPLIFIED QUERY - No CTEs, direct aggregation
+        // Build local filter for subqueries (using a2 alias)
+        let localFilterSub = '';
+        if (memberLocals && memberLocals.length > 0) {
+            const ph = memberLocals.map((_, i) => `@ml${i}`).join(', ');
+            localFilterSub = `AND a2.Local IN (${ph})`;
+        } else if (local) {
+            localFilterSub = 'AND a2.Local = @local';
+        }
+
+        // Build canal filter for subqueries (using a2 alias)
+        let canalFilterSub = '';
+        if (useMultiChannel) {
+            const canalPlaceholders = userAllowedCanales.map((_, i) => `@ch${i}`).join(', ');
+            canalFilterSub = `a2.Canal IN (${canalPlaceholders})`;
+        } else {
+            canalFilterSub = `a2.Canal = @canal`;
+        }
+
+        // SIMPLIFIED QUERY with PresupuestoAnual = full year budget (not limited by date range)
         const query = `
             SELECT 
                 r.Local,
-                -- Period budget (sum of ALL days in the selected date range for this Local)
-                SUM(r.Monto) as PresupuestoPeriodo,
+                -- Annual budget (sum of ALL days in the year, not limited by date range)
+                (SELECT SUM(a2.Monto) FROM ${alcanceTable} a2 
+                 WHERE a2.Año = YEAR(@endDate) AND a2.Local = r.Local 
+                 AND a2.Tipo = @kpi AND ${canalFilterSub}
+                 AND SUBSTRING(a2.CODALMACEN, 1, 1) != 'G') as PresupuestoAnual,
                 -- Period budget (sum of days WITH sales only)
                 SUM(CASE WHEN r.MontoReal > 0 THEN r.Monto ELSE 0 END) as PresupuestoAcum,
                 -- Period real (sum of actual sales)
@@ -176,8 +197,8 @@ async function getTendenciaData(req, res) {
             console.log('   First 5 restaurants:');
             result.recordset.slice(0, 5).forEach((r, i) => {
                 console.log(`   ${i + 1}. ${r.Local}:`);
-                console.log(`      PresupuestoAnual: ${r.PresupuestoAnual}`);
-                console.log(`      PresupuestoAcum: ${r.PresupuestoAcum}`);
+                console.log(`      PresupuestoAnual (full year): ${r.PresupuestoAnual}`);
+                console.log(`      PresupuestoAcum (days w/ data): ${r.PresupuestoAcum}`);
                 console.log(`      RealAcum: ${r.RealAcum}`);
                 console.log(`      AnteriorAcum: ${r.AnteriorAcum}`);
             });
@@ -198,7 +219,7 @@ async function getTendenciaData(req, res) {
         const resumen = { totalPresupuesto: 0, totalPresupuestoAcum: 0, totalReal: 0, totalAnterior: 0 };
 
         result.recordset.forEach(row => {
-            const presupuesto = row.PresupuestoPeriodo || 0;
+            const presupuesto = row.PresupuestoAnual || 0;
             const presupuestoAcum = row.PresupuestoAcum || 0;
             const real = row.RealAcum || 0;
             const anterior = row.AnteriorAcum || 0;
@@ -257,21 +278,42 @@ async function getTendenciaData(req, res) {
 
         // NOTE: TQP is NOT summed from DB — it must be calculated as Ventas/Transacciones
         // We only fetch Ventas and Transacciones here, then derive TQP in JS.
-        // PresupuestoPeriodo = SUM(Monto) for ALL days in the selected date range (period budget)
+        // Build local filter for multiKpi subquery (using a2 alias with ml2_ prefix)
+        let localFilterSub2 = '';
+        if (memberLocals && memberLocals.length > 0) {
+            const ph = memberLocals.map((_, i) => `@ml2_${i}`).join(', ');
+            localFilterSub2 = `AND a2.Local IN (${ph})`;
+        } else if (local) {
+            localFilterSub2 = 'AND a2.Local = @local2';
+        }
+
+        // Build canal filter for multiKpi subquery (using a2 alias)
+        let canalFilterSub2 = '';
+        if (useMultiChannel) {
+            canalFilterSub2 = `a2.Canal IN (${userAllowedCanales.map((_, i) => `@ch2_${i}`).join(', ')})`;
+        } else {
+            canalFilterSub2 = `a2.Canal = @canal2`;
+        }
+
         const multiKpiQuery = `
             SELECT 
-                Tipo,
-                SUM(Monto) as PresupuestoPeriodo,
-                SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) as PresupuestoAcum,
-                SUM(MontoReal) as RealAcum,
-                SUM(CASE WHEN MontoReal > 0 THEN ${anteriorField} ELSE 0 END) as AnteriorAcum
-            FROM ${alcanceTable}
-            WHERE Fecha BETWEEN @startDate2 AND @endDate2
-                AND Año = YEAR(@endDate2) AND ${canalFilter2}
-                AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-                AND Tipo IN ('Ventas', 'Transacciones')
+                r.Tipo,
+                -- Annual budget (full year, not limited by date range)
+                (SELECT SUM(a2.Monto) FROM ${alcanceTable} a2 
+                 WHERE a2.Año = YEAR(@endDate2) AND a2.Tipo = r.Tipo 
+                 AND ${canalFilterSub2}
+                 AND SUBSTRING(a2.CODALMACEN, 1, 1) != 'G'
+                 ${localFilterSub2}) as PresupuestoAnual,
+                SUM(CASE WHEN r.MontoReal > 0 THEN r.Monto ELSE 0 END) as PresupuestoAcum,
+                SUM(r.MontoReal) as RealAcum,
+                SUM(CASE WHEN r.MontoReal > 0 THEN r.${anteriorField} ELSE 0 END) as AnteriorAcum
+            FROM ${alcanceTable} r
+            WHERE r.Fecha BETWEEN @startDate2 AND @endDate2
+                AND r.Año = YEAR(@endDate2) AND r.${canalFilter2}
+                AND SUBSTRING(r.CODALMACEN, 1, 1) != 'G'
+                AND r.Tipo IN ('Ventas', 'Transacciones')
                 ${localFilter.replace(/@ml/g, '@ml2_').replace(/@local/g, '@local2')}
-            GROUP BY Tipo
+            GROUP BY r.Tipo
         `;
         const multiReq = pool.request();
         multiReq.input('startDate2', sql.Date, startDate);
@@ -291,18 +333,18 @@ async function getTendenciaData(req, res) {
 
         console.log(`\n💫 MultiKPI Query returned ${multiResult.recordset.length} KPI types`);
         multiResult.recordset.forEach(r => {
-            console.log(`   ${r.Tipo}: PresupuestoAnual=${r.PresupuestoAnual}, RealAcum=${r.RealAcum}`);
+            console.log(`   ${r.Tipo}: PresupuestoAnual=${r.PresupuestoAnual}, PresupuestoAcum=${r.PresupuestoAcum}, RealAcum=${r.RealAcum}`);
         });
 
         const resumenMultiKpi = {};
         multiResult.recordset.forEach(row => {
-            const pPeriodo = row.PresupuestoPeriodo || 0;
+            const pAnual = row.PresupuestoAnual || 0;
             const pAcum = row.PresupuestoAcum || 0;
             const real = row.RealAcum || 0;
             const ant = row.AnteriorAcum || 0;
             const pctPpto = pAcum > 0 ? (real / pAcum) : 0;
             resumenMultiKpi[row.Tipo] = {
-                totalPresupuesto: pPeriodo,
+                totalPresupuesto: pAnual,
                 totalPresupuestoAcum: pAcum,
                 totalReal: real,
                 totalAnterior: ant,

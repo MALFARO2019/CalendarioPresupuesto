@@ -1,5 +1,6 @@
 import React from 'react';
 import { useUserPreferences } from '../context/UserPreferences';
+import { SearchableLocalSelect } from './SearchableLocalSelect';
 
 interface FilterBarProps {
     year: number;
@@ -65,41 +66,50 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 {showMonthSelector && (
                     <div>
                         <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Mes</label>
-                        <select
-                            value={currentMonth}
-                            onChange={(e) => onMonthChange?.(parseInt(e.target.value))}
-                            className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300 touch-target"
-                        >
-                            {monthNames.map((name, idx) => (
-                                <option key={idx} value={idx}>{name}</option>
-                            ))}
-                        </select>
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const prev = currentMonth === 0 ? 11 : currentMonth - 1;
+                                    onMonthChange?.(prev);
+                                }}
+                                className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-all flex-shrink-0"
+                                title="Mes anterior"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                            </button>
+                            <select
+                                value={currentMonth}
+                                onChange={(e) => onMonthChange?.(parseInt(e.target.value))}
+                                className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300 touch-target"
+                            >
+                                {monthNames.map((name, idx) => (
+                                    <option key={idx} value={idx}>{name}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = currentMonth === 11 ? 0 : currentMonth + 1;
+                                    onMonthChange?.(next);
+                                }}
+                                className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-all flex-shrink-0"
+                                title="Mes siguiente"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            </button>
+                        </div>
                     </div>
                 )}
 
                 <div>
                     <label className="block text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Local</label>
-                    <select
+                    <SearchableLocalSelect
                         value={filterLocal}
-                        onChange={(e) => setFilterLocal(e.target.value)}
-                        className="block w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 px-3 sm:px-4 py-2.5 sm:py-3 bg-white font-semibold text-gray-700 text-sm transition-smooth hover:border-indigo-300 touch-target"
-                    >
-                        <option value="">Seleccionar...</option>
-                        {groups.length > 0 && (
-                            <optgroup label="Grupos">
-                                {groups.map(group => (
-                                    <option key={group} value={group}>{group}</option>
-                                ))}
-                            </optgroup>
-                        )}
-                        {individualStores.length > 0 && (
-                            <optgroup label="Locales">
-                                {individualStores.map(store => (
-                                    <option key={store} value={store}>{store}</option>
-                                ))}
-                            </optgroup>
-                        )}
-                    </select>
+                        onChange={setFilterLocal}
+                        groups={groups}
+                        individualStores={individualStores}
+                    />
                 </div>
 
                 <div>

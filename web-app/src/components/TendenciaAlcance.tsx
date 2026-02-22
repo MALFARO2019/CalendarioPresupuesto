@@ -4,6 +4,7 @@ import { getToken, API_BASE, fetchAdminPorLocal, type PersonalAsignado, type Eve
 import { useUserPreferences } from '../context/UserPreferences';
 import { exportTendenciaExcel } from '../utils/excelExporter';
 import { TrendIndicator } from '../shared/components/TrendIndicator';
+import { SearchableLocalSelect } from './SearchableLocalSelect';
 
 interface TendenciaAlcanceProps {
     year: number;
@@ -391,19 +392,13 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                     {/* Local/Group Filter */}
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Local</label>
-                        <select value={selectedLocal} onChange={(e) => setSelectedLocal(e.target.value)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[180px]">
-                            {groups.length > 0 && (
-                                <optgroup label="Grupos">
-                                    {groups.map(g => (<option key={g} value={g}>{g}</option>))}
-                                </optgroup>
-                            )}
-                            {individualStores.length > 0 && (
-                                <optgroup label="Locales">
-                                    {individualStores.map(s => (<option key={s} value={s}>{s}</option>))}
-                                </optgroup>
-                            )}
-                        </select>
+                        <SearchableLocalSelect
+                            value={selectedLocal}
+                            onChange={setSelectedLocal}
+                            groups={groups}
+                            individualStores={individualStores}
+                            className="min-w-[180px]"
+                        />
                     </div>
                     {/* KPI Filter */}
                     <div>
