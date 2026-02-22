@@ -469,6 +469,8 @@ export const FormsAdmin: React.FC = () => {
         } catch (e: any) {
             alert('Error: ' + (e.response?.data?.error || e.message));
         }
+        // Also auto-load distinct unmapped for manual assignment
+        loadDistinctUnmapped();
     };
 
     // ─── Manual Mapping ───────────────────────────────────────────────────────
@@ -1131,12 +1133,51 @@ export const FormsAdmin: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* Manual Mapping Section */}
+                                {/* Unmapped records detail - shown FIRST */}
+                                {showUnmapped && (
+                                    <div className="unmapped-section">
+                                        <h4>⚠️ Registros Sin Mapear ({mappingUnmappedCount})</h4>
+                                        {mappingUnmapped.length === 0 ? (
+                                            <p style={{ color: '#059669', fontSize: 13 }}>✅ Todos los registros están mapeados correctamente</p>
+                                        ) : (
+                                            <div className="unmapped-table-wrap">
+                                                <table className="unmapped-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>ID</th>
+                                                            <th>Correo</th>
+                                                            <th>Fecha</th>
+                                                            {mappingAlmacen && <th>Valor Local</th>}
+                                                            {mappingPersona && <th>Valor Persona</th>}
+                                                            <th>CodAlmacen</th>
+                                                            <th>PersonalID</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {mappingUnmapped.slice(0, 50).map((row: any) => (
+                                                            <tr key={row.ID}>
+                                                                <td>{row.ID}</td>
+                                                                <td>{row.RespondentEmail || '—'}</td>
+                                                                <td>{row.SubmittedAt ? new Date(row.SubmittedAt).toLocaleDateString('es-CR') : '—'}</td>
+                                                                {mappingAlmacen && <td className="unmapped-value">{row._SourceLocal || '—'}</td>}
+                                                                {mappingPersona && <td className="unmapped-value">{row._SourcePersona || '—'}</td>}
+                                                                <td>{row._CODALMACEN || <span className="no-map">❌</span>}</td>
+                                                                <td>{row._PERSONAL_ID ? `✅ ${row._PERSONAL_NOMBRE || row._PERSONAL_ID}` : <span className="no-map">❌</span>}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Manual Mapping Section - shown AFTER the table */}
                                 {showManualMapping && (
                                     <div className="manual-mapping-section">
                                         <div className="manual-mapping-header">
                                             <h4>🔧 Asignación Manual de Valores</h4>
-                                            <p style={{ color: '#6b7280', fontSize: 12, margin: '4px 0 0' }}>Asigne cada valor del formulario a su equivalente en el sistema. Una vez asignado, los futuros registros con el mismo valor se resolverán automáticamente.</p>
+                                            <p style={{ color: '#6b7280', fontSize: 12, margin: '4px 0 0' }}>Busque el nombre y seleccione de la lista. Al guardar 💾, todos los registros con ese valor se resolverán automáticamente.</p>
                                         </div>
 
                                         {/* Persona unmapped */}
@@ -1258,45 +1299,6 @@ export const FormsAdmin: React.FC = () => {
                                                 {mappingResolving ? '⏳ Resolviendo...' : '🔄 Re-resolver Todo'}
                                             </button>
                                         </div>
-                                    </div>
-                                )}
-
-                                {/* Unmapped records detail */}
-                                {showUnmapped && (
-                                    <div className="unmapped-section">
-                                        <h4>⚠️ Registros Sin Mapear ({mappingUnmappedCount})</h4>
-                                        {mappingUnmapped.length === 0 ? (
-                                            <p style={{ color: '#059669', fontSize: 13 }}>✅ Todos los registros están mapeados correctamente</p>
-                                        ) : (
-                                            <div className="unmapped-table-wrap">
-                                                <table className="unmapped-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>ID</th>
-                                                            <th>Correo</th>
-                                                            <th>Fecha</th>
-                                                            {mappingAlmacen && <th>Valor Local</th>}
-                                                            {mappingPersona && <th>Valor Persona</th>}
-                                                            <th>CodAlmacen</th>
-                                                            <th>PersonalID</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {mappingUnmapped.slice(0, 50).map((row: any) => (
-                                                            <tr key={row.ID}>
-                                                                <td>{row.ID}</td>
-                                                                <td>{row.RespondentEmail || '—'}</td>
-                                                                <td>{row.SubmittedAt ? new Date(row.SubmittedAt).toLocaleDateString('es-CR') : '—'}</td>
-                                                                {mappingAlmacen && <td className="unmapped-value">{row._SourceLocal || '—'}</td>}
-                                                                {mappingPersona && <td className="unmapped-value">{row._SourcePersona || '—'}</td>}
-                                                                <td>{row._CODALMACEN || <span className="no-map">❌</span>}</td>
-                                                                <td>{row._PERSONAL_ID ? `✅ ${row._PERSONAL_NOMBRE || row._PERSONAL_ID}` : <span className="no-map">❌</span>}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        )}
                                     </div>
                                 )}
                             </>

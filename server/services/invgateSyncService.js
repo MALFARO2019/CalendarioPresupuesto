@@ -294,67 +294,68 @@ class InvGateSyncService {
                         await invgateMappingService.ensureMappingColumns(tableName);
                     }
 
-                    // Determine a unique key for upsert — try 'id' column first
-                    const idColIdx = columns.findIndex(c => c.toLowerCase() === 'id');
-                    const hasIdCol = idColIdx >= 0;
-                    const idSafeCol = hasIdCol ? safeColumns[idColIdx] : null;
+                    // ── BATCH INSERT: truncate + batch insert in chunks  ──
+                    // For large datasets (thousands of tickets), row-by-row MERGE is too slow.
+                    // Instead: truncate the table then batch-insert. Mappings are re-resolved post-sync.
+                    await pool.request().query(`TRUNCATE TABLE [${tableName}]`);
+                    console.log(`    🗑️ Truncated [${tableName}] for fresh sync`);
 
-                    // Upsert all tickets
                     let insertedCount = 0;
-                    let updatedCount = 0;
-                    for (const ticket of tickets) {
-                        try {
-                            const req = pool.request();
-                            const colNames = [];
-                            const paramNames = [];
-                            const updatePairs = [];
-                            let paramIdx = 0;
+                    const BATCH_SIZE = 100;
+                    for (let batchStart = 0; batchStart < tickets.length; batchStart += BATCH_SIZE) {
+                        const batch = tickets.slice(batchStart, batchStart + BATCH_SIZE);
 
+                        // Build batch INSERT with UNION ALL for each row
+                        const req = pool.request();
+                        const allValueRows = [];
+                        let paramIdx = 0;
+
+                        for (const ticket of batch) {
+                            const rowParams = [];
                             for (let i = 0; i < columns.length; i++) {
                                 const rawValue = ticket[columns[i]];
                                 const valueStr = rawValue === null || rawValue === undefined ? null
                                     : typeof rawValue === 'object' ? JSON.stringify(rawValue)
                                         : String(rawValue);
                                 const paramName = `p${paramIdx++}`;
-                                colNames.push(`[${safeColumns[i]}]`);
-                                paramNames.push(`@${paramName}`);
-                                updatePairs.push(`[${safeColumns[i]}] = @${paramName}`);
+                                rowParams.push(`@${paramName}`);
                                 req.input(paramName, sql.NVarChar(sql.MAX), valueStr);
                             }
+                            allValueRows.push(`(${rowParams.join(', ')})`);
+                        }
 
-                            if (hasIdCol) {
-                                // Upsert using MERGE on the id column
-                                const ticketId = ticket[columns[idColIdx]];
-                                req.input('_mergeId', sql.NVarChar(sql.MAX), ticketId != null ? String(ticketId) : null);
-
-                                const result = await req.query(`
-                                    MERGE [${tableName}] AS target
-                                    USING (SELECT @_mergeId AS [${idSafeCol}]) AS source
-                                    ON target.[${idSafeCol}] = source.[${idSafeCol}]
-                                    WHEN MATCHED THEN UPDATE SET
-                                        ${updatePairs.join(', ')},
-                                        [_SyncedAt] = GETDATE()
-                                    WHEN NOT MATCHED THEN INSERT
-                                        (${colNames.join(', ')})
-                                        VALUES (${paramNames.join(', ')})
-                                    OUTPUT $action AS MergeAction;
-                                `);
-
-                                const action = result.recordset[0]?.MergeAction;
-                                if (action === 'INSERT') insertedCount++;
-                                else updatedCount++;
-                            } else {
-                                // No id column — just insert
-                                await req.query(`
-                                    INSERT INTO [${tableName}] (${colNames.join(', ')})
-                                    VALUES (${paramNames.join(', ')})
-                                `);
-                                insertedCount++;
+                        const colNames = safeColumns.map(c => `[${c}]`).join(', ');
+                        try {
+                            await req.query(`INSERT INTO [${tableName}] (${colNames}) VALUES ${allValueRows.join(',\n')}`);
+                            insertedCount += batch.length;
+                        } catch (batchErr) {
+                            console.error(`    ⚠️ Batch insert error at row ${batchStart}:`, batchErr.message);
+                            // Fallback: try one-by-one for this batch
+                            for (const ticket of batch) {
+                                try {
+                                    const singleReq = pool.request();
+                                    const singleParams = [];
+                                    let singleIdx = 0;
+                                    for (let i = 0; i < columns.length; i++) {
+                                        const rawValue = ticket[columns[i]];
+                                        const valueStr = rawValue === null || rawValue === undefined ? null
+                                            : typeof rawValue === 'object' ? JSON.stringify(rawValue)
+                                                : String(rawValue);
+                                        const pn = `s${singleIdx++}`;
+                                        singleParams.push(`@${pn}`);
+                                        singleReq.input(pn, sql.NVarChar(sql.MAX), valueStr);
+                                    }
+                                    await singleReq.query(`INSERT INTO [${tableName}] (${colNames}) VALUES (${singleParams.join(', ')})`);
+                                    insertedCount++;
+                                } catch (singleErr) { /* skip bad row */ }
                             }
-                        } catch (insertErr) {
-                            if (insertedCount + updatedCount === 0) console.error(`    ⚠️ Upsert error:`, insertErr.message);
+                        }
+
+                        if ((batchStart + BATCH_SIZE) % 1000 === 0 || batchStart + BATCH_SIZE >= tickets.length) {
+                            console.log(`    📝 Inserted ${insertedCount}/${tickets.length} rows...`);
                         }
                     }
+                    const updatedCount = 0;
 
                     totalProcessed += insertedCount + updatedCount;
                     totalNew += insertedCount;
