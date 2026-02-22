@@ -199,8 +199,8 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
     const handleEditFecha = (fecha: EventoFecha) => {
         setEditingFecha(fecha);
         setFechaForm({
-            FECHA: fecha.FECHA.split('T')[0],
-            FECHA_EFECTIVA: fecha.FECHA_EFECTIVA.split('T')[0],
+            FECHA: fecha.FECHA ? fecha.FECHA.split('T')[0] : '',
+            FECHA_EFECTIVA: fecha.FECHA_EFECTIVA ? fecha.FECHA_EFECTIVA.split('T')[0] : '',
             Canal: fecha.Canal,
             GrupoAlmacen: fecha.GrupoAlmacen
         });
@@ -214,6 +214,16 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
         setEditingFecha(null);
         setEventoForm({ EVENTO: '', ESFERIADO: 'N', USARENPRESUPUESTO: 'S', ESINTERNO: 'N' });
         setFechaForm({ FECHA: '', FECHA_EFECTIVA: '', Canal: 'Todos', GrupoAlmacen: null });
+    };
+
+    const safeFormatDate = (dateStr: string | null | undefined, fallback = '(sin fecha)') => {
+        if (!dateStr) return fallback;
+        try {
+            const clean = dateStr.split('T')[0];
+            return format(parseISO(clean), 'PPP', { locale: es });
+        } catch {
+            return fallback;
+        }
     };
 
     return (
@@ -487,7 +497,7 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <span className="font-semibold text-sm text-gray-800">
-                                                            {format(parseISO(fecha.FECHA.split('T')[0]), 'PPP', { locale: es })}
+                                                            {safeFormatDate(fecha.FECHA)}
                                                         </span>
                                                         {fecha.Canal && (
                                                             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
@@ -496,7 +506,7 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                                         )}
                                                     </div>
                                                     <div className="text-xs text-gray-500">
-                                                        <div>Referencia: {format(parseISO(fecha.FECHA_EFECTIVA.split('T')[0]), 'PPP', { locale: es })}</div>
+                                                        <div>Referencia: {safeFormatDate(fecha.FECHA_EFECTIVA)}</div>
                                                         {fecha.USUARIO_MODIFICACION && (
                                                             <div className="mt-1 text-gray-400">
                                                                 Modificado por {fecha.USUARIO_MODIFICACION} el {fecha.FECHA_MODIFICACION && format(new Date(fecha.FECHA_MODIFICACION), 'PPpp', { locale: es })}

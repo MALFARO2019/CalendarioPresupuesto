@@ -575,7 +575,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             {canAccessUsers && <option value="users">👤 Usuarios</option>}
                             {canAccessUsers && <option value="profiles">🛡️ Perfiles</option>}
                             {canAccessUsers && <option value="personal">👥 Personal</option>}
-                            {canAccessEvents && <option value="events">📅 Eventos</option>}
+                            {canAccessEvents && <option value="events">📅 Eventos Ajuste</option>}
                             {canAccessUsers && <option value="ia">🤖 IA Táctica</option>}
                             {canAccessUsers && <option value="general">⚙️ General</option>}
                             {canAccessUsers && <option value="database">🗄️ Base de Datos</option>}
@@ -619,7 +619,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                         {canAccessEvents && (
                             <button onClick={() => setActiveTab('events')}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'events' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
-                                <Calendar className="w-4 h-4 flex-shrink-0" /> Eventos
+                                <Calendar className="w-4 h-4 flex-shrink-0" /> Eventos Ajuste
                             </button>
                         )}
                         {canAccessUsers && (
