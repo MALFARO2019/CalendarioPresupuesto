@@ -124,7 +124,7 @@ class FormsSyncService {
 
     // ─── Sync single source ───────────────────────────────────────────────────
 
-    async syncSource(sourceId, initiatedBy = 'SYSTEM') {
+    async syncSource(sourceId, initiatedBy = 'SYSTEM', type = 'FULL') {
         const pool = await getFormsPool();
         const srcResult = await pool.request()
             .input('id', sql.Int, sourceId)
@@ -133,14 +133,17 @@ class FormsSyncService {
 
         const source = srcResult.recordset[0];
         const startTime = Date.now();
-        console.log(`🔄 Syncing source: ${source.Alias}`);
+        const isIncremental = type === 'INCREMENTAL';
+        const updatedSince = isIncremental && source.UltimaSync ? source.UltimaSync : null;
+        console.log(`🔄 Syncing source: ${source.Alias} (${type}${updatedSince ? ', since ' + new Date(updatedSince).toISOString() : ''})`);
 
-        const responses = await formsService.getFormResponsesBySource(source);
+        const sinceStr = updatedSince ? (updatedSince.toISOString ? updatedSince.toISOString() : String(updatedSince)) : null;
+        const responses = await formsService.getFormResponsesBySource(source, sinceStr);
         const result = await this.syncSourceResponses(source, responses);
         await this.updateSourceStats(sourceId);
 
         const syncLog = {
-            tipo: 'MANUAL',
+            tipo: isIncremental ? 'MANUAL_INCREMENTAL' : 'MANUAL_FULL',
             iniciadoPor: initiatedBy,
             registrosProcesados: responses.length,
             registrosNuevos: result.nuevos,

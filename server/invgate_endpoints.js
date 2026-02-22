@@ -7,7 +7,6 @@ const { getInvgatePool, sql } = require('./invgateDb');
 const invgateService = require('./services/invgateService');
 const invgateSyncService = require('./services/invgateSyncService');
 const invgateCron = require('./jobs/invgateCron');
-const invgateMappingService = require('./services/invgateMappingService');
 const crypto = require('crypto');
 
 function getEncKey() {
@@ -112,8 +111,64 @@ function registerInvgateEndpoints(app, authMiddleware) {
         }
     });
 
+    // ══════════════════════════════════════════
+    // HELPDESKS (Solicitudes)
+    // ══════════════════════════════════════════
 
+    app.get('/api/invgate/helpdesks', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            // Try API first, fall back to local DB
+            let helpdesks = [];
+            let apiError = null;
+            try {
+                const apiHelpdesks = await invgateService.getHelpdesks();
+                // Sync to DB while we're at it
+                const pool = await getInvgatePool();
+                for (const hd of apiHelpdesks) {
+                    await pool.request()
+                        .input('id', sql.Int, hd.id)
+                        .input('nombre', sql.NVarChar, hd.name || '')
+                        .query(`
+                            IF NOT EXISTS (SELECT 1 FROM InvgateHelpdesks WHERE HelpdeskID = @id)
+                                INSERT INTO InvgateHelpdesks (HelpdeskID, Nombre) VALUES (@id, @nombre)
+                            ELSE
+                                UPDATE InvgateHelpdesks SET Nombre = @nombre WHERE HelpdeskID = @id
+                        `);
+                }
+            } catch (e) {
+                apiError = e.message;
+            }
+            // Always return from DB (has SyncEnabled flag)
+            const pool = await getInvgatePool();
+            const result = await pool.request().query(`
+                SELECT h.HelpdeskID as id, h.Nombre as name, h.SyncEnabled as syncEnabled,
+                       ISNULL((SELECT COUNT(*) FROM InvgateTickets t WHERE t.HelpdeskID = h.HelpdeskID), 0) as totalTickets
+                FROM InvgateHelpdesks h ORDER BY h.Nombre
+            `);
+            helpdesks = result.recordset.map(r => ({
+                id: r.id, name: r.name, syncEnabled: !!r.syncEnabled, totalTickets: r.totalTickets
+            }));
+            res.json({ helpdesks, apiError });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
+    app.put('/api/invgate/helpdesks/:id/toggle', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const pool = await getInvgatePool();
+            const { enabled, name } = req.body;
+            await pool.request()
+                .input('id', sql.Int, parseInt(req.params.id))
+                .input('enabled', sql.Bit, enabled ? 1 : 0)
+                .query('UPDATE InvgateHelpdesks SET SyncEnabled = @enabled WHERE HelpdeskID = @id');
+            res.json({ success: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
     // ══════════════════════════════════════════
     // VIEWS — Configuration & Data
@@ -176,241 +231,130 @@ function registerInvgateEndpoints(app, authMiddleware) {
         }
     });
 
-    // Get synced data for a view (from DB) — paginated
+    // Sync a single view
+    app.post('/api/invgate/views/:id/sync', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const viewId = parseInt(req.params.id);
+            const result = await invgateSyncService.syncSingleView(viewId, 'MANUAL');
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Get synced data for a view (from DB)
     app.get('/api/invgate/views/:id/data', authMiddleware, async (req, res) => {
         if (!requireAdmin(req, res)) return;
         try {
-            const page = parseInt(req.query.page) || 1;
-            const pageSize = parseInt(req.query.pageSize) || 100;
-            const data = await invgateSyncService.getViewData(parseInt(req.params.id), page, pageSize);
+            const data = await invgateSyncService.getViewData(parseInt(req.params.id));
             res.json(data);
         } catch (err) {
             res.status(500).json({ error: err.message });
         }
     });
 
-    // ── In-memory tracking for background syncs ──
-    const viewSyncStatus = {}; // { viewId: { status: 'running'|'done'|'error', startedAt, message, result } }
+    // ══════════════════════════════════════════
+    // SYNC — Manual triggers & status
+    // ══════════════════════════════════════════
 
-    // Sync a single view (fire-and-forget — runs in background)
-    app.post('/api/invgate/views/:id/sync', authMiddleware, async (req, res) => {
+    app.post('/api/invgate/sync', authMiddleware, async (req, res) => {
         if (!requireAdmin(req, res)) return;
-        const viewId = parseInt(req.params.id);
-
-        if (viewSyncStatus[viewId]?.status === 'running') {
-            return res.json({ status: 'already_running', message: 'Sync ya en progreso para esta vista' });
+        try {
+            const { type } = req.body;
+            if (type === 'incremental') {
+                const result = await invgateSyncService.incrementalSync('MANUAL');
+                res.json(result);
+            } else {
+                const result = await invgateSyncService.fullSync('MANUAL');
+                res.json(result);
+            }
+        } catch (err) {
+            res.status(500).json({ error: err.message });
         }
-
-        // Start in background
-        viewSyncStatus[viewId] = { status: 'running', startedAt: new Date().toISOString(), message: 'Sincronización iniciada...' };
-        res.json({ status: 'started', message: 'Sincronización iniciada en segundo plano' });
-
-        // Run async — don't await
-        invgateSyncService.syncSingleView(viewId)
-            .then(result => {
-                viewSyncStatus[viewId] = {
-                    status: 'done',
-                    startedAt: viewSyncStatus[viewId]?.startedAt,
-                    finishedAt: new Date().toISOString(),
-                    message: `✅ ${result.totalNew || 0} nuevos, ${result.totalUpdated || 0} actualizados`,
-                    result
-                };
-                console.log(`✅ Background sync for view ${viewId} completed:`, result);
-            })
-            .catch(err => {
-                viewSyncStatus[viewId] = {
-                    status: 'error',
-                    startedAt: viewSyncStatus[viewId]?.startedAt,
-                    finishedAt: new Date().toISOString(),
-                    message: `❌ ${err.message}`
-                };
-                console.error(`❌ Background sync for view ${viewId} failed:`, err.message);
-            });
     });
 
-    // Poll sync status for a view
-    app.get('/api/invgate/views/:id/sync-status', authMiddleware, async (req, res) => {
+    app.get('/api/invgate/sync-status', authMiddleware, async (req, res) => {
         if (!requireAdmin(req, res)) return;
-        const viewId = parseInt(req.params.id);
-        const status = viewSyncStatus[viewId] || { status: 'idle' };
-        res.json(status);
+        try {
+            const cronStatus = invgateCron.getStatus();
+            const lastSync = await invgateSyncService.getLastSyncStatus();
+            res.json({ cron: cronStatus, lastSync });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
-        // ──────────────────────────────────────────
-        // VIEW MAPPINGS — Persona & CodAlmacen
-        // ──────────────────────────────────────────
+    app.get('/api/invgate/sync-logs', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const logs = await invgateSyncService.getSyncLogs(parseInt(req.query.limit) || 20);
+            res.json(logs);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
-        // Get mappings for a view
-        app.get('/api/invgate/views/:id/mappings', authMiddleware, async (req, res) => {
-            if (!requireAdmin(req, res)) return;
-            try {
-                await invgateMappingService.ensureMappingTable();
-                const mappings = await invgateMappingService.getMappings(parseInt(req.params.id));
-                res.json(mappings);
-            } catch (err) {
-                res.status(500).json({ error: err.message });
+    // ══════════════════════════════════════════
+    // TICKETS — Query data
+    // ══════════════════════════════════════════
+
+    app.get('/api/invgate/tickets', authMiddleware, async (req, res) => {
+        try {
+            const pool = await getInvgatePool();
+            const { helpdeskId, status, page = 1, limit = 50 } = req.query;
+            const offset = (parseInt(page) - 1) * parseInt(limit);
+
+            let where = '1=1';
+            const request = pool.request()
+                .input('limit', sql.Int, parseInt(limit))
+                .input('offset', sql.Int, offset);
+
+            if (helpdeskId) {
+                where += ' AND HelpdeskID = @hdId';
+                request.input('hdId', sql.Int, parseInt(helpdeskId));
             }
-        });
-
-        // Set a mapping for a view
-        app.post('/api/invgate/views/:id/mappings', authMiddleware, async (req, res) => {
-            if (!requireAdmin(req, res)) return;
-            try {
-                await invgateMappingService.ensureMappingTable();
-                const { fieldType, columnName } = req.body;
-                if (!fieldType || !columnName) return res.status(400).json({ error: 'fieldType y columnName son requeridos' });
-                await invgateMappingService.setMapping(parseInt(req.params.id), fieldType, columnName, req.user?.nombre || 'admin');
-                res.json({ success: true });
-            } catch (err) {
-                res.status(500).json({ error: err.message });
+            if (status) {
+                where += ' AND Estado = @status';
+                request.input('status', sql.NVarChar, status);
             }
-        });
 
-        // Delete a mapping
-        app.delete('/api/invgate/views/:id/mappings/:fieldType', authMiddleware, async (req, res) => {
-            if (!requireAdmin(req, res)) return;
-            try {
-                await invgateMappingService.deleteMapping(parseInt(req.params.id), req.params.fieldType);
-                res.json({ success: true });
-            } catch (err) {
-                res.status(500).json({ error: err.message });
-            }
-        });
-
-        // Get unmapped records for a view
-        app.get('/api/invgate/views/:id/unmapped', authMiddleware, async (req, res) => {
-            if (!requireAdmin(req, res)) return;
-            try {
-                const data = await invgateMappingService.getUnmappedRecords(parseInt(req.params.id));
-                res.json(data);
-            } catch (err) {
-                res.status(500).json({ error: err.message });
-            }
-        });
-
-        // Resolve all mappings for a view
-        app.post('/api/invgate/views/:id/resolve-mappings', authMiddleware, async (req, res) => {
-            if (!requireAdmin(req, res)) return;
-            try {
-                const result = await invgateMappingService.resolveAllMappings(parseInt(req.params.id));
-                res.json(result);
-            } catch (err) {
-                res.status(500).json({ error: err.message });
-            }
-        });
-
-        // Get mapping stats for a view
-        app.get('/api/invgate/views/:id/mapping-stats', authMiddleware, async (req, res) => {
-            if (!requireAdmin(req, res)) return;
-            try {
-                const stats = await invgateMappingService.getMappingStats(parseInt(req.params.id));
-                res.json(stats);
-            } catch (err) {
-
-                res.status(500).json({ error: err.message });
-            }
-        });
-
-        // ══════════════════════════════════════════
-        // SYNC — Manual triggers & status
-        // ══════════════════════════════════════════
-
-        app.post('/api/invgate/sync', authMiddleware, async (req, res) => {
-            if (!requireAdmin(req, res)) return;
-            try {
-                const syncType = req.body.syncType || req.body.type || 'full';
-                if (syncType === 'incremental') {
-                    const result = await invgateSyncService.incrementalSync('MANUAL');
-                    res.json(result);
-                } else {
-                    const result = await invgateSyncService.fullSync('MANUAL');
-                    res.json(result);
-                }
-            } catch (err) {
-                res.status(500).json({ error: err.message });
-            }
-        });
-
-        app.get('/api/invgate/sync-status', authMiddleware, async (req, res) => {
-            if (!requireAdmin(req, res)) return;
-            try {
-                const cronStatus = invgateCron.getStatus();
-                const lastSync = await invgateSyncService.getLastSyncStatus();
-                res.json({ cron: cronStatus, lastSync });
-            } catch (err) {
-                res.status(500).json({ error: err.message });
-            }
-        });
-
-        app.get('/api/invgate/sync-logs', authMiddleware, async (req, res) => {
-            if (!requireAdmin(req, res)) return;
-            try {
-                const logs = await invgateSyncService.getSyncLogs(parseInt(req.query.limit) || 20);
-                res.json(logs);
-            } catch (err) {
-                res.status(500).json({ error: err.message });
-            }
-        });
-
-        // ══════════════════════════════════════════
-        // TICKETS — Query data
-        // ══════════════════════════════════════════
-
-        app.get('/api/invgate/tickets', authMiddleware, async (req, res) => {
-            try {
-                const pool = await getInvgatePool();
-                const { helpdeskId, status, page = 1, limit = 50 } = req.query;
-                const offset = (parseInt(page) - 1) * parseInt(limit);
-
-                let where = '1=1';
-                const request = pool.request()
-                    .input('limit', sql.Int, parseInt(limit))
-                    .input('offset', sql.Int, offset);
-
-                if (helpdeskId) {
-                    where += ' AND HelpdeskID = @hdId';
-                    request.input('hdId', sql.Int, parseInt(helpdeskId));
-                }
-                if (status) {
-                    where += ' AND Estado = @status';
-                    request.input('status', sql.NVarChar, status);
-                }
-
-                const result = await request.query(`
+            const result = await request.query(`
                 SELECT * FROM InvgateTickets WHERE ${where}
                 ORDER BY FechaCreacion DESC
                 OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
             `);
 
-                const countResult = await pool.request()
-                    .query(`SELECT COUNT(*) AS Total FROM InvgateTickets WHERE ${where.replace(/@hdId|@status/g, '0')}`);
+            const countResult = await pool.request()
+                .query(`SELECT COUNT(*) AS Total FROM InvgateTickets WHERE ${where.replace(/@hdId|@status/g, '0')}`);
 
-                res.json({
-                    data: result.recordset,
-                    total: countResult.recordset[0]?.Total || result.recordset.length,
-                    page: parseInt(page),
-                    limit: parseInt(limit)
-                });
-            } catch (err) {
-                res.status(500).json({ error: err.message });
-            }
-        });
+            res.json({
+                data: result.recordset,
+                total: countResult.recordset[0]?.Total || result.recordset.length,
+                page: parseInt(page),
+                limit: parseInt(limit)
+            });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
-        // ══════════════════════════════════════════
-        // REPORTS — Dashboard-style aggregations
-        // ══════════════════════════════════════════
+    // ══════════════════════════════════════════
+    // REPORTS — Dashboard-style aggregations
+    // ══════════════════════════════════════════
 
-        app.get('/api/invgate/reports/summary', authMiddleware, async (req, res) => {
-            try {
-                const pool = await getInvgatePool();
-                const { from, to, helpdeskId } = req.query;
+    app.get('/api/invgate/reports/summary', authMiddleware, async (req, res) => {
+        try {
+            const pool = await getInvgatePool();
+            const { from, to, helpdeskId } = req.query;
 
-                let where = '1=1';
-                const request = pool.request();
-                if (from) { where += ' AND FechaCreacion >= @from'; request.input('from', sql.DateTime, new Date(from)); }
-                if (to) { where += ' AND FechaCreacion <= @to'; request.input('to', sql.DateTime, new Date(to)); }
-                if (helpdeskId) { where += ' AND HelpdeskID = @hdId'; request.input('hdId', sql.Int, parseInt(helpdeskId)); }
+            let where = '1=1';
+            const request = pool.request();
+            if (from) { where += ' AND FechaCreacion >= @from'; request.input('from', sql.DateTime, new Date(from)); }
+            if (to) { where += ' AND FechaCreacion <= @to'; request.input('to', sql.DateTime, new Date(to)); }
+            if (helpdeskId) { where += ' AND HelpdeskID = @hdId'; request.input('hdId', sql.Int, parseInt(helpdeskId)); }
 
-                const result = await request.query(`
+            const result = await request.query(`
                 SELECT
                     COUNT(*) AS TotalTickets,
                     SUM(CASE WHEN Estado IN ('closed', '3', '4') THEN 1 ELSE 0 END) AS Cerrados,
@@ -419,14 +363,13 @@ function registerInvgateEndpoints(app, authMiddleware) {
                     AVG(TiempoRespuesta) AS AvgRespuesta
                 FROM InvgateTickets WHERE ${where}
             `);
-                res.json(result.recordset[0]);
-            } catch (err) {
-                res.status(500).json({ error: err.message });
-            }
-        });
+            res.json(result.recordset[0]);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
-        console.log('📋 InvGate endpoints registered');
-    }
-
+    console.log('📋 InvGate endpoints registered');
+}
 
 module.exports = registerInvgateEndpoints;

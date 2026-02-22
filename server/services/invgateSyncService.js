@@ -1,6 +1,5 @@
 const invgateService = require('./invgateService');
 const { getInvgatePool, sql } = require('../invgateDb');
-const invgateMappingService = require('./invgateMappingService');
 
 /**
  * InvGate Sync Service (V1 API)
@@ -208,171 +207,26 @@ class InvGateSyncService {
     }
 
     // ================================================================
-    // SYNC VIEW DATA — permanent table per view with upsert
-    // Table name: InvgateView_{viewId} (e.g. InvgateView_25)
-    // Tables include _CODALMACEN, _PERSONAL_ID, _PERSONAL_NOMBRE
+    // SYNC VIEW DATA — create a dedicated table per view
+    // Table name: InvgateView_{viewId}_{Slug} (e.g. InvgateView_25_Quejas)
     // ================================================================
-    async syncViewData(targetViewId = null) {
+    async syncViewData() {
         let totalProcessed = 0, totalNew = 0, totalUpdated = 0;
         const errors = [];
         try {
             const views = await this.getViewConfigs();
-            let enabledViews = views.filter(v => v.syncEnabled);
-            if (targetViewId) {
-                enabledViews = views.filter(v => v.viewId === parseInt(targetViewId));
-                if (enabledViews.length === 0) {
-                    return { totalProcessed: 0, totalNew: 0, totalUpdated: 0, errors: [{ error: `Vista ${targetViewId} no encontrada` }] };
-                }
-            }
+            const enabledViews = views.filter(v => v.syncEnabled);
             if (enabledViews.length === 0) {
                 console.log('  ℹ️ No enabled views to sync');
                 return { totalProcessed, totalNew, totalUpdated, errors };
             }
 
-            const pool = await getInvgatePool();
-
             for (const view of enabledViews) {
                 try {
-                    console.log(`  👁️ Syncing view "${view.nombre}" (ID: ${view.viewId})...`);
-                    const tickets = await invgateService.getAllIncidentsByView(view.viewId);
-                    console.log(`    📊 Got ${tickets.length} tickets from view ${view.viewId}`);
-
-                    if (tickets.length === 0) {
-                        console.log(`    ⚠️ No tickets returned from API`);
-                        await this.updateViewSyncMeta(view.viewId, 0);
-                        continue;
-                    }
-
-                    const tableName = this._viewTableName(view.viewId);
-
-                    // Detect all columns from all tickets
-                    const columnSet = new Set();
-                    for (const ticket of tickets) {
-                        for (const key of Object.keys(ticket)) {
-                            columnSet.add(key);
-                        }
-                    }
-                    const columns = Array.from(columnSet);
-                    const safeColumns = columns.map(c => this._safeColumnName(c));
-
-                    // Create table if it doesn't exist (with mapping columns built-in)
-                    const tableExists = await pool.request()
-                        .query(`SELECT OBJECT_ID('${tableName}', 'U') AS tid`);
-
-                    if (!tableExists.recordset[0]?.tid) {
-                        const colDefs = safeColumns.map(c => `[${c}] NVARCHAR(MAX) NULL`).join(',\n                            ');
-                        await pool.request().query(`
-                            CREATE TABLE [${tableName}] (
-                                [_RowId] INT IDENTITY(1,1) PRIMARY KEY,
-                                [_SyncedAt] DATETIME DEFAULT GETDATE(),
-                                [_CODALMACEN] NVARCHAR(50) NULL,
-                                [_PERSONAL_ID] INT NULL,
-                                [_PERSONAL_NOMBRE] NVARCHAR(200) NULL,
-                                ${colDefs}
-                            )
-                        `);
-                        console.log(`    🏗️ Created table [${tableName}] with ${safeColumns.length} + 3 mapping columns`);
-                    } else {
-                        // Table exists — add any new columns from the API that don't exist yet
-                        const existingCols = await pool.request()
-                            .input('tbl', sql.NVarChar, tableName)
-                            .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl`);
-                        const existingSet = new Set(existingCols.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
-
-                        for (const col of safeColumns) {
-                            if (!existingSet.has(col.toLowerCase())) {
-                                try {
-                                    await pool.request().query(`ALTER TABLE [${tableName}] ADD [${col}] NVARCHAR(MAX) NULL`);
-                                    console.log(`    + Added new column [${col}] to [${tableName}]`);
-                                } catch (alterErr) {
-                                    // Column may already exist or name collision
-                                }
-                            }
-                        }
-
-                        // Also ensure mapping columns exist
-                        await invgateMappingService.ensureMappingColumns(tableName);
-                    }
-
-                    // ── BATCH INSERT: truncate + batch insert in chunks  ──
-                    // For large datasets (thousands of tickets), row-by-row MERGE is too slow.
-                    // Instead: truncate the table then batch-insert. Mappings are re-resolved post-sync.
-                    await pool.request().query(`TRUNCATE TABLE [${tableName}]`);
-                    console.log(`    🗑️ Truncated [${tableName}] for fresh sync`);
-
-                    let insertedCount = 0;
-                    const BATCH_SIZE = 100;
-                    for (let batchStart = 0; batchStart < tickets.length; batchStart += BATCH_SIZE) {
-                        const batch = tickets.slice(batchStart, batchStart + BATCH_SIZE);
-
-                        // Build batch INSERT with UNION ALL for each row
-                        const req = pool.request();
-                        const allValueRows = [];
-                        let paramIdx = 0;
-
-                        for (const ticket of batch) {
-                            const rowParams = [];
-                            for (let i = 0; i < columns.length; i++) {
-                                const rawValue = ticket[columns[i]];
-                                const valueStr = rawValue === null || rawValue === undefined ? null
-                                    : typeof rawValue === 'object' ? JSON.stringify(rawValue)
-                                        : String(rawValue);
-                                const paramName = `p${paramIdx++}`;
-                                rowParams.push(`@${paramName}`);
-                                req.input(paramName, sql.NVarChar(sql.MAX), valueStr);
-                            }
-                            allValueRows.push(`(${rowParams.join(', ')})`);
-                        }
-
-                        const colNames = safeColumns.map(c => `[${c}]`).join(', ');
-                        try {
-                            await req.query(`INSERT INTO [${tableName}] (${colNames}) VALUES ${allValueRows.join(',\n')}`);
-                            insertedCount += batch.length;
-                        } catch (batchErr) {
-                            console.error(`    ⚠️ Batch insert error at row ${batchStart}:`, batchErr.message);
-                            // Fallback: try one-by-one for this batch
-                            for (const ticket of batch) {
-                                try {
-                                    const singleReq = pool.request();
-                                    const singleParams = [];
-                                    let singleIdx = 0;
-                                    for (let i = 0; i < columns.length; i++) {
-                                        const rawValue = ticket[columns[i]];
-                                        const valueStr = rawValue === null || rawValue === undefined ? null
-                                            : typeof rawValue === 'object' ? JSON.stringify(rawValue)
-                                                : String(rawValue);
-                                        const pn = `s${singleIdx++}`;
-                                        singleParams.push(`@${pn}`);
-                                        singleReq.input(pn, sql.NVarChar(sql.MAX), valueStr);
-                                    }
-                                    await singleReq.query(`INSERT INTO [${tableName}] (${colNames}) VALUES (${singleParams.join(', ')})`);
-                                    insertedCount++;
-                                } catch (singleErr) { /* skip bad row */ }
-                            }
-                        }
-
-                        if ((batchStart + BATCH_SIZE) % 1000 === 0 || batchStart + BATCH_SIZE >= tickets.length) {
-                            console.log(`    📝 Inserted ${insertedCount}/${tickets.length} rows...`);
-                        }
-                    }
-                    const updatedCount = 0;
-
-                    totalProcessed += insertedCount + updatedCount;
-                    totalNew += insertedCount;
-                    totalUpdated += updatedCount;
-
-                    // Update columns in InvgateViews config
-                    await pool.request()
-                        .input('viewId', sql.Int, view.viewId)
-                        .input('cols', sql.NVarChar(sql.MAX), JSON.stringify(safeColumns))
-                        .query('UPDATE InvgateViews SET ColumnsJSON = @cols WHERE ViewID = @viewId');
-
-                    await this.updateViewSyncMeta(view.viewId, insertedCount + updatedCount);
-                    console.log(`    ✅ View "${view.nombre}": ${insertedCount} new, ${updatedCount} updated in [${tableName}]`);
-
-                    // Post-sync: resolve mappings
-                    await invgateMappingService.resolveAfterSync(view.viewId);
-
+                    const result = await this._syncOneView(view);
+                    totalProcessed += result.totalProcessed;
+                    totalNew += result.totalNew;
+                    totalUpdated += result.totalUpdated;
                 } catch (viewErr) {
                     console.error(`  ❌ View ${view.viewId} sync error:`, viewErr.message);
                     errors.push({ viewId: view.viewId, error: viewErr.message });
@@ -385,13 +239,131 @@ class InvGateSyncService {
         return { totalProcessed, totalNew, totalUpdated, errors };
     }
 
-    /**
-     * Sync a single view by ID (regardless of SyncEnabled flag)
-     */
-    async syncSingleView(viewId) {
-        console.log(`🔄 Syncing single view ${viewId}...`);
+    // ================================================================
+    // SYNC SINGLE VIEW — sync one specific view by ID
+    // ================================================================
+    async syncSingleView(viewId, initiatedBy = 'SYSTEM') {
         await this.ensureTables();
-        return this.syncViewData(viewId);
+        const pool = await getInvgatePool();
+        const viewResult = await pool.request()
+            .input('viewId', sql.Int, viewId)
+            .query('SELECT ViewID, Nombre, SyncEnabled, TotalTickets, ColumnsJSON, UltimaSync FROM InvgateViews WHERE ViewID = @viewId');
+        if (viewResult.recordset.length === 0) throw new Error(`Vista ${viewId} no encontrada`);
+        const r = viewResult.recordset[0];
+        const view = {
+            viewId: r.ViewID,
+            nombre: r.Nombre,
+            syncEnabled: !!r.SyncEnabled,
+            totalTickets: r.TotalTickets || 0,
+            columns: r.ColumnsJSON ? JSON.parse(r.ColumnsJSON) : [],
+            ultimaSync: r.UltimaSync
+        };
+        const startTime = Date.now();
+        const result = await this._syncOneView(view);
+        const duration = Date.now() - startTime;
+        console.log(`✅ Single view sync done: view ${viewId} "${view.nombre}" — ${result.totalProcessed} rows in ${duration}ms`);
+        return { success: true, viewId, nombre: view.nombre, ...result, duration };
+    }
+
+    // ================================================================
+    // _syncOneView — internal: sync a single view object
+    // ================================================================
+    async _syncOneView(view) {
+        let totalProcessed = 0, totalNew = 0, totalUpdated = 0;
+        const pool = await getInvgatePool();
+
+        console.log(`  👁️ Syncing view "${view.nombre}" (ID: ${view.viewId})...`);
+        const tickets = await invgateService.getAllIncidentsByView(view.viewId);
+        console.log(`    📊 Got ${tickets.length} tickets from view ${view.viewId}`);
+
+        if (tickets.length === 0) {
+            console.log(`    ⚠️ No tickets, skipping table creation`);
+            await this.updateViewSyncMeta(view.viewId, 0);
+            return { totalProcessed, totalNew, totalUpdated };
+        }
+
+        const tableName = this._viewTableName(view.viewId, view.nombre);
+
+        // Migrate old table name (InvgateView_{id}) to new (InvgateView_{id}_{Slug})
+        const oldTableName = `InvgateView_${parseInt(view.viewId)}`;
+        if (tableName !== oldTableName) {
+            const oldExists = await pool.request().query(`SELECT OBJECT_ID('${oldTableName}', 'U') AS tid`);
+            if (oldExists.recordset[0]?.tid) {
+                await pool.request().query(`IF OBJECT_ID('${oldTableName}', 'U') IS NOT NULL DROP TABLE [${oldTableName}]`);
+                console.log(`    🔄 Dropped old table [${oldTableName}]`);
+            }
+        }
+
+        // Detect all columns from all tickets
+        const columnSet = new Set();
+        for (const ticket of tickets) {
+            for (const key of Object.keys(ticket)) {
+                columnSet.add(key);
+            }
+        }
+        const columns = Array.from(columnSet);
+        const safeColumns = columns.map(c => this._safeColumnName(c));
+
+        // Drop and recreate table
+        await pool.request().query(`
+            IF OBJECT_ID('${tableName}', 'U') IS NOT NULL DROP TABLE [${tableName}];
+        `);
+
+        // Build CREATE TABLE with all columns as NVARCHAR(MAX)
+        const colDefs = safeColumns.map(c => `[${c}] NVARCHAR(MAX) NULL`).join(',\n                        ');
+        await pool.request().query(`
+            CREATE TABLE [${tableName}] (
+                [_RowId] INT IDENTITY(1,1) PRIMARY KEY,
+                [_SyncedAt] DATETIME DEFAULT GETDATE(),
+                ${colDefs}
+            )
+        `);
+        console.log(`    🏗️ Created table [${tableName}] with ${safeColumns.length} columns`);
+
+        // Insert all tickets
+        let insertedCount = 0;
+        for (const ticket of tickets) {
+            try {
+                const req = pool.request();
+                const colNames = [];
+                const paramNames = [];
+                let paramIdx = 0;
+
+                for (let i = 0; i < columns.length; i++) {
+                    const rawValue = ticket[columns[i]];
+                    const valueStr = rawValue === null || rawValue === undefined ? null
+                        : typeof rawValue === 'object' ? JSON.stringify(rawValue)
+                            : String(rawValue);
+                    const paramName = `p${paramIdx++}`;
+                    colNames.push(`[${safeColumns[i]}]`);
+                    paramNames.push(`@${paramName}`);
+                    req.input(paramName, sql.NVarChar(sql.MAX), valueStr);
+                }
+
+                await req.query(`
+                    INSERT INTO [${tableName}] (${colNames.join(', ')})
+                    VALUES (${paramNames.join(', ')})
+                `);
+                insertedCount++;
+            } catch (insertErr) {
+                // Log but don't fail the whole sync
+                if (insertedCount === 0) console.error(`    ⚠️ Insert error:`, insertErr.message);
+            }
+        }
+
+        totalProcessed += insertedCount;
+        totalNew += insertedCount;
+
+        // Update columns in InvgateViews config
+        await pool.request()
+            .input('viewId', sql.Int, view.viewId)
+            .input('cols', sql.NVarChar(sql.MAX), JSON.stringify(safeColumns))
+            .query('UPDATE InvgateViews SET ColumnsJSON = @cols WHERE ViewID = @viewId');
+
+        await this.updateViewSyncMeta(view.viewId, insertedCount);
+        console.log(`    ✅ View "${view.nombre}": ${insertedCount} rows inserted into [${tableName}]`);
+
+        return { totalProcessed, totalNew, totalUpdated };
     }
 
     /** Sanitize column name for SQL — remove special chars, limit length */
@@ -403,144 +375,23 @@ class InvGateSyncService {
         return safe.substring(0, 128); // SQL Server max identifier length
     }
 
-    /** Get table name for a view */
-    _viewTableName(viewId) {
-        return `InvgateView_${parseInt(viewId)}`;
+    /** Slugify a view name for SQL table suffix */
+    _slugifyViewName(name) {
+        if (!name) return '';
+        return name
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // remove accents
+            .replace(/[^a-zA-Z0-9\s]/g, '')                    // keep alphanumeric + spaces
+            .trim()
+            .split(/\s+/)
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1))  // PascalCase
+            .join('')
+            .substring(0, 50);                                  // max 50 chars
     }
 
-    // ================================================================
-    // SYNC SINGLE VIEW — sync one specific view by ID
-    // Used by the per-view sync buttons in the admin UI
-    // ================================================================
-    async syncSingleViewData(viewId, syncType = 'full') {
-        const startTime = Date.now();
-        let totalProcessed = 0, totalNew = 0;
-
-        try {
-            await this.ensureTables();
-
-            // Get view config
-            const views = await this.getViewConfigs();
-            const view = views.find(v => v.viewId === viewId);
-            if (!view) {
-                throw new Error(`Vista ${viewId} no encontrada en la configuración`);
-            }
-
-            console.log(`🔄 Syncing single view "${view.nombre}" (ID: ${viewId}, type: ${syncType})...`);
-
-            const pool = await getInvgatePool();
-            const tickets = await invgateService.getAllIncidentsByView(viewId);
-            console.log(`  📊 Got ${tickets.length} tickets from view ${viewId}`);
-
-            if (tickets.length === 0) {
-                await this.updateViewSyncMeta(viewId, 0);
-                const duration = Date.now() - startTime;
-                return { success: true, viewId, totalProcessed: 0, totalNew: 0, duration, message: 'No tickets found in view' };
-            }
-
-            const tableName = this._viewTableName(viewId);
-
-            // Detect all columns from all tickets
-            const columnSet = new Set();
-            for (const ticket of tickets) {
-                for (const key of Object.keys(ticket)) {
-                    columnSet.add(key);
-                }
-            }
-            const columns = Array.from(columnSet);
-            const safeColumns = columns.map(c => this._safeColumnName(c));
-
-            // Drop and recreate table (full sync behavior)
-            await pool.request().query(`
-                IF OBJECT_ID('${tableName}', 'U') IS NOT NULL DROP TABLE [${tableName}];
-            `);
-
-            // Build CREATE TABLE with all columns as NVARCHAR(MAX)
-            const colDefs = safeColumns.map(c => `[${c}] NVARCHAR(MAX) NULL`).join(',\n                        ');
-            await pool.request().query(`
-                CREATE TABLE [${tableName}] (
-                    [_RowId] INT IDENTITY(1,1) PRIMARY KEY,
-                    [_SyncedAt] DATETIME DEFAULT GETDATE(),
-                    ${colDefs}
-                )
-            `);
-            console.log(`  🏗️ Created table [${tableName}] with ${safeColumns.length} columns`);
-
-            // Insert all tickets
-            let insertedCount = 0;
-            for (const ticket of tickets) {
-                try {
-                    const req = pool.request();
-                    const colNames = [];
-                    const paramNames = [];
-                    let paramIdx = 0;
-
-                    for (let i = 0; i < columns.length; i++) {
-                        const rawValue = ticket[columns[i]];
-                        const valueStr = rawValue === null || rawValue === undefined ? null
-                            : typeof rawValue === 'object' ? JSON.stringify(rawValue)
-                                : String(rawValue);
-                        const paramName = `p${paramIdx++}`;
-                        colNames.push(`[${safeColumns[i]}]`);
-                        paramNames.push(`@${paramName}`);
-                        req.input(paramName, sql.NVarChar(sql.MAX), valueStr);
-                    }
-
-                    await req.query(`
-                        INSERT INTO [${tableName}] (${colNames.join(', ')})
-                        VALUES (${paramNames.join(', ')})
-                    `);
-                    insertedCount++;
-                } catch (insertErr) {
-                    if (insertedCount === 0) console.error(`  ⚠️ Insert error:`, insertErr.message);
-                }
-            }
-
-            totalProcessed = insertedCount;
-            totalNew = insertedCount;
-
-            // Update columns in InvgateViews config
-            await pool.request()
-                .input('viewId', sql.Int, viewId)
-                .input('cols', sql.NVarChar(sql.MAX), JSON.stringify(safeColumns))
-                .query('UPDATE InvgateViews SET ColumnsJSON = @cols WHERE ViewID = @viewId');
-
-            await this.updateViewSyncMeta(viewId, insertedCount);
-
-            const duration = Date.now() - startTime;
-            console.log(`✅ View "${view.nombre}": ${insertedCount} rows synced into [${tableName}] in ${duration}ms`);
-
-            // Log the sync
-            await this.logSync({
-                tipoSync: `VIEW_${syncType.toUpperCase()}`,
-                registrosProcesados: totalProcessed,
-                registrosNuevos: totalNew,
-                registrosActualizados: 0,
-                estado: 'SUCCESS',
-                mensajeError: null,
-                tiempoEjecucionMs: duration,
-                iniciadoPor: 'MANUAL'
-            });
-
-            return { success: true, viewId, totalProcessed, totalNew, duration, tableName };
-
-        } catch (err) {
-            const duration = Date.now() - startTime;
-            console.error(`❌ Single view sync failed for ${viewId}:`, err.message);
-
-            await this.logSync({
-                tipoSync: `VIEW_${(syncType || 'full').toUpperCase()}`,
-                registrosProcesados: totalProcessed,
-                registrosNuevos: totalNew,
-                registrosActualizados: 0,
-                estado: 'ERROR',
-                mensajeError: err.message,
-                tiempoEjecucionMs: duration,
-                iniciadoPor: 'MANUAL'
-            });
-
-            throw err;
-        }
+    /** Get table name for a view — includes slugified name */
+    _viewTableName(viewId, nombre) {
+        const slug = this._slugifyViewName(nombre);
+        return slug ? `InvgateView_${parseInt(viewId)}_${slug}` : `InvgateView_${parseInt(viewId)}`;
     }
 
     // ================================================================
@@ -1002,9 +853,18 @@ class InvGateSyncService {
     async deleteView(viewId) {
         await this.ensureTables();
         const pool = await getInvgatePool();
-        // Drop the per-view data table
-        const tableName = this._viewTableName(viewId);
+        // Look up Nombre for table name
+        const viewRow = await pool.request().input('vid', sql.Int, viewId)
+            .query('SELECT Nombre FROM InvgateViews WHERE ViewID = @vid');
+        const nombre = viewRow.recordset[0]?.Nombre || '';
+        // Drop the per-view data table (new name)
+        const tableName = this._viewTableName(viewId, nombre);
         await pool.request().query(`IF OBJECT_ID('${tableName}', 'U') IS NOT NULL DROP TABLE [${tableName}]`);
+        // Also drop old-style table if exists
+        const oldName = `InvgateView_${parseInt(viewId)}`;
+        if (oldName !== tableName) {
+            await pool.request().query(`IF OBJECT_ID('${oldName}', 'U') IS NOT NULL DROP TABLE [${oldName}]`);
+        }
         // Delete config
         await pool.request()
             .input('viewId', sql.Int, viewId)
@@ -1030,102 +890,47 @@ class InvGateSyncService {
             .query('UPDATE InvgateViews SET TotalTickets = @total, UltimaSync = GETDATE() WHERE ViewID = @viewId');
     }
 
-    /** Common InvGate API field → Spanish display name mapping */
-    _columnDisplayNames() {
-        return {
-            'id': 'ID',
-            'request': 'Solicitud',
-            'subject': 'Asunto',
-            'description': 'Descripción',
-            'status': 'Estado',
-            'status_id': 'Estado',
-            'priority': 'Prioridad',
-            'priority_id': 'Prioridad',
-            'category': 'Categoría',
-            'category_id': 'Categoría',
-            'type': 'Tipo',
-            'type_id': 'Tipo',
-            'customer': 'Cliente',
-            'customer_id': 'Cliente',
-            'user': 'Usuario',
-            'user_id': 'Usuario',
-            'assigned_to': 'Asignado a',
-            'assigned': 'Asignado a',
-            'waiting_for': 'Esperando por',
-            'created_at': 'Fecha creación',
-            'updated_at': 'Última actualización',
-            'closed_at': 'Fecha cierre',
-            'resolution_date': 'Fecha resolución',
-            'helpdesk_id': 'Helpdesk',
-            'helpdesk': 'Helpdesk',
-            'channel': 'Canal',
-            'medio': 'Medio',
-            'rating': 'Calificación',
-            'satisfaction': 'Satisfacción',
-            'restaurant': 'Restaurante',
-            'store': 'Tienda',
-            'claims': 'Reclamaciones',
-            'sla_resolution': 'SLA Resolución',
-            'sla_first_response': 'SLA Primera Respuesta',
-            'first_response_time': 'Tiempo Respuesta',
-            'resolution_time': 'Tiempo Resolución',
-            'comments_count': 'Comentarios',
-        };
-    }
-
-    /** Get synced data for a given view from its dedicated table (paginated) */
-    async getViewData(viewId, page = 1, pageSize = 100) {
+    /** Get synced data for a given view from its dedicated table */
+    async getViewData(viewId) {
         const pool = await getInvgatePool();
-        const tableName = this._viewTableName(viewId);
+        // Look up Nombre for table name
+        const viewRow = await pool.request().input('vid', sql.Int, viewId)
+            .query('SELECT Nombre FROM InvgateViews WHERE ViewID = @vid');
+        const nombre = viewRow.recordset[0]?.Nombre || '';
+        const tableName = this._viewTableName(viewId, nombre);
 
-        // Check if table exists
+        // Check new table, then fallback to old naming
+        let actualTable = tableName;
         const exists = await pool.request()
             .query(`SELECT OBJECT_ID('${tableName}', 'U') AS tid`);
         if (!exists.recordset[0]?.tid) {
-            return { viewId, tableName, columns: [], displayNames: {}, totalRows: 0, page: 1, pageSize, totalPages: 0, data: [] };
+            // Try old-style name
+            const oldName = `InvgateView_${parseInt(viewId)}`;
+            const oldExists = await pool.request()
+                .query(`SELECT OBJECT_ID('${oldName}', 'U') AS tid`);
+            if (!oldExists.recordset[0]?.tid) {
+                return { viewId, tableName, columns: [], totalRows: 0, data: [] };
+            }
+            actualTable = oldName;
         }
 
         // Get columns (exclude internal _RowId and _SyncedAt)
         const colResult = await pool.request()
-            .input('tbl', sql.NVarChar, tableName)
+            .input('tbl', sql.NVarChar, actualTable)
             .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl AND COLUMN_NAME NOT LIKE '\\_%' ESCAPE '\\' ORDER BY ORDINAL_POSITION`);
         const columns = colResult.recordset.map(r => r.COLUMN_NAME);
 
-        // Build display name mapping
-        const nameMap = this._columnDisplayNames();
-        const displayNames = {};
-        for (const col of columns) {
-            const lower = col.toLowerCase();
-            displayNames[col] = nameMap[lower] || col;
-        }
-
-        // Get total count
-        const countResult = await pool.request().query(`SELECT COUNT(*) AS cnt FROM [${tableName}]`);
-        const totalRows = countResult.recordset[0].cnt;
-        const totalPages = Math.ceil(totalRows / pageSize);
-        const offset = (page - 1) * pageSize;
-
-        // Get paginated data
-        const colSelect = columns.map(c => `[${c}]`).join(', ');
-        const result = await pool.request()
-            .input('offset', sql.Int, offset)
-            .input('pageSize', sql.Int, pageSize)
-            .query(`SELECT ${colSelect} FROM [${tableName}] ORDER BY [_RowId] OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`);
-
+        // Get data
+        const result = await pool.request().query(`SELECT * FROM [${actualTable}] ORDER BY [_RowId]`);
         const data = result.recordset.map(row => {
             const clean = {};
             for (const col of columns) {
-                let val = row[col];
-                // Truncate long values for display
-                if (val && typeof val === 'string' && val.length > 500) {
-                    val = val.substring(0, 500) + '...';
-                }
-                clean[col] = val || '';
+                clean[col] = row[col] || '';
             }
             return clean;
         });
 
-        return { viewId, tableName, columns, displayNames, totalRows, page, pageSize, totalPages, data };
+        return { viewId, tableName: actualTable, columns, totalRows: data.length, data };
     }
 }
 
