@@ -1000,7 +1000,7 @@ export const FormsAdmin: React.FC = () => {
                                                         <option key={col} value={col}>{col}</option>
                                                     ))}
                                                 </select>
-                                                <small>Se buscará en DIM_PERSONAL para encontrar el ID de la persona</small>
+                                                <small>Se buscará en APP_USUARIOS para encontrar el ID del usuario</small>
                                             </div>
                                         </div>
 

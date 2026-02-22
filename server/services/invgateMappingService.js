@@ -1,7 +1,7 @@
 /**
  * invgateMappingService.js
  * Manages field mappings for InvGate View tables:
- *   - Which column maps to "Persona" (resolved via DIM_PERSONAL)
+ *   - Which column maps to "Persona" (resolved via APP_USUARIOS)
  *   - Which column maps to "CodAlmacen" (resolved via APP_STORE_ALIAS)
  *
  * Every InvgateView_N table gets three extra columns: _CODALMACEN, _PERSONAL_ID, _PERSONAL_NOMBRE
@@ -138,7 +138,7 @@ async function resolveCodAlmacen(aliasValue) {
     }
 }
 
-// ─── Resolve PersonalID for a single value ────────────────────────
+// ─── Resolve PersonalID for a single value (uses APP_USUARIOS) ────
 
 async function resolvePersonalId(personaValue) {
     if (!personaValue || !String(personaValue).trim()) return null;
@@ -146,28 +146,28 @@ async function resolvePersonalId(personaValue) {
         const mainPool = await poolPromise;
         const val = String(personaValue).trim();
 
-        // Try exact match on NOMBRE
+        // Try exact match on Nombre
         let result = await mainPool.request()
             .input('nombre', mainSql.NVarChar, val)
-            .query(`SELECT TOP 1 ID, NOMBRE FROM DIM_PERSONAL WHERE NOMBRE = @nombre AND ACTIVO = 1`);
+            .query(`SELECT TOP 1 Id, Nombre FROM APP_USUARIOS WHERE Nombre = @nombre AND Activo = 1`);
         if (result.recordset.length > 0) {
-            return { id: result.recordset[0].ID, nombre: result.recordset[0].NOMBRE };
+            return { id: result.recordset[0].Id, nombre: result.recordset[0].Nombre };
         }
 
         // Try LIKE match
         result = await mainPool.request()
             .input('nombre', mainSql.NVarChar, `%${val}%`)
-            .query(`SELECT TOP 1 ID, NOMBRE FROM DIM_PERSONAL WHERE NOMBRE LIKE @nombre AND ACTIVO = 1 ORDER BY LEN(NOMBRE)`);
+            .query(`SELECT TOP 1 Id, Nombre FROM APP_USUARIOS WHERE Nombre LIKE @nombre AND Activo = 1 ORDER BY LEN(Nombre)`);
         if (result.recordset.length > 0) {
-            return { id: result.recordset[0].ID, nombre: result.recordset[0].NOMBRE };
+            return { id: result.recordset[0].Id, nombre: result.recordset[0].Nombre };
         }
 
-        // Try by CORREO (email)
+        // Try by Email
         result = await mainPool.request()
             .input('correo', mainSql.NVarChar, val)
-            .query(`SELECT TOP 1 ID, NOMBRE FROM DIM_PERSONAL WHERE CORREO = @correo AND ACTIVO = 1`);
+            .query(`SELECT TOP 1 Id, Nombre FROM APP_USUARIOS WHERE Email = @correo AND Activo = 1`);
         if (result.recordset.length > 0) {
-            return { id: result.recordset[0].ID, nombre: result.recordset[0].NOMBRE };
+            return { id: result.recordset[0].Id, nombre: result.recordset[0].Nombre };
         }
 
         return null;
@@ -176,6 +176,7 @@ async function resolvePersonalId(personaValue) {
         return null;
     }
 }
+
 
 // ─── Resolve mappings for ALL rows in a view table ────────────────
 
