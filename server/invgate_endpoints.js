@@ -175,11 +175,13 @@ function registerInvgateEndpoints(app, authMiddleware) {
         }
     });
 
-    // Get synced data for a view (from DB)
+    // Get synced data for a view (from DB) — paginated
     app.get('/api/invgate/views/:id/data', authMiddleware, async (req, res) => {
         if (!requireAdmin(req, res)) return;
         try {
-            const data = await invgateSyncService.getViewData(parseInt(req.params.id));
+            const page = parseInt(req.query.page) || 1;
+            const pageSize = parseInt(req.query.pageSize) || 100;
+            const data = await invgateSyncService.getViewData(parseInt(req.params.id), page, pageSize);
             res.json(data);
         } catch (err) {
             res.status(500).json({ error: err.message });

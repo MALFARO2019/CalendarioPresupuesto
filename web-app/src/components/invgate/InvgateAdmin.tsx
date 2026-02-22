@@ -31,6 +31,8 @@ interface ViewPreview {
 }
 interface ViewData {
     viewId: number; tableName: string; columns: string[]; totalRows: number;
+    displayNames?: Record<string, string>;
+    page?: number; pageSize?: number; totalPages?: number;
     data: Record<string, string>[];
 }
 
@@ -169,6 +171,17 @@ export const InvgateAdmin: React.FC = () => {
         setViewError(null);
         try {
             const r = await axios.get(`${API_BASE}/invgate/views/${viewId}/data`, { headers: authHeaders() });
+            setViewData(r.data);
+        } catch (e: any) {
+            setViewError('Error cargando datos: ' + (e.response?.data?.error || e.message));
+        } finally { setLoadingViewData(false); }
+    };
+
+    const loadViewDataPage = async (viewId: number, page: number) => {
+        setLoadingViewData(true);
+        setViewError(null);
+        try {
+            const r = await axios.get(`${API_BASE}/invgate/views/${viewId}/data?page=${page}&pageSize=100`, { headers: authHeaders() });
             setViewData(r.data);
         } catch (e: any) {
             setViewError('Error cargando datos: ' + (e.response?.data?.error || e.message));
@@ -497,34 +510,55 @@ export const InvgateAdmin: React.FC = () => {
                             </div>
                             {viewData.totalRows === 0 ? (
                                 <div className="empty-state">
-                                    <p>No hay datos sincronizados. Ejecutá una sincronización primero desde la pestaña "Sincronización".</p>
+                                    <p>No hay datos sincronizados. Ejecutá una sincronización primero.</p>
                                 </div>
                             ) : (
-                                <div style={{ overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
-                                    <table className="custom-fields-table" style={{ fontSize: '12px' }}>
-                                        <thead>
-                                            <tr>
-                                                {viewData.columns.map(col => (
-                                                    <th key={col} style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#e0f2fe' }}>
-                                                        {col}
-                                                    </th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {viewData.data.map((row, i) => (
-                                                <tr key={i}>
+                                <>
+                                    <div style={{ overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
+                                        <table className="custom-fields-table" style={{ fontSize: '12px' }}>
+                                            <thead>
+                                                <tr>
                                                     {viewData.columns.map(col => (
-                                                        <td key={col} style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '4px 10px' }}
-                                                            title={row[col] || ''}>
-                                                            {row[col] || ''}
-                                                        </td>
+                                                        <th key={col} style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#e0f2fe' }}
+                                                            title={col}>
+                                                            {viewData.displayNames?.[col] || col}
+                                                        </th>
                                                     ))}
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody>
+                                                {viewData.data.map((row, i) => (
+                                                    <tr key={i}>
+                                                        {viewData.columns.map(col => (
+                                                            <td key={col} style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '4px 10px' }}
+                                                                title={row[col] || ''}>
+                                                                {row[col] || ''}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {(viewData.totalPages || 1) > 1 && (
+                                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '12px', fontSize: '13px' }}>
+                                            <button onClick={() => loadViewDataPage(viewData.viewId, (viewData.page || 1) - 1)}
+                                                disabled={loadingViewData || (viewData.page || 1) <= 1}
+                                                style={{ padding: '4px 12px', borderRadius: '4px', border: '1px solid #93c5fd', background: '#eff6ff', color: '#2563eb', cursor: 'pointer' }}>
+                                                ← Anterior
+                                            </button>
+                                            <span style={{ color: '#64748b' }}>
+                                                Página {viewData.page || 1} de {viewData.totalPages || 1}
+                                                &nbsp;({viewData.totalRows} registros)
+                                            </span>
+                                            <button onClick={() => loadViewDataPage(viewData.viewId, (viewData.page || 1) + 1)}
+                                                disabled={loadingViewData || (viewData.page || 1) >= (viewData.totalPages || 1)}
+                                                style={{ padding: '4px 12px', borderRadius: '4px', border: '1px solid #93c5fd', background: '#eff6ff', color: '#2563eb', cursor: 'pointer' }}>
+                                                Siguiente →
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}

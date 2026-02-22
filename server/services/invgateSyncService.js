@@ -953,8 +953,51 @@ class InvGateSyncService {
             .query('UPDATE InvgateViews SET TotalTickets = @total, UltimaSync = GETDATE() WHERE ViewID = @viewId');
     }
 
-    /** Get synced data for a given view from its dedicated table */
-    async getViewData(viewId) {
+    /** Common InvGate API field → Spanish display name mapping */
+    _columnDisplayNames() {
+        return {
+            'id': 'ID',
+            'request': 'Solicitud',
+            'subject': 'Asunto',
+            'description': 'Descripción',
+            'status': 'Estado',
+            'status_id': 'Estado',
+            'priority': 'Prioridad',
+            'priority_id': 'Prioridad',
+            'category': 'Categoría',
+            'category_id': 'Categoría',
+            'type': 'Tipo',
+            'type_id': 'Tipo',
+            'customer': 'Cliente',
+            'customer_id': 'Cliente',
+            'user': 'Usuario',
+            'user_id': 'Usuario',
+            'assigned_to': 'Asignado a',
+            'assigned': 'Asignado a',
+            'waiting_for': 'Esperando por',
+            'created_at': 'Fecha creación',
+            'updated_at': 'Última actualización',
+            'closed_at': 'Fecha cierre',
+            'resolution_date': 'Fecha resolución',
+            'helpdesk_id': 'Helpdesk',
+            'helpdesk': 'Helpdesk',
+            'channel': 'Canal',
+            'medio': 'Medio',
+            'rating': 'Calificación',
+            'satisfaction': 'Satisfacción',
+            'restaurant': 'Restaurante',
+            'store': 'Tienda',
+            'claims': 'Reclamaciones',
+            'sla_resolution': 'SLA Resolución',
+            'sla_first_response': 'SLA Primera Respuesta',
+            'first_response_time': 'Tiempo Respuesta',
+            'resolution_time': 'Tiempo Resolución',
+            'comments_count': 'Comentarios',
+        };
+    }
+
+    /** Get synced data for a given view from its dedicated table (paginated) */
+    async getViewData(viewId, page = 1, pageSize = 100) {
         const pool = await getInvgatePool();
         const tableName = this._viewTableName(viewId);
 
@@ -962,7 +1005,7 @@ class InvGateSyncService {
         const exists = await pool.request()
             .query(`SELECT OBJECT_ID('${tableName}', 'U') AS tid`);
         if (!exists.recordset[0]?.tid) {
-            return { viewId, tableName, columns: [], totalRows: 0, data: [] };
+            return { viewId, tableName, columns: [], displayNames: {}, totalRows: 0, page: 1, pageSize, totalPages: 0, data: [] };
         }
 
         // Get columns (exclude internal _RowId and _SyncedAt)
@@ -971,17 +1014,41 @@ class InvGateSyncService {
             .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl AND COLUMN_NAME NOT LIKE '\\_%' ESCAPE '\\' ORDER BY ORDINAL_POSITION`);
         const columns = colResult.recordset.map(r => r.COLUMN_NAME);
 
-        // Get data
-        const result = await pool.request().query(`SELECT * FROM [${tableName}] ORDER BY [_RowId]`);
+        // Build display name mapping
+        const nameMap = this._columnDisplayNames();
+        const displayNames = {};
+        for (const col of columns) {
+            const lower = col.toLowerCase();
+            displayNames[col] = nameMap[lower] || col;
+        }
+
+        // Get total count
+        const countResult = await pool.request().query(`SELECT COUNT(*) AS cnt FROM [${tableName}]`);
+        const totalRows = countResult.recordset[0].cnt;
+        const totalPages = Math.ceil(totalRows / pageSize);
+        const offset = (page - 1) * pageSize;
+
+        // Get paginated data
+        const colSelect = columns.map(c => `[${c}]`).join(', ');
+        const result = await pool.request()
+            .input('offset', sql.Int, offset)
+            .input('pageSize', sql.Int, pageSize)
+            .query(`SELECT ${colSelect} FROM [${tableName}] ORDER BY [_RowId] OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`);
+
         const data = result.recordset.map(row => {
             const clean = {};
             for (const col of columns) {
-                clean[col] = row[col] || '';
+                let val = row[col];
+                // Truncate long values for display
+                if (val && typeof val === 'string' && val.length > 500) {
+                    val = val.substring(0, 500) + '...';
+                }
+                clean[col] = val || '';
             }
             return clean;
         });
 
-        return { viewId, tableName, columns, totalRows: data.length, data };
+        return { viewId, tableName, columns, displayNames, totalRows, page, pageSize, totalPages, data };
     }
 }
 

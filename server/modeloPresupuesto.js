@@ -824,15 +824,19 @@ async function getResumenMensualPresupuesto(nombrePresupuesto, codAlmacen = null
     }
 
     try {
-        const result = await request.query(`
+        const queryStr = `
             SELECT Mes as mes, SUM(Monto) as total
             FROM [${config.tablaDestino}]
             ${where}
             GROUP BY Mes
             ORDER BY Mes
-        `);
+        `;
+        console.log('[DEBUG resumen-mensual] table:', config.tablaDestino, 'nombrePresupuesto:', nombrePresupuesto, 'codAlmacen:', codAlmacen, 'tipo:', tipo);
+        const result = await request.query(queryStr);
+        console.log('[DEBUG resumen-mensual] rows:', result.recordset.length, 'data:', JSON.stringify(result.recordset.slice(0, 3)));
         return result.recordset;
     } catch (e) {
+        console.error('[DEBUG resumen-mensual] ERROR:', e.message);
         if (e.message.includes('Invalid object')) return [];
         throw e;
     }
