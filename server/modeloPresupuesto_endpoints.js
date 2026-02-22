@@ -440,6 +440,24 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
         }
     });
 
+    // GET /api/modelo-presupuesto/resumen-mensual — monthly totals from budget table (for AjusteChart)
+    app.get('/api/modelo-presupuesto/resumen-mensual', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            if (!req.user.verAjustePresupuesto) {
+                return res.status(403).json({ error: 'No tiene permiso para ver datos de ajuste' });
+            }
+            const { nombrePresupuesto, codAlmacen, tipo } = req.query;
+            const result = await modeloPresupuesto.getResumenMensualPresupuesto(
+                nombrePresupuesto, codAlmacen || null, tipo || null
+            );
+            res.json(result);
+        } catch (err) {
+            console.error('Error GET /api/modelo-presupuesto/resumen-mensual:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // GET /api/modelo-presupuesto/stores  (codes + names for dropdowns)
     app.get('/api/modelo-presupuesto/stores', authMiddleware, async (req, res) => {
         try {

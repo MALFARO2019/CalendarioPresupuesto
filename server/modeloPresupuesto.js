@@ -801,6 +801,43 @@ async function getDatosAjuste(nombrePresupuesto, codAlmacen, mes, canal, tipo) {
     return result.recordset;
 }
 
+/**
+ * Get monthly budget totals aggregated from the actual budget table (tablaDestino)
+ * Used by AjusteChart for the Distribución Mensual bar chart
+ */
+async function getResumenMensualPresupuesto(nombrePresupuesto, codAlmacen = null, tipo = null) {
+    const pool = await poolPromise;
+    const config = await getConfig();
+    if (!config) return [];
+
+    const request = pool.request()
+        .input('nombrePresupuesto', sql.NVarChar(100), nombrePresupuesto);
+
+    let where = 'WHERE NombrePresupuesto = @nombrePresupuesto';
+    if (codAlmacen) {
+        where += ' AND CodAlmacen = @codAlmacen';
+        request.input('codAlmacen', sql.NVarChar(10), codAlmacen);
+    }
+    if (tipo) {
+        where += ' AND Tipo = @tipo';
+        request.input('tipo', sql.NVarChar(100), tipo);
+    }
+
+    try {
+        const result = await request.query(`
+            SELECT Mes as mes, SUM(Monto) as total
+            FROM [${config.tablaDestino}]
+            ${where}
+            GROUP BY Mes
+            ORDER BY Mes
+        `);
+        return result.recordset;
+    } catch (e) {
+        if (e.message.includes('Invalid object')) return [];
+        throw e;
+    }
+}
+
 // ------------------------------------------
 // STORES (for dropdowns)
 // ------------------------------------------
@@ -851,5 +888,7 @@ module.exports = {
     // Validación
     getValidacion,
     // Stores
-    getStoresWithNames
+    getStoresWithNames,
+    // Resumen mensual (from budget table)
+    getResumenMensualPresupuesto
 };

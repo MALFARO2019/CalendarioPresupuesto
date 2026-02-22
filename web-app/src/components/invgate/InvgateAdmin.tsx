@@ -68,6 +68,7 @@ export const InvgateAdmin: React.FC = () => {
     const [viewError, setViewError] = useState<string | null>(null);
     const [viewData, setViewData] = useState<ViewData | null>(null);
     const [loadingViewData, setLoadingViewData] = useState(false);
+    const [syncingViewId, setSyncingViewId] = useState<number | null>(null);
 
     const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` });
 
@@ -172,6 +173,22 @@ export const InvgateAdmin: React.FC = () => {
         } catch (e: any) {
             setViewError('Error cargando datos: ' + (e.response?.data?.error || e.message));
         } finally { setLoadingViewData(false); }
+    };
+
+    // ─── Sync a single view ──────────────────────────────────────
+    const syncView = async (viewId: number, syncType: 'incremental' | 'full') => {
+        if (!confirm(`¿Sincronizar vista #${viewId} (${syncType === 'full' ? 'COMPLETA' : 'INCREMENTAL'})?`)) return;
+        setSyncingViewId(viewId);
+        setViewError(null);
+        try {
+            const r = await axios.post(`${API_BASE}/invgate/views/${viewId}/sync`,
+                { syncType }, { headers: authHeaders() });
+            const msg = `✅ Vista #${viewId}: ${r.data.totalProcessed} registros sincronizados en ${r.data.duration}ms`;
+            alert(msg);
+            await loadViews();
+        } catch (e: any) {
+            setViewError('Error sincronizando vista: ' + (e.response?.data?.error || e.message));
+        } finally { setSyncingViewId(null); }
     };
 
     // ─── Save OAuth config ────────────────────────────────────────
@@ -404,11 +421,10 @@ export const InvgateAdmin: React.FC = () => {
                                 <tr>
                                     <th style={{ width: '60px' }}>ID</th>
                                     <th>Nombre</th>
-                                    <th style={{ width: '100px' }}>Tickets</th>
-                                    <th style={{ width: '160px' }}>Última Sync</th>
-                                    <th style={{ width: '80px', textAlign: 'center' }}>Sync</th>
-                                    <th style={{ width: '80px' }}></th>
-                                    <th style={{ width: '50px' }}></th>
+                                    <th style={{ width: '80px' }}>Tickets</th>
+                                    <th style={{ width: '140px' }}>Última Sync</th>
+                                    <th style={{ width: '70px', textAlign: 'center' }}>Sync</th>
+                                    <th style={{ width: '200px', textAlign: 'center' }}>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -433,18 +449,30 @@ export const InvgateAdmin: React.FC = () => {
                                                 <span className="toggle-slider"></span>
                                             </label>
                                         </td>
-                                        <td>
-                                            <button onClick={() => loadViewData(v.viewId)}
-                                                disabled={loadingViewData}
-                                                style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 8px' }}
-                                                title="Ver datos sincronizados">
-                                                {loadingViewData && viewData?.viewId !== v.viewId ? '⏳' : viewData?.viewId === v.viewId ? '🔼 Ocultar' : '📊 Datos'}
-                                            </button>
-                                        </td>
-                                        <td>
-                                            <button onClick={() => deleteView(v.viewId)}
-                                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}
-                                                title="Eliminar vista">🗑️</button>
+                                        <td style={{ textAlign: 'center' }}>
+                                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                                <button onClick={() => syncView(v.viewId, 'incremental')}
+                                                    disabled={syncingViewId === v.viewId}
+                                                    style={{ background: '#eff6ff', border: '1px solid #93c5fd', color: '#2563eb', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 6px', whiteSpace: 'nowrap' }}
+                                                    title="Sincronización incremental">
+                                                    {syncingViewId === v.viewId ? '⏳...' : '🔄 Sync'}
+                                                </button>
+                                                <button onClick={() => syncView(v.viewId, 'full')}
+                                                    disabled={syncingViewId === v.viewId}
+                                                    style={{ background: '#fef3c7', border: '1px solid #fcd34d', color: '#b45309', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 6px', whiteSpace: 'nowrap' }}
+                                                    title="Sincronización completa (recrea tabla)">
+                                                    {syncingViewId === v.viewId ? '⏳...' : '⚡ Full'}
+                                                </button>
+                                                <button onClick={() => loadViewData(v.viewId)}
+                                                    disabled={loadingViewData}
+                                                    style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 6px', whiteSpace: 'nowrap' }}
+                                                    title="Ver datos sincronizados">
+                                                    {loadingViewData && viewData?.viewId !== v.viewId ? '⏳' : viewData?.viewId === v.viewId ? '🔼 Ocultar' : '📊 Datos'}
+                                                </button>
+                                                <button onClick={() => deleteView(v.viewId)}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '2px 4px' }}
+                                                    title="Eliminar vista">🗑️</button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

@@ -186,6 +186,21 @@ function registerInvgateEndpoints(app, authMiddleware) {
         }
     });
 
+    // Sync a single view (incremental or full)
+    app.post('/api/invgate/views/:id/sync', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const viewId = parseInt(req.params.id);
+            const syncType = req.body.syncType || 'full';
+            console.log(`🔄 Manual sync for view ${viewId} (${syncType})`);
+            const result = await invgateSyncService.syncSingleViewData(viewId, syncType);
+            res.json(result);
+        } catch (err) {
+            console.error(`❌ View sync error:`, err.message);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // ══════════════════════════════════════════
     // SYNC — Manual triggers & status
     // ══════════════════════════════════════════
@@ -193,8 +208,8 @@ function registerInvgateEndpoints(app, authMiddleware) {
     app.post('/api/invgate/sync', authMiddleware, async (req, res) => {
         if (!requireAdmin(req, res)) return;
         try {
-            const { type } = req.body;
-            if (type === 'incremental') {
+            const syncType = req.body.syncType || req.body.type || 'full';
+            if (syncType === 'incremental') {
                 const result = await invgateSyncService.incrementalSync('MANUAL');
                 res.json(result);
             } else {

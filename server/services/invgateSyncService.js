@@ -332,6 +332,141 @@ class InvGateSyncService {
     }
 
     // ================================================================
+    // SYNC SINGLE VIEW — sync one specific view by ID
+    // Used by the per-view sync buttons in the admin UI
+    // ================================================================
+    async syncSingleViewData(viewId, syncType = 'full') {
+        const startTime = Date.now();
+        let totalProcessed = 0, totalNew = 0;
+
+        try {
+            await this.ensureTables();
+
+            // Get view config
+            const views = await this.getViewConfigs();
+            const view = views.find(v => v.viewId === viewId);
+            if (!view) {
+                throw new Error(`Vista ${viewId} no encontrada en la configuración`);
+            }
+
+            console.log(`🔄 Syncing single view "${view.nombre}" (ID: ${viewId}, type: ${syncType})...`);
+
+            const pool = await getInvgatePool();
+            const tickets = await invgateService.getAllIncidentsByView(viewId);
+            console.log(`  📊 Got ${tickets.length} tickets from view ${viewId}`);
+
+            if (tickets.length === 0) {
+                await this.updateViewSyncMeta(viewId, 0);
+                const duration = Date.now() - startTime;
+                return { success: true, viewId, totalProcessed: 0, totalNew: 0, duration, message: 'No tickets found in view' };
+            }
+
+            const tableName = this._viewTableName(viewId);
+
+            // Detect all columns from all tickets
+            const columnSet = new Set();
+            for (const ticket of tickets) {
+                for (const key of Object.keys(ticket)) {
+                    columnSet.add(key);
+                }
+            }
+            const columns = Array.from(columnSet);
+            const safeColumns = columns.map(c => this._safeColumnName(c));
+
+            // Drop and recreate table (full sync behavior)
+            await pool.request().query(`
+                IF OBJECT_ID('${tableName}', 'U') IS NOT NULL DROP TABLE [${tableName}];
+            `);
+
+            // Build CREATE TABLE with all columns as NVARCHAR(MAX)
+            const colDefs = safeColumns.map(c => `[${c}] NVARCHAR(MAX) NULL`).join(',\n                        ');
+            await pool.request().query(`
+                CREATE TABLE [${tableName}] (
+                    [_RowId] INT IDENTITY(1,1) PRIMARY KEY,
+                    [_SyncedAt] DATETIME DEFAULT GETDATE(),
+                    ${colDefs}
+                )
+            `);
+            console.log(`  🏗️ Created table [${tableName}] with ${safeColumns.length} columns`);
+
+            // Insert all tickets
+            let insertedCount = 0;
+            for (const ticket of tickets) {
+                try {
+                    const req = pool.request();
+                    const colNames = [];
+                    const paramNames = [];
+                    let paramIdx = 0;
+
+                    for (let i = 0; i < columns.length; i++) {
+                        const rawValue = ticket[columns[i]];
+                        const valueStr = rawValue === null || rawValue === undefined ? null
+                            : typeof rawValue === 'object' ? JSON.stringify(rawValue)
+                                : String(rawValue);
+                        const paramName = `p${paramIdx++}`;
+                        colNames.push(`[${safeColumns[i]}]`);
+                        paramNames.push(`@${paramName}`);
+                        req.input(paramName, sql.NVarChar(sql.MAX), valueStr);
+                    }
+
+                    await req.query(`
+                        INSERT INTO [${tableName}] (${colNames.join(', ')})
+                        VALUES (${paramNames.join(', ')})
+                    `);
+                    insertedCount++;
+                } catch (insertErr) {
+                    if (insertedCount === 0) console.error(`  ⚠️ Insert error:`, insertErr.message);
+                }
+            }
+
+            totalProcessed = insertedCount;
+            totalNew = insertedCount;
+
+            // Update columns in InvgateViews config
+            await pool.request()
+                .input('viewId', sql.Int, viewId)
+                .input('cols', sql.NVarChar(sql.MAX), JSON.stringify(safeColumns))
+                .query('UPDATE InvgateViews SET ColumnsJSON = @cols WHERE ViewID = @viewId');
+
+            await this.updateViewSyncMeta(viewId, insertedCount);
+
+            const duration = Date.now() - startTime;
+            console.log(`✅ View "${view.nombre}": ${insertedCount} rows synced into [${tableName}] in ${duration}ms`);
+
+            // Log the sync
+            await this.logSync({
+                tipoSync: `VIEW_${syncType.toUpperCase()}`,
+                registrosProcesados: totalProcessed,
+                registrosNuevos: totalNew,
+                registrosActualizados: 0,
+                estado: 'SUCCESS',
+                mensajeError: null,
+                tiempoEjecucionMs: duration,
+                iniciadoPor: 'MANUAL'
+            });
+
+            return { success: true, viewId, totalProcessed, totalNew, duration, tableName };
+
+        } catch (err) {
+            const duration = Date.now() - startTime;
+            console.error(`❌ Single view sync failed for ${viewId}:`, err.message);
+
+            await this.logSync({
+                tipoSync: `VIEW_${(syncType || 'full').toUpperCase()}`,
+                registrosProcesados: totalProcessed,
+                registrosNuevos: totalNew,
+                registrosActualizados: 0,
+                estado: 'ERROR',
+                mensajeError: err.message,
+                tiempoEjecucionMs: duration,
+                iniciadoPor: 'MANUAL'
+            });
+
+            throw err;
+        }
+    }
+
+    // ================================================================
     // INCREMENTAL SYNC — same as full for v1 (no filter by date in API)
     // We re-sync all enabled helpdesks but upsert, so unchanged tickets just update
     // ================================================================

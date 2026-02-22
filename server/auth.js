@@ -171,6 +171,20 @@ async function ensureSecurityTables() {
             END
         `);
 
+        // Add Cedula and Telefono columns to APP_USUARIOS (migrated from DIM_PERSONAL)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'Cedula')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD Cedula NVARCHAR(30) NULL;
+            END
+        `);
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'Telefono')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD Telefono NVARCHAR(30) NULL;
+            END
+        `);
+
         // TODO:  Create performance indexes on RSM_ALCANCE_DIARIO if they don't exist
         // Temporarily commented out - KPI column doesn't exist in RSM_ALCANCE_DIARIO
         /*
@@ -726,6 +740,7 @@ async function getAllUsers() {
     const pool = await poolPromise;
     const result = await pool.request().query(`
         SELECT u.Id, u.Email, u.Nombre, u.Clave, u.Activo, u.AccesoTendencia, u.AccesoTactica, u.AccesoEventos, u.AccesoPresupuesto, u.AccesoPresupuestoMensual, u.AccesoPresupuestoAnual, u.AccesoPresupuestoRangos, u.AccesoTiempos, u.AccesoEvaluaciones, u.AccesoInventarios, u.AccesoPersonal, u.EsAdmin, u.EsProtegido, u.FechaCreacion,
+               u.Cedula, u.Telefono,
                ISNULL(u.PermitirEnvioClave, 1) as PermitirEnvioClave,
                u.PerfilId,
                ISNULL(u.accesoModeloPresupuesto, 0) as accesoModeloPresupuesto,
@@ -778,6 +793,8 @@ async function getAllUsers() {
         esAdmin: user.EsAdmin,
         esProtegido: user.EsProtegido,
         permitirEnvioClave: user.PermitirEnvioClave,
+        cedula: user.Cedula || null,
+        telefono: user.Telefono || null,
         fechaCreacion: user.FechaCreacion,
         perfilId: user.PerfilId ?? null,
         allowedStores: user.Almacenes ? user.Almacenes.split(', ') : [],
@@ -788,7 +805,7 @@ async function getAllUsers() {
 /**
  * Create a new user with store access and PIN
  */
-async function createUser(email, nombre, clave, stores, canales, accesoTendencia = false, accesoTactica = false, accesoEventos = false, accesoPresupuesto = true, accesoPresupuestoMensual = true, accesoPresupuestoAnual = true, accesoPresupuestoRangos = true, accesoTiempos = false, accesoEvaluaciones = false, accesoInventarios = false, accesoPersonal = false, esAdmin = false, modeloPresupuestoPerms = {}, perfilId = null) {
+async function createUser(email, nombre, clave, stores, canales, accesoTendencia = false, accesoTactica = false, accesoEventos = false, accesoPresupuesto = true, accesoPresupuestoMensual = true, accesoPresupuestoAnual = true, accesoPresupuestoRangos = true, accesoTiempos = false, accesoEvaluaciones = false, accesoInventarios = false, accesoPersonal = false, esAdmin = false, modeloPresupuestoPerms = {}, perfilId = null, cedula = null, telefono = null) {
     const pool = await poolPromise;
 
     // Validate: at least one module permission must be active (unless admin)
@@ -832,10 +849,12 @@ async function createUser(email, nombre, clave, stores, canales, accesoTendencia
         .input('ajustarCurva', sql.Bit, modeloPresupuestoPerms.ajustarCurva || false)
         .input('restaurarVersiones', sql.Bit, modeloPresupuestoPerms.restaurarVersiones || false)
         .input('perfilId', sql.Int, perfilId)
+        .input('cedula', sql.NVarChar, cedula || null)
+        .input('telefono', sql.NVarChar, telefono || null)
         .query(`
-            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, PerfilId) 
+            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, PerfilId, Cedula, Telefono) 
             OUTPUT INSERTED.Id, INSERTED.Clave
-            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @accesoPresupuesto, @accesoPresupuestoMensual, @accesoPresupuestoAnual, @accesoPresupuestoRangos, @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @accesoPersonal, @esAdmin, @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual, @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias, @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones, @perfilId)
+            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @accesoPresupuesto, @accesoPresupuestoMensual, @accesoPresupuestoAnual, @accesoPresupuestoRangos, @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @accesoPersonal, @esAdmin, @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual, @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias, @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones, @perfilId, @cedula, @telefono)
         `);
 
     const userId = userResult.recordset[0].Id;
@@ -865,7 +884,7 @@ async function createUser(email, nombre, clave, stores, canales, accesoTendencia
 /**
  * Update user (including PIN change)
  */
-async function updateUser(userId, email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId = null, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones) {
+async function updateUser(userId, email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId = null, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula = null, telefono = null) {
     const pool = await poolPromise;
 
     // Protect superadmin user
@@ -896,6 +915,7 @@ async function updateUser(userId, email, nombre, activo, clave, stores, canales,
             AccesoTiempos = @accesoTiempos, AccesoEvaluaciones = @accesoEvaluaciones, AccesoInventarios = @accesoInventarios, AccesoPersonal = @accesoPersonal,
             EsAdmin = @esAdmin, PermitirEnvioClave = @permitirEnvioClave,
             PerfilId = @perfilId,
+            Cedula = @cedula, Telefono = @telefono,
             accesoModeloPresupuesto = @accesoModeloPresupuesto,
             verConfigModelo = @verConfigModelo,
             verConsolidadoMensual = @verConsolidadoMensual,
@@ -928,6 +948,8 @@ async function updateUser(userId, email, nombre, activo, clave, stores, canales,
         .input('esAdmin', sql.Bit, esAdmin)
         .input('permitirEnvioClave', sql.Bit, permitirEnvioClave !== undefined ? permitirEnvioClave : true)
         .input('perfilId', sql.Int, perfilId)
+        .input('cedula', sql.NVarChar, cedula || null)
+        .input('telefono', sql.NVarChar, telefono || null)
         .input('accesoModeloPresupuesto', sql.Bit, accesoModeloPresupuesto || false)
         .input('verConfigModelo', sql.Bit, verConfigModelo || false)
         .input('verConsolidadoMensual', sql.Bit, verConsolidadoMensual || false)

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     fetchAjustes, aplicarAjuste, previewAjuste, fetchAllStores,
-    fetchConsolidadoMensual,
+    fetchResumenMensual,
     getUser, type AjustePresupuesto
 } from '../../api';
 
@@ -44,7 +44,7 @@ export const AjusteChart: React.FC<Props> = ({ anoModelo, nombrePresupuesto }) =
     // Reload chart when filters change
     useEffect(() => {
         loadChartData();
-    }, [codAlmacen, tipo, anoModelo]);
+    }, [codAlmacen, tipo, nombrePresupuesto]);
 
     const loadData = async () => {
         try {
@@ -71,29 +71,19 @@ export const AjusteChart: React.FC<Props> = ({ anoModelo, nombrePresupuesto }) =
     };
 
     const loadChartData = async () => {
-        if (!codAlmacen) return;
+        if (!codAlmacen || !nombrePresupuesto) return;
         try {
-            const data = await fetchConsolidadoMensual(anoModelo, codAlmacen, tipo);
-            // Data format: { ano, mes, tipo, local, codAlmacen, salon, llevar, auto, express, ecommerce, ubereats, total }
-            // Each row represents one month — use the 'total' column for chart data
+            const data = await fetchResumenMensual(nombrePresupuesto, codAlmacen, tipo);
             const monthlyTotals = new Array(12).fill(0);
             (data || []).forEach((row: any) => {
                 const m = Number(row.mes);
-                if (m >= 1 && m <= 12) {
-                    if (row.total != null) {
-                        monthlyTotals[m - 1] += Number(row.total);
-                    } else {
-                        // Fallback: sum all channel columns
-                        const channels = ['salon', 'llevar', 'auto', 'express', 'ecommerce', 'ubereats'];
-                        channels.forEach(ch => {
-                            if (row[ch] != null) monthlyTotals[m - 1] += Number(row[ch]);
-                        });
-                    }
+                if (m >= 1 && m <= 12 && row.total != null) {
+                    monthlyTotals[m - 1] += Number(row.total);
                 }
             });
             setChartData(monthlyTotals);
         } catch {
-            setChartData(new Array(12).fill(0)); // Graceful fallback
+            setChartData(new Array(12).fill(0));
         }
     };
 

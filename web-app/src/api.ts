@@ -1447,6 +1447,16 @@ export async function initializeConsolidadoYear(ano: number): Promise<{ success:
     return response.json();
 }
 
+// Resumen Mensual (monthly totals from budget table — for AjusteChart)
+export async function fetchResumenMensual(nombrePresupuesto: string, codAlmacen?: string, tipo?: string): Promise<{ mes: number; total: number }[]> {
+    const params = new URLSearchParams({ nombrePresupuesto });
+    if (codAlmacen) params.set('codAlmacen', codAlmacen);
+    if (tipo) params.set('tipo', tipo);
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/resumen-mensual?${params}`, { headers: authHeaders() });
+    if (!response.ok) return [];
+    return response.json();
+}
+
 // Adjustments
 export async function fetchAjustes(nombrePresupuesto: string): Promise<AjustePresupuesto[]> {
     const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes?nombrePresupuesto=${encodeURIComponent(nombrePresupuesto)}`, { headers: authHeaders() });
