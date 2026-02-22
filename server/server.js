@@ -256,66 +256,18 @@ registerFormsEndpoints(app, authMiddleware);
 // PERSONAL ENDPOINTS
 // ==========================================
 
+// GET /api/personal - Returns active users (replaces old DIM_PERSONAL list)
 app.get('/api/personal', authMiddleware, async (req, res) => {
     try { res.json(await personalModule.getAllPersonal()); }
-    catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/personal', authMiddleware, async (req, res) => {
-    try {
-        const { nombre, correo, cedula, telefono } = req.body;
-        if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
-        res.status(201).json(await personalModule.createPersona(nombre, correo, cedula, telefono));
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/personal/:id', authMiddleware, async (req, res) => {
-    try {
-        const { nombre, correo, cedula, telefono, activo } = req.body;
-        res.json(await personalModule.updatePersona(parseInt(req.params.id), nombre, correo, cedula, telefono, activo));
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/personal/:id', authMiddleware, async (req, res) => {
-    try { await personalModule.deletePersona(parseInt(req.params.id)); res.json({ ok: true }); }
-    catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ==========================================
-// PERSONAL ENDPOINTS
-// ==========================================
-
-app.get('/api/personal', authMiddleware, async (req, res) => {
-    try { res.json(await personalModule.getAllPersonal()); }
-    catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/personal', authMiddleware, async (req, res) => {
-    try {
-        const { nombre, correo, cedula, telefono } = req.body;
-        if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
-        res.status(201).json(await personalModule.createPersona(nombre, correo, cedula, telefono));
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/personal/:id', authMiddleware, async (req, res) => {
-    try {
-        const { nombre, correo, cedula, telefono, activo } = req.body;
-        res.json(await personalModule.updatePersona(parseInt(req.params.id), nombre, correo, cedula, telefono, activo));
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/personal/:id', authMiddleware, async (req, res) => {
-    try { await personalModule.deletePersona(parseInt(req.params.id)); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Asignaciones
 app.get('/api/personal/asignaciones', authMiddleware, async (req, res) => {
     try {
-        const { personalId, month, year } = req.query;
+        const { usuarioId, month, year } = req.query;
         res.json(await personalModule.getAsignaciones(
-            personalId ? parseInt(personalId) : null,
+            usuarioId ? parseInt(usuarioId) : null,
             month,
             year
         ));
@@ -325,9 +277,9 @@ app.get('/api/personal/asignaciones', authMiddleware, async (req, res) => {
 
 app.post('/api/personal/asignaciones', authMiddleware, async (req, res) => {
     try {
-        const { personalId, local, perfil, fechaInicio, fechaFin, notas } = req.body;
-        if (!personalId || !local || !perfil || !fechaInicio) return res.status(400).json({ error: 'personalId, local, perfil y fechaInicio son requeridos' });
-        res.status(201).json(await personalModule.createAsignacion(personalId, local, perfil, fechaInicio, fechaFin, notas));
+        const { usuarioId, local, perfil, fechaInicio, fechaFin, notas } = req.body;
+        if (!usuarioId || !local || !perfil || !fechaInicio) return res.status(400).json({ error: 'usuarioId, local, perfil y fechaInicio son requeridos' });
+        res.status(201).json(await personalModule.createAsignacion(usuarioId, local, perfil, fechaInicio, fechaFin, notas));
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -642,9 +594,9 @@ app.post('/api/admin/users', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones } = req.body;
+        const { email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula, telefono } = req.body;
         const modeloPresupuestoPerms = { accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones };
-        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, modeloPresupuestoPerms, perfilId || null);
+        const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, modeloPresupuestoPerms, perfilId || null, cedula, telefono);
         res.json({ success: true, userId: result.userId, clave: result.clave });
     } catch (err) {
         console.error('Error creating user:', err);
@@ -662,8 +614,8 @@ app.put('/api/admin/users/:id', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones } = req.body;
-        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones);
+        const { email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula, telefono } = req.body;
+        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula, telefono);
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating user:', err);
