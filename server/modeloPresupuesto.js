@@ -769,11 +769,12 @@ async function getValidacion(nombrePresupuesto) {
                         AND d.Mes = c.Mes
                         AND c.Ano = @ano
                     WHERE d.NombrePresupuesto = @nombrePresupuesto
+                      AND d.Año = @ano
                       AND d.Canal = @canal
                       AND d.Tipo IN ('Ventas', 'Transacciones')
                       AND LEFT(d.CodAlmacen, 1) != 'G'
                     GROUP BY d.CodAlmacen, d.Canal, d.Tipo, d.Mes
-                    HAVING ABS(SUM(d.Monto) - ISNULL(MAX(c.${colConsolidado}), 0)) > 1
+                    HAVING ABS(SUM(d.Monto) - ISNULL(MAX(c.${colConsolidado}), 0)) > 100
                     ORDER BY d.CodAlmacen, d.Mes
                 `);
             for (const r of res.recordset) {
