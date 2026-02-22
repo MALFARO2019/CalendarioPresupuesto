@@ -851,12 +851,10 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
         } catch (err) { res.status(500).json({ error: err.message }); }
     });
 
-    // GET /api/forms/lookup/stores — search DIM_NOMBRES_ALMACEN for dropdown
+    // GET /api/forms/lookup/stores — all stores from groups with visibility 20
     app.get('/api/forms/lookup/stores', authMiddleware, async (req, res) => {
         try {
-            const search = req.query.q || '';
-            if (search.length < 1) return res.json([]);
-            const results = await formsMappingService.lookupStores(search);
+            const results = await formsMappingService.lookupStores();
             res.json(results);
         } catch (err) { res.status(500).json({ error: err.message }); }
     });

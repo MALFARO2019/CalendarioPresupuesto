@@ -129,6 +129,7 @@ export const FormsAdmin: React.FC = () => {
     const [manualSearchTimers, setManualSearchTimers] = useState<Record<string, any>>({});
     const [manualAssignments, setManualAssignments] = useState<Record<string, { value: string; label: string }>>({});
     const [savingManual, setSavingManual] = useState<string | null>(null);
+    const [allStores, setAllStores] = useState<any[]>([]);
 
     const headers = () => ({ Authorization: `Bearer ${getToken()}` });
 
@@ -478,9 +479,13 @@ export const FormsAdmin: React.FC = () => {
     const loadDistinctUnmapped = async () => {
         if (!mappingSource) return;
         try {
-            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/distinct-unmapped`, { headers: headers() });
+            const [r, storesR] = await Promise.all([
+                axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/distinct-unmapped`, { headers: headers() }),
+                allStores.length === 0 ? axios.get(`${API_BASE}/forms/lookup/stores`, { headers: headers() }) : Promise.resolve(null)
+            ]);
             const data = r.data;
             setDistinctUnmapped({ persona: data.persona || [], almacen: data.almacen || [] });
+            if (storesR) setAllStores(storesR.data || []);
             setShowManualMapping(true);
             setManualAssignments({});
             setManualSearchResults({});
@@ -1257,23 +1262,22 @@ export const FormsAdmin: React.FC = () => {
                                                                             <button className="btn-clear-assign" onClick={() => setManualAssignments(prev => { const n = { ...prev }; delete n[key]; return n; })}>×</button>
                                                                         </div>
                                                                     ) : (
-                                                                        <>
-                                                                            <input
-                                                                                className="manual-search-input"
-                                                                                placeholder="Buscar local..."
-                                                                                onChange={e => searchLookup(key, 'CODALMACEN', e.target.value)}
-                                                                            />
-                                                                            {(manualSearchResults[key]?.length > 0) && (
-                                                                                <div className="manual-dropdown">
-                                                                                    {manualSearchResults[key].map((s: any) => (
-                                                                                        <div key={s.CODALMACEN} className="manual-dropdown-item" onClick={() => selectManualMapping(key, s.CODALMACEN, `${s.CODALMACEN} — ${s.NOMBRE_GENERAL}`)}>
-                                                                                            <strong>{s.CODALMACEN}</strong>
-                                                                                            <small>{s.NOMBRE_GENERAL}</small>
-                                                                                        </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            )}
-                                                                        </>
+                                                                        <select
+                                                                            className="manual-select-input"
+                                                                            value=""
+                                                                            onChange={e => {
+                                                                                if (!e.target.value) return;
+                                                                                const store = allStores.find((s: any) => s.CODALMACEN === e.target.value);
+                                                                                if (store) selectManualMapping(key, store.CODALMACEN, `${store.CODALMACEN} — ${store.NOMBRE}`);
+                                                                            }}
+                                                                        >
+                                                                            <option value="">— Seleccione local —</option>
+                                                                            {allStores.map((s: any) => (
+                                                                                <option key={s.CODALMACEN} value={s.CODALMACEN}>
+                                                                                    {s.CODALMACEN} — {s.NOMBRE}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
                                                                     )}
                                                                 </div>
                                                                 <button

@@ -1433,6 +1433,24 @@
     box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
 }
 
+.manual-select-input {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    outline: none;
+    box-sizing: border-box;
+    background: white;
+    cursor: pointer;
+    appearance: auto;
+}
+
+.manual-select-input:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
 .manual-dropdown {
     position: absolute;
     top: 100%;

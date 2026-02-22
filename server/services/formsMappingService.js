@@ -363,34 +363,25 @@ async function lookupPersonal(search) {
 
 // --- Lookup stores for dropdown search ---
 
-async function lookupStores(search) {
+async function getAllStores() {
     const mainPool = await poolPromise;
     const r = await mainPool.request()
-        .input('search', mainSql.NVarChar, `%${search}%`)
         .query(`
-            SELECT DISTINCT TOP 20
-                RTRIM(a.CodAlmacen) AS CODALMACEN,
+            SELECT DISTINCT
+                RTRIM(GL.CODALMACEN) COLLATE Modern_Spanish_CI_AS AS CODALMACEN,
                 COALESCE(
-                    n.NOMBRE_GENERAL,
                     n.NOMBRE_OPERACIONES,
                     n.NOMBRE_CONTA,
                     n.NOMBRE_INOCUIDAD,
                     n.NOMBRE_JUSTO,
                     d.NOMBREALMACEN COLLATE Modern_Spanish_CI_AS,
-                    a.Alias
-                ) AS NOMBRE_GENERAL
-            FROM APP_STORE_ALIAS a
-            LEFT JOIN DIM_NOMBRES_ALMACEN n ON RTRIM(n.CODALMACEN) = RTRIM(a.CodAlmacen)
-            LEFT JOIN DIM_ALMACEN d ON RTRIM(d.CODALMACEN) COLLATE Modern_Spanish_CI_AS = RTRIM(a.CodAlmacen) COLLATE Modern_Spanish_CI_AS
-            WHERE a.Activo = 1
-              AND (
-                  a.CodAlmacen LIKE @search
-                  OR a.Alias LIKE @search
-                  OR n.NOMBRE_OPERACIONES LIKE @search
-                  OR n.NOMBRE_CONTA LIKE @search
-                  OR n.NOMBRE_INOCUIDAD LIKE @search
-                  OR d.NOMBREALMACEN LIKE @search COLLATE Modern_Spanish_CI_AS
-              )
+                    RTRIM(GL.CODALMACEN) COLLATE Modern_Spanish_CI_AS
+                ) AS NOMBRE
+            FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENLIN GL
+            INNER JOIN ROSTIPOLLOS_P.DBO.GRUPOSALMACENCAB GA ON GL.IDGRUPO = GA.IDGRUPO
+            LEFT JOIN DIM_NOMBRES_ALMACEN n ON RTRIM(n.CODALMACEN) = RTRIM(GL.CODALMACEN) COLLATE Modern_Spanish_CI_AS
+            LEFT JOIN DIM_ALMACEN d ON RTRIM(d.CODALMACEN) COLLATE Modern_Spanish_CI_AS = RTRIM(GL.CODALMACEN) COLLATE Modern_Spanish_CI_AS
+            WHERE GA.CODVISIBLE = 20
             ORDER BY CODALMACEN
         `);
     return r.recordset;
@@ -602,5 +593,5 @@ module.exports = {
     deleteValueMapping,
     getDistinctUnmapped,
     lookupPersonal,
-    lookupStores
+    lookupStores: getAllStores,
 };
