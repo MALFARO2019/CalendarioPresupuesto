@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchAsignaciones, fetchProfiles, fetchPersonal, createAsignacion, updateAsignacion, deleteAsignacion as apiDeleteAsignacion } from '../api';
 import type { Profile, PersonalItem, Asignacion } from '../api';
-import { Plus, Edit2, Trash2, UserCheck, MapPin, RefreshCw, X, ChevronDown, ChevronUp, Calendar, AlertTriangle, Shield, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, MapPin, RefreshCw, X, Calendar, AlertTriangle, Shield, Search } from 'lucide-react';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -10,7 +10,7 @@ export const PersonalManagement: React.FC = () => {
     const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'usuarios' | 'asignaciones' | 'cobertura'>('asignaciones');
+    const [activeTab, setActiveTab] = useState<'asignaciones' | 'cobertura'>('asignaciones');
     const [allStores, setAllStores] = useState<string[]>([]);
     const [localesSinCobertura, setLocalesSinCobertura] = useState<{ Local: string, PerfilesFaltantes: string }[]>([]);
     const [loadingCobertura, setLoadingCobertura] = useState(false);
@@ -35,7 +35,7 @@ export const PersonalManagement: React.FC = () => {
     const [coberturaPerfil, setCoberturaPerfil] = useState('Supervisor');
     const [coberturaMonth, setCoberturaMonth] = useState(new Date().getMonth() + 1);
     const [coberturaYear, setCoberturaYear] = useState(new Date().getFullYear());
-    const [expandedUsuario, setExpandedUsuario] = useState<number | null>(null);
+
 
     const [error, setError] = useState<string | null>(null);
 
@@ -185,10 +185,10 @@ export const PersonalManagement: React.FC = () => {
             )}
 
             <div className="flex items-center gap-1 sm:gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
-                {(['asignaciones', 'usuarios', 'cobertura'] as const).map(tab => (
+                {(['asignaciones', 'cobertura'] as const).map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)}
                         className={`px-3 sm:px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : tab === 'usuarios' ? `👤 Usuarios (${usuarios.length})` : '🛡️ Cobertura'}
+                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : '🛡️ Cobertura'}
                     </button>
                 ))}
             </div>
@@ -270,59 +270,7 @@ export const PersonalManagement: React.FC = () => {
                 </div>
             )}
 
-            {/* ── TAB: Usuarios (read-only) ── */}
-            {activeTab === 'usuarios' && (
-                <div>
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-                        ℹ️ Los usuarios se administran desde <strong>Configuración → Usuarios</strong>. Aquí solo se muestran para referencia al asignar.
-                    </div>
 
-                    {loading ? (
-                        <div className="text-center py-10 text-gray-400">Cargando...</div>
-                    ) : (
-                        <div className="space-y-2">
-                            {usuarios.map(u => (
-                                <div key={u.ID} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                                    <div className="flex items-center justify-between px-4 py-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
-                                                {u.NOMBRE.charAt(0).toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <div className="font-semibold text-gray-800">{u.NOMBRE}</div>
-                                                <div className="text-xs text-gray-400">{u.CORREO || u.CEDULA || '—'}</div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                                                <UserCheck className="w-3 h-3 inline mr-1" />{u.TotalAsignaciones} asig.
-                                            </span>
-                                            <button onClick={() => setExpandedUsuario(expandedUsuario === u.ID ? null : u.ID)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors">
-                                                {expandedUsuario === u.ID ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                            </button>
-                                        </div>
-                                    </div>
-                                    {expandedUsuario === u.ID && (
-                                        <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
-                                            <p className="text-xs font-semibold text-gray-500 mb-2">ASIGNACIONES ACTIVAS</p>
-                                            {asignaciones.filter(a => a.USUARIO_ID === u.ID && isVigente(a)).length === 0 ? (
-                                                <p className="text-xs text-gray-400">Sin asignaciones activas</p>
-                                            ) : asignaciones.filter(a => a.USUARIO_ID === u.ID && isVigente(a)).map(a => (
-                                                <div key={a.ID} className="flex items-center gap-2 text-xs text-gray-600 mb-1">
-                                                    <MapPin className="w-3 h-3 text-gray-400" />
-                                                    <span className="font-medium">{a.LOCAL}</span>
-                                                    <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">{a.PERFIL}</span>
-                                                    <span className="text-gray-400">desde {fmtDate(a.FECHA_INICIO)}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
 
             {/* ── TAB: Cobertura ── */}
             {activeTab === 'cobertura' && (
