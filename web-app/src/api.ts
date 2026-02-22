@@ -1389,12 +1389,19 @@ export async function deleteModeloConfig(id: number): Promise<{ success: boolean
 
 // Calculation
 export async function ejecutarRecalculo(nombrePresupuesto?: string, codAlmacen?: string, mes?: number): Promise<{ success: boolean; totalRegistros?: number }> {
-    const response = await fetch(`${API_BASE}/modelo-presupuesto/calcular`, {
-        method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ nombrePresupuesto, codAlmacen, mes })
-    });
-    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
-    return response.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 min timeout
+    try {
+        const response = await fetch(`${API_BASE}/modelo-presupuesto/calcular`, {
+            method: 'POST', headers: authHeaders(),
+            body: JSON.stringify({ nombrePresupuesto, codAlmacen, mes }),
+            signal: controller.signal
+        });
+        if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+        return response.json();
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 // Consolidado Mensual

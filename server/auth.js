@@ -178,6 +178,7 @@ async function ensureSecurityTables() {
                 ALTER TABLE APP_USUARIOS ADD Cedula NVARCHAR(30) NULL;
             END
         `);
+
         await pool.request().query(`
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'Telefono')
             BEGIN

@@ -2803,69 +2803,8 @@ app.get('/api/invgate/sync-logs', authMiddleware, async (req, res) => {
 });
 
 // ─── InvGate Views Management ─────────────────────────────────────
-
-// GET /api/invgate/views - List configured views
-app.get('/api/invgate/views', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
-        const views = await invgateSyncService.getViewConfigs();
-        res.json(views);
-    } catch (err) {
-        console.error('Error getting InvGate views:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST /api/invgate/views - Add a new view
-app.post('/api/invgate/views', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
-        const { viewId, nombre, columns } = req.body;
-        if (!viewId || !nombre) return res.status(400).json({ error: 'viewId y nombre son requeridos' });
-        const result = await invgateSyncService.saveView(parseInt(viewId), nombre, columns || []);
-        res.json({ success: true, ...result });
-    } catch (err) {
-        console.error('Error saving InvGate view:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// DELETE /api/invgate/views/:id - Delete a view
-app.delete('/api/invgate/views/:id', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
-        await invgateSyncService.deleteView(parseInt(req.params.id));
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Error deleting InvGate view:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// PUT /api/invgate/views/:id/toggle - Enable/disable sync for a view
-app.put('/api/invgate/views/:id/toggle', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
-        const { enabled } = req.body;
-        await invgateSyncService.toggleView(parseInt(req.params.id), enabled);
-        res.json({ success: true, viewId: parseInt(req.params.id), enabled });
-    } catch (err) {
-        console.error('Error toggling InvGate view:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// GET /api/invgate/views/:id/preview - Preview data from a view (live from InvGate API)
-app.get('/api/invgate/views/:id/preview', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
-        const preview = await invgateService.getViewPreview(parseInt(req.params.id));
-        res.json(preview);
-    } catch (err) {
-        console.error('Error previewing InvGate view:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+// NOTE: All view endpoints now live exclusively in invgate_endpoints.js
+// (GET/POST/DELETE /api/invgate/views, toggle, preview, sync, mappings)
 
 // GET /api/invgate/tickets - Get tickets with filters and pagination
 app.get('/api/invgate/tickets', authMiddleware, async (req, res) => {

@@ -11,7 +11,7 @@ const invgateDbConfig = {
         trustServerCertificate: true,
         enableArithAbort: true,
         connectTimeout: 30000,
-        requestTimeout: 30000
+        requestTimeout: 120000
     }
 };
 

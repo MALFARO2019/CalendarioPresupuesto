@@ -109,6 +109,28 @@ export const FormsAdmin: React.FC = () => {
 
     const [activeTab, setActiveTab] = useState<'sources' | 'responses' | 'config' | 'logs'>('sources');
 
+    // Mapping modal state
+    const [mappingSource, setMappingSource] = useState<FormSource | null>(null);
+    const [mappingLoading, setMappingLoading] = useState(false);
+    const [mappingColumns, setMappingColumns] = useState<string[]>([]);
+    const [mappingPersona, setMappingPersona] = useState('');
+    const [mappingAlmacen, setMappingAlmacen] = useState('');
+    const [mappingSaving, setMappingSaving] = useState(false);
+    const [mappingStats, setMappingStats] = useState<any>(null);
+    const [mappingResolving, setMappingResolving] = useState(false);
+    const [mappingUnmapped, setMappingUnmapped] = useState<any[]>([]);
+    const [mappingUnmappedCount, setMappingUnmappedCount] = useState(0);
+    const [showUnmapped, setShowUnmapped] = useState(false);
+
+    // Manual mapping state
+    const [distinctUnmapped, setDistinctUnmapped] = useState<{ persona: any[]; almacen: any[] }>({ persona: [], almacen: [] });
+    const [showManualMapping, setShowManualMapping] = useState(false);
+    const [manualSearchResults, setManualSearchResults] = useState<Record<string, any[]>>({});
+    const [manualSearchTimers, setManualSearchTimers] = useState<Record<string, any>>({});
+    const [manualAssignments, setManualAssignments] = useState<Record<string, { value: string; label: string }>>({});
+    const [savingManual, setSavingManual] = useState<string | null>(null);
+    const [allStores, setAllStores] = useState<any[]>([]);
+
     const headers = () => ({ Authorization: `Bearer ${getToken()}` });
 
     // ─── Load ─────────────────────────────────────────────────────────────────
@@ -383,6 +405,154 @@ export const FormsAdmin: React.FC = () => {
         finally { setGlobalSyncing(false); }
     };
 
+    // ─── Mappings ─────────────────────────────────────────────────────────────
+
+    const openMappingModal = async (src: FormSource) => {
+        setMappingSource(src);
+        setMappingLoading(true);
+        setShowUnmapped(false);
+        setMappingUnmapped([]);
+        try {
+            const r = await axios.get(`${API_BASE}/forms/sources/${src.SourceID}/mappings`, { headers: headers() });
+            setMappingColumns(r.data.availableColumns || []);
+            const persona = r.data.mappings?.find((m: any) => m.fieldType === 'PERSONA');
+            const almacen = r.data.mappings?.find((m: any) => m.fieldType === 'CODALMACEN');
+            setMappingPersona(persona?.columnName || '');
+            setMappingAlmacen(almacen?.columnName || '');
+            setMappingStats(r.data.stats);
+        } catch (e: any) {
+            console.error('Error loading mappings:', e.message);
+        } finally {
+            setMappingLoading(false);
+        }
+    };
+
+    const saveMappings = async () => {
+        if (!mappingSource) return;
+        setMappingSaving(true);
+        try {
+            await axios.put(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, {
+                personaColumn: mappingPersona || null,
+                almacenColumn: mappingAlmacen || null
+            }, { headers: headers() });
+            alert('✅ Mapeos guardados');
+            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, { headers: headers() });
+            setMappingStats(r.data.stats);
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        } finally {
+            setMappingSaving(false);
+        }
+    };
+
+    const resolveMappings = async () => {
+        if (!mappingSource) return;
+        setMappingResolving(true);
+        try {
+            const r = await axios.post(`${API_BASE}/forms/sources/${mappingSource.SourceID}/resolve-mappings`, {}, { headers: headers() });
+            alert(`✅ ${r.data.message}`);
+            const stats = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, { headers: headers() });
+            setMappingStats(stats.data.stats);
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        } finally {
+            setMappingResolving(false);
+        }
+    };
+
+    const loadUnmapped = async () => {
+        if (!mappingSource) return;
+        try {
+            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/unmapped`, { headers: headers() });
+            setMappingUnmapped(r.data.unmapped || []);
+            setMappingUnmappedCount(r.data.unmappedCount || 0);
+            setShowUnmapped(true);
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        }
+        // Also auto-load distinct unmapped for manual assignment
+        loadDistinctUnmapped();
+    };
+
+    // ─── Manual Mapping ───────────────────────────────────────────────────────
+
+    const loadDistinctUnmapped = async () => {
+        if (!mappingSource) return;
+        try {
+            const [r, storesR] = await Promise.all([
+                axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/distinct-unmapped`, { headers: headers() }),
+                allStores.length === 0 ? axios.get(`${API_BASE}/forms/lookup/stores`, { headers: headers() }) : Promise.resolve(null)
+            ]);
+            const data = r.data;
+            setDistinctUnmapped({ persona: data.persona || [], almacen: data.almacen || [] });
+            if (storesR) setAllStores(storesR.data || []);
+            setShowManualMapping(true);
+            setManualAssignments({});
+            setManualSearchResults({});
+            if (data.errors && data.errors.length > 0) {
+                console.warn('Mapping errors:', data.errors);
+                alert('⚠️ Advertencia:\n' + data.errors.join('\n'));
+            }
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
+    const searchLookup = (key: string, type: 'PERSONA' | 'CODALMACEN', query: string) => {
+        // Clear previous timer
+        if (manualSearchTimers[key]) clearTimeout(manualSearchTimers[key]);
+        if (query.length < 2) {
+            setManualSearchResults(prev => ({ ...prev, [key]: [] }));
+            return;
+        }
+        const timer = setTimeout(async () => {
+            try {
+                const endpoint = type === 'PERSONA' ? 'personal' : 'stores';
+                const r = await axios.get(`${API_BASE}/forms/lookup/${endpoint}?q=${encodeURIComponent(query)}`, { headers: headers() });
+                setManualSearchResults(prev => ({ ...prev, [key]: r.data }));
+            } catch (e) { /* ignore */ }
+        }, 300);
+        setManualSearchTimers(prev => ({ ...prev, [key]: timer }));
+    };
+
+    const selectManualMapping = (key: string, value: string, label: string) => {
+        setManualAssignments(prev => ({ ...prev, [key]: { value, label } }));
+        setManualSearchResults(prev => ({ ...prev, [key]: [] }));
+    };
+
+    const saveValueMapping = async (sourceValue: string, type: 'PERSONA' | 'CODALMACEN', key: string) => {
+        const assignment = manualAssignments[key];
+        if (!assignment) { alert('Seleccione un valor primero'); return; }
+        setSavingManual(key);
+        try {
+            await axios.post(`${API_BASE}/forms/value-mappings`, {
+                sourceValue,
+                mappingType: type,
+                resolvedValue: assignment.value,
+                resolvedLabel: assignment.label
+            }, { headers: headers() });
+            // Remove from distinct list
+            if (type === 'PERSONA') {
+                setDistinctUnmapped(prev => ({ ...prev, persona: prev.persona.filter(p => p.sourceValue !== sourceValue) }));
+            } else {
+                setDistinctUnmapped(prev => ({ ...prev, almacen: prev.almacen.filter(a => a.sourceValue !== sourceValue) }));
+            }
+            setManualAssignments(prev => { const n = { ...prev }; delete n[key]; return n; });
+        } catch (e: any) {
+            alert('Error: ' + (e.response?.data?.error || e.message));
+        } finally {
+            setSavingManual(null);
+        }
+    };
+
+    const reloadMappingStats = async () => {
+        if (!mappingSource) return;
+        try {
+            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, { headers: headers() });
+            setMappingStats(r.data.stats);
+        } catch (e) { /* ignore */ }
+    };
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     const fmtDate = (d: string | null) => !d ? '—' : new Date(d).toLocaleString('es-CR');
@@ -606,6 +776,7 @@ export const FormsAdmin: React.FC = () => {
                                                             {syncingId === src.SourceID ? '⏳' : '🔄'}
                                                         </button>
                                                     )}
+                                                    <button className="btn-mapping btn-icon" onClick={() => openMappingModal(src)} title="Mapeos (Local/Usuario)">🔗</button>
                                                     <button className="btn-edit btn-icon" onClick={() => openEdit(src)} title="Editar">✏️</button>
                                                     <button className={`btn-toggle btn-icon ${src.Activo ? 'deactivate' : 'activate'}`} onClick={() => toggleActive(src)} title={src.Activo ? 'Desactivar' : 'Activar'}>
                                                         {src.Activo ? '⏸' : '▶️'}
@@ -870,6 +1041,272 @@ export const FormsAdmin: React.FC = () => {
                                 ));
                             })()}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Mapping Modal ── */}
+            {mappingSource && (
+                <div className="modal-overlay" onClick={() => { setMappingSource(null); setShowUnmapped(false); setShowManualMapping(false); }}>
+                    <div className="modal-box modal-mapping" onClick={e => e.stopPropagation()}>
+                        <div className="detail-header">
+                            <h3>🔗 Mapeos — {mappingSource.Alias}</h3>
+                            <button className="btn-close" onClick={() => { setMappingSource(null); setShowUnmapped(false); setShowManualMapping(false); }}>✕</button>
+                        </div>
+
+                        {mappingLoading ? (
+                            <div className="forms-loading">Cargando columnas...</div>
+                        ) : (
+                            <>
+                                <p style={{ color: '#6b7280', fontSize: 13, margin: '0 0 16px' }}>
+                                    Configure qué campo del formulario corresponde a un <strong>Local (CodAlmacen)</strong> y cuál a un <strong>Usuario del sistema</strong>.
+                                    Al sincronizar, el sistema intentará resolver estos campos automáticamente.
+                                </p>
+
+                                {mappingColumns.length === 0 ? (
+                                    <div className="forms-empty" style={{ padding: '12px 0' }}>
+                                        <p>⚠️ La tabla aún no tiene columnas de datos. Realice un <strong>Sync</strong> primero para que se creen las columnas.</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="mapping-fields">
+                                            <div className="form-group">
+                                                <label>🏪 Campo de Local (CodAlmacen)</label>
+                                                <select value={mappingAlmacen} onChange={e => setMappingAlmacen(e.target.value)} className="config-select">
+                                                    <option value="">— Sin mapear —</option>
+                                                    {mappingColumns.map(col => (
+                                                        <option key={col} value={col}>{col}</option>
+                                                    ))}
+                                                </select>
+                                                <small>Se buscará en APP_STORE_ALIAS para encontrar el código del local</small>
+                                            </div>
+                                            <div className="form-group">
+                                                <label>👤 Campo de Usuario</label>
+                                                <select value={mappingPersona} onChange={e => setMappingPersona(e.target.value)} className="config-select">
+                                                    <option value="">— Sin mapear —</option>
+                                                    {mappingColumns.map(col => (
+                                                        <option key={col} value={col}>{col}</option>
+                                                    ))}
+                                                </select>
+                                                <small>Se buscará en APP_USUARIOS para encontrar el ID del usuario</small>
+                                            </div>
+                                        </div>
+
+                                        <div className="mapping-actions">
+                                            <button className="btn-save" onClick={saveMappings} disabled={mappingSaving}>
+                                                {mappingSaving ? '⏳ Guardando...' : '💾 Guardar Mapeos'}
+                                            </button>
+                                            <button className="btn-resolve-mapping" onClick={resolveMappings} disabled={mappingResolving}>
+                                                {mappingResolving ? '⏳ Resolviendo...' : '🔄 Resolver Pendientes'}
+                                            </button>
+                                            <button className="btn-manual-mapping" onClick={loadDistinctUnmapped}>
+                                                🔧 Asignar Manualmente
+                                            </button>
+                                            <button className="btn-unmapped" onClick={loadUnmapped}>
+                                                🔍 Ver Sin Mapear
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* Stats */}
+                                {mappingStats?.hasMappingColumns && mappingStats.stats && (
+                                    <div className="mapping-stats">
+                                        <h4>📊 Estado de Mapeos</h4>
+                                        <div className="stats-grid">
+                                            <div className="stat-item">
+                                                <span className="stat-label">Total registros</span>
+                                                <span className="stat-value">{mappingStats.stats.total}</span>
+                                            </div>
+                                            <div className="stat-item success">
+                                                <span className="stat-label">Con Local</span>
+                                                <span className="stat-value">{mappingStats.stats.withCodAlmacen}</span>
+                                            </div>
+                                            <div className="stat-item warning">
+                                                <span className="stat-label">Sin Local</span>
+                                                <span className="stat-value">{mappingStats.stats.withoutCodAlmacen}</span>
+                                            </div>
+                                            <div className="stat-item success">
+                                                <span className="stat-label">Con Usuario</span>
+                                                <span className="stat-value">{mappingStats.stats.withPersonalId}</span>
+                                            </div>
+                                            <div className="stat-item warning">
+                                                <span className="stat-label">Sin Usuario</span>
+                                                <span className="stat-value">{mappingStats.stats.withoutPersonalId}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Unmapped records detail - shown FIRST */}
+                                {showUnmapped && (
+                                    <div className="unmapped-section">
+                                        <h4>⚠️ Registros Sin Mapear ({mappingUnmappedCount})</h4>
+                                        {mappingUnmapped.length === 0 ? (
+                                            <p style={{ color: '#059669', fontSize: 13 }}>✅ Todos los registros están mapeados correctamente</p>
+                                        ) : (
+                                            <div className="unmapped-table-wrap">
+                                                <table className="unmapped-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>ID</th>
+                                                            <th>Correo</th>
+                                                            <th>Fecha</th>
+                                                            {mappingAlmacen && <th>Valor Local</th>}
+                                                            {mappingPersona && <th>Valor Usuario</th>}
+                                                            <th>CodAlmacen</th>
+                                                            <th>UsuarioID</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {mappingUnmapped.slice(0, 50).map((row: any) => (
+                                                            <tr key={row.ID}>
+                                                                <td>{row.ID}</td>
+                                                                <td>{row.RespondentEmail || '—'}</td>
+                                                                <td>{row.SubmittedAt ? new Date(row.SubmittedAt).toLocaleDateString('es-CR') : '—'}</td>
+                                                                {mappingAlmacen && <td className="unmapped-value">{row._SourceLocal || '—'}</td>}
+                                                                {mappingPersona && <td className="unmapped-value">{row._SourcePersona || '—'}</td>}
+                                                                <td>{row._CODALMACEN || <span className="no-map">❌</span>}</td>
+                                                                <td>{row._PERSONAL_ID ? `✅ ${row._PERSONAL_NOMBRE || row._PERSONAL_ID}` : <span className="no-map">❌</span>}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Manual Mapping Section - shown AFTER the table */}
+                                {showManualMapping && (
+                                    <div className="manual-mapping-section">
+                                        <div className="manual-mapping-header">
+                                            <h4>🔧 Asignación Manual de Valores</h4>
+                                            <p style={{ color: '#6b7280', fontSize: 12, margin: '4px 0 0' }}>Busque el nombre y seleccione de la lista. Al guardar 💾, todos los registros con ese valor se resolverán automáticamente.</p>
+                                        </div>
+
+                                        {/* Usuario unmapped */}
+                                        {distinctUnmapped.persona.length > 0 && (
+                                            <div className="manual-type-section">
+                                                <h5>👤 Usuarios sin mapear ({distinctUnmapped.persona.length})</h5>
+                                                {distinctUnmapped.persona.map((item: any) => {
+                                                    const key = `persona_${item.sourceValue}`;
+                                                    const assignment = manualAssignments[key];
+                                                    return (
+                                                        <div key={key} className="manual-row">
+                                                            <div className="manual-source">
+                                                                <span className="manual-source-value">{item.sourceValue}</span>
+                                                                <span className="manual-source-count">({item.cnt} registros)</span>
+                                                            </div>
+                                                            <div className="manual-target">
+                                                                <span className="manual-arrow">→</span>
+                                                                <div className="manual-search-wrap">
+                                                                    {assignment ? (
+                                                                        <div className="manual-assigned">
+                                                                            <span>✅ {assignment.label}</span>
+                                                                            <button className="btn-clear-assign" onClick={() => setManualAssignments(prev => { const n = { ...prev }; delete n[key]; return n; })}>×</button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <>
+                                                                            <input
+                                                                                className="manual-search-input"
+                                                                                placeholder="Buscar usuario..."
+                                                                                onChange={e => searchLookup(key, 'PERSONA', e.target.value)}
+                                                                            />
+                                                                            {(manualSearchResults[key]?.length > 0) && (
+                                                                                <div className="manual-dropdown">
+                                                                                    {manualSearchResults[key].map((p: any) => (
+                                                                                        <div key={p.ID} className="manual-dropdown-item" onClick={() => selectManualMapping(key, String(p.ID), p.NOMBRE)}>
+                                                                                            <strong>{p.NOMBRE}</strong>
+                                                                                            <small>{p.CORREO || ''}</small>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    className="btn-save-manual"
+                                                                    disabled={!assignment || savingManual === key}
+                                                                    onClick={() => saveValueMapping(item.sourceValue, 'PERSONA', key)}
+                                                                >
+                                                                    {savingManual === key ? '⏳' : '💾'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Almacen unmapped */}
+                                        {distinctUnmapped.almacen.length > 0 && (
+                                            <div className="manual-type-section">
+                                                <h5>🏪 Locales sin mapear ({distinctUnmapped.almacen.length})</h5>
+                                                {distinctUnmapped.almacen.map((item: any) => {
+                                                    const key = `almacen_${item.sourceValue}`;
+                                                    const assignment = manualAssignments[key];
+                                                    return (
+                                                        <div key={key} className="manual-row">
+                                                            <div className="manual-source">
+                                                                <span className="manual-source-value">{item.sourceValue}</span>
+                                                                <span className="manual-source-count">({item.cnt} registros)</span>
+                                                            </div>
+                                                            <div className="manual-target">
+                                                                <span className="manual-arrow">→</span>
+                                                                <div className="manual-search-wrap">
+                                                                    {assignment ? (
+                                                                        <div className="manual-assigned">
+                                                                            <span>✅ {assignment.label}</span>
+                                                                            <button className="btn-clear-assign" onClick={() => setManualAssignments(prev => { const n = { ...prev }; delete n[key]; return n; })}>×</button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <select
+                                                                            className="manual-select-input"
+                                                                            value=""
+                                                                            onChange={e => {
+                                                                                if (!e.target.value) return;
+                                                                                const store = allStores.find((s: any) => s.CODALMACEN === e.target.value);
+                                                                                if (store) selectManualMapping(key, store.CODALMACEN, `${store.CODALMACEN} — ${store.NOMBRE}`);
+                                                                            }}
+                                                                        >
+                                                                            <option value="">— Seleccione local —</option>
+                                                                            {allStores.map((s: any) => (
+                                                                                <option key={s.CODALMACEN} value={s.CODALMACEN}>
+                                                                                    {s.CODALMACEN} — {s.NOMBRE}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    className="btn-save-manual"
+                                                                    disabled={!assignment || savingManual === key}
+                                                                    onClick={() => saveValueMapping(item.sourceValue, 'CODALMACEN', key)}
+                                                                >
+                                                                    {savingManual === key ? '⏳' : '💾'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {distinctUnmapped.persona.length === 0 && distinctUnmapped.almacen.length === 0 && (
+                                            <p style={{ color: '#059669', fontSize: 13, textAlign: 'center', padding: 12 }}>✅ Todos los valores están mapeados</p>
+                                        )}
+
+                                        <div className="manual-footer">
+                                            <button className="btn-resolve-mapping" onClick={async () => { await resolveMappings(); await reloadMappingStats(); await loadDistinctUnmapped(); }} disabled={mappingResolving}>
+                                                {mappingResolving ? '⏳ Resolviendo...' : '🔄 Re-resolver Todo'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 </div>
             )}

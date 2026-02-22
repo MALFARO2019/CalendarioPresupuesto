@@ -79,6 +79,7 @@ class InvGateService {
                 'api.v1.incidents.by.helpdesk:get',
                 'api.v1.incidents.by.status:get',
                 'api.v1.incidents.by.view:get',
+                'api.v1.incidents.details.by.view:get',
                 'api.v1.categories:get',
                 'api.v1.incident.attributes.status:get',
                 'api.v1.incident.attributes.priority:get',

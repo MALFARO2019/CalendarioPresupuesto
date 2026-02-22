@@ -31,9 +31,18 @@ interface ViewPreview {
 }
 interface ViewData {
     viewId: number; tableName: string; columns: string[]; totalRows: number;
-    displayNames?: Record<string, string>;
-    page?: number; pageSize?: number; totalPages?: number;
     data: Record<string, string>[];
+}
+
+interface MappingConfig {
+    FieldType: string;
+    ColumnName: string;
+}
+interface MappingStats {
+    exists: boolean;
+    hasMappingColumns?: boolean;
+    stats?: { total: number; withCodAlmacen: number; withPersonalId: number; withoutCodAlmacen: number; withoutPersonalId: number };
+    mappings?: { fieldType: string; columnName: string }[];
 }
 
 // ─── Tab enum ─────────────────────────────────────────────────────
@@ -70,7 +79,15 @@ export const InvgateAdmin: React.FC = () => {
     const [viewError, setViewError] = useState<string | null>(null);
     const [viewData, setViewData] = useState<ViewData | null>(null);
     const [loadingViewData, setLoadingViewData] = useState(false);
+
+    // Per-view sync & mapping state
     const [syncingViewId, setSyncingViewId] = useState<number | null>(null);
+    const [expandedViewId, setExpandedViewId] = useState<number | null>(null);
+    const [viewMappings, setViewMappings] = useState<MappingConfig[]>([]);
+    const [viewMappingStats, setViewMappingStats] = useState<MappingStats | null>(null);
+    const [resolvingMappings, setResolvingMappings] = useState(false);
+    const [mappingPersonaCol, setMappingPersonaCol] = useState('');
+    const [mappingAlmacenCol, setMappingAlmacenCol] = useState('');
 
     const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` });
 
@@ -164,6 +181,42 @@ export const InvgateAdmin: React.FC = () => {
         }
     };
 
+    // ─── Sync a single view (async — polls for status) ────────────
+    const syncView = async (viewId: number) => {
+        setSyncingViewId(viewId);
+        setViewError(null);
+        try {
+            const r = await axios.post(`${API_BASE}/invgate/views/${viewId}/sync`, {}, { headers: authHeaders() });
+            if (r.data.status === 'already_running') {
+                setViewError('⏳ Sync ya en progreso para esta vista...');
+            } else {
+                setViewError('⏳ Sincronización iniciada en segundo plano...');
+            }
+            // Poll for status
+            const pollInterval = setInterval(async () => {
+                try {
+                    const sr = await axios.get(`${API_BASE}/invgate/views/${viewId}/sync-status`, { headers: authHeaders() });
+                    const st = sr.data;
+                    if (st.status === 'done') {
+                        clearInterval(pollInterval);
+                        setViewError(st.message || '✅ Sincronización completada');
+                        setSyncingViewId(null);
+                        await loadViews();
+                    } else if (st.status === 'error') {
+                        clearInterval(pollInterval);
+                        setViewError(st.message || '❌ Error en sincronización');
+                        setSyncingViewId(null);
+                    } else {
+                        setViewError(`⏳ Sincronizando vista #${viewId}... (${st.message || 'procesando'})`);
+                    }
+                } catch { /* polling error, keep trying */ }
+            }, 5000);
+        } catch (e: any) {
+            setViewError('Error sincronizando: ' + (e.response?.data?.error || e.message));
+            setSyncingViewId(null);
+        }
+    };
+
     // ─── Load synced data for a view ─────────────────────────────
     const loadViewData = async (viewId: number) => {
         if (viewData?.viewId === viewId) { setViewData(null); return; } // toggle off
@@ -177,31 +230,51 @@ export const InvgateAdmin: React.FC = () => {
         } finally { setLoadingViewData(false); }
     };
 
-    const loadViewDataPage = async (viewId: number, page: number) => {
-        setLoadingViewData(true);
-        setViewError(null);
+    // ─── Mapping functions ───────────────────────────────────────
+    const loadMappings = async (viewId: number) => {
         try {
-            const r = await axios.get(`${API_BASE}/invgate/views/${viewId}/data?page=${page}&pageSize=100`, { headers: authHeaders() });
-            setViewData(r.data);
-        } catch (e: any) {
-            setViewError('Error cargando datos: ' + (e.response?.data?.error || e.message));
-        } finally { setLoadingViewData(false); }
+            const [mRes, sRes] = await Promise.all([
+                axios.get(`${API_BASE}/invgate/views/${viewId}/mappings`, { headers: authHeaders() }),
+                axios.get(`${API_BASE}/invgate/views/${viewId}/mapping-stats`, { headers: authHeaders() })
+            ]);
+            setViewMappings(mRes.data || []);
+            setViewMappingStats(sRes.data);
+            const persona = (mRes.data || []).find((m: MappingConfig) => m.FieldType === 'PERSONA');
+            const almacen = (mRes.data || []).find((m: MappingConfig) => m.FieldType === 'CODALMACEN');
+            setMappingPersonaCol(persona?.ColumnName || '');
+            setMappingAlmacenCol(almacen?.ColumnName || '');
+        } catch (e) { console.error('Error loading mappings:', e); }
     };
 
-    // ─── Sync a single view ──────────────────────────────────────
-    const syncView = async (viewId: number, syncType: 'incremental' | 'full') => {
-        if (!confirm(`¿Sincronizar vista #${viewId} (${syncType === 'full' ? 'COMPLETA' : 'INCREMENTAL'})?`)) return;
-        setSyncingViewId(viewId);
-        setViewError(null);
+    const toggleExpandView = async (viewId: number) => {
+        if (expandedViewId === viewId) { setExpandedViewId(null); return; }
+        setExpandedViewId(viewId);
+        await loadMappings(viewId);
+    };
+
+    const saveMapping = async (viewId: number, fieldType: string, columnName: string) => {
         try {
-            const r = await axios.post(`${API_BASE}/invgate/views/${viewId}/sync`,
-                { syncType }, { headers: authHeaders() });
-            const msg = `✅ Vista #${viewId}: ${r.data.totalProcessed} registros sincronizados en ${r.data.duration}ms`;
-            alert(msg);
-            await loadViews();
+            if (columnName) {
+                await axios.post(`${API_BASE}/invgate/views/${viewId}/mappings`,
+                    { fieldType, columnName }, { headers: authHeaders() });
+            } else {
+                await axios.delete(`${API_BASE}/invgate/views/${viewId}/mappings/${fieldType}`, { headers: authHeaders() });
+            }
+            await loadMappings(viewId);
         } catch (e: any) {
-            setViewError('Error sincronizando vista: ' + (e.response?.data?.error || e.message));
-        } finally { setSyncingViewId(null); }
+            setViewError('Error guardando mapeo: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
+    const resolveMappings = async (viewId: number) => {
+        setResolvingMappings(true);
+        try {
+            const r = await axios.post(`${API_BASE}/invgate/views/${viewId}/resolve-mappings`, {}, { headers: authHeaders() });
+            setViewError(`📎 ${r.data.message}`);
+            await loadMappings(viewId);
+        } catch (e: any) {
+            setViewError('Error resolviendo mapeos: ' + (e.response?.data?.error || e.message));
+        } finally { setResolvingMappings(false); }
     };
 
     // ─── Save OAuth config ────────────────────────────────────────
@@ -434,60 +507,112 @@ export const InvgateAdmin: React.FC = () => {
                                 <tr>
                                     <th style={{ width: '60px' }}>ID</th>
                                     <th>Nombre</th>
-                                    <th style={{ width: '80px' }}>Tickets</th>
-                                    <th style={{ width: '140px' }}>Última Sync</th>
-                                    <th style={{ width: '70px', textAlign: 'center' }}>Sync</th>
-                                    <th style={{ width: '200px', textAlign: 'center' }}>Acciones</th>
+                                    <th style={{ width: '100px' }}>Tickets</th>
+                                    <th style={{ width: '160px' }}>Última Sync</th>
+                                    <th style={{ width: '80px', textAlign: 'center' }}>Auto</th>
+                                    <th style={{ width: '130px' }}></th>
+                                    <th style={{ width: '50px' }}></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {views.map(v => (
-                                    <tr key={v.viewId}>
-                                        <td><span className="field-id">#{v.viewId}</span></td>
-                                        <td><strong>{v.nombre}</strong>
-                                            {v.columns.length > 0 && (
-                                                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                                                    {v.columns.slice(0, 5).join(', ')}{v.columns.length > 5 ? ` +${v.columns.length - 5}` : ''}
+                                    <React.Fragment key={v.viewId}>
+                                        <tr style={{ cursor: 'pointer' }} onClick={() => toggleExpandView(v.viewId)}>
+                                            <td><span className="field-id">#{v.viewId}</span></td>
+                                            <td><strong>{v.nombre}</strong>
+                                                {v.columns.length > 0 && (
+                                                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                                                        {v.columns.slice(0, 5).join(', ')}{v.columns.length > 5 ? ` +${v.columns.length - 5}` : ''}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td>{v.totalTickets}</td>
+                                            <td style={{ fontSize: '12px' }}>
+                                                {v.ultimaSync ? new Date(v.ultimaSync).toLocaleString('es-CR') : '—'}
+                                            </td>
+                                            <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                                <label className="toggle-switch">
+                                                    <input type="checkbox" checked={v.syncEnabled}
+                                                        onChange={() => toggleViewSync(v)} />
+                                                    <span className="toggle-slider"></span>
+                                                </label>
+                                            </td>
+                                            <td onClick={e => e.stopPropagation()}>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button onClick={() => syncView(v.viewId)}
+                                                        disabled={syncingViewId === v.viewId}
+                                                        style={{ background: '#3b82f6', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 8px' }}
+                                                        title="Sincronizar esta vista">
+                                                        {syncingViewId === v.viewId ? '⏳' : '🔄 Sync'}
+                                                    </button>
+                                                    <button onClick={() => loadViewData(v.viewId)}
+                                                        disabled={loadingViewData}
+                                                        style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 8px' }}
+                                                        title="Ver datos sincronizados">
+                                                        {viewData?.viewId === v.viewId ? '🔼' : '📊'}
+                                                    </button>
                                                 </div>
-                                            )}
-                                        </td>
-                                        <td>{v.totalTickets}</td>
-                                        <td style={{ fontSize: '12px' }}>
-                                            {v.ultimaSync ? new Date(v.ultimaSync).toLocaleString('es-CR') : '—'}
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <label className="toggle-switch">
-                                                <input type="checkbox" checked={v.syncEnabled}
-                                                    onChange={() => toggleViewSync(v)} />
-                                                <span className="toggle-slider"></span>
-                                            </label>
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                                                <button onClick={() => syncView(v.viewId, 'incremental')}
-                                                    disabled={syncingViewId === v.viewId}
-                                                    style={{ background: '#eff6ff', border: '1px solid #93c5fd', color: '#2563eb', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 6px', whiteSpace: 'nowrap' }}
-                                                    title="Sincronización incremental">
-                                                    {syncingViewId === v.viewId ? '⏳...' : '🔄 Sync'}
-                                                </button>
-                                                <button onClick={() => syncView(v.viewId, 'full')}
-                                                    disabled={syncingViewId === v.viewId}
-                                                    style={{ background: '#fef3c7', border: '1px solid #fcd34d', color: '#b45309', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 6px', whiteSpace: 'nowrap' }}
-                                                    title="Sincronización completa (recrea tabla)">
-                                                    {syncingViewId === v.viewId ? '⏳...' : '⚡ Full'}
-                                                </button>
-                                                <button onClick={() => loadViewData(v.viewId)}
-                                                    disabled={loadingViewData}
-                                                    style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', borderRadius: '4px', padding: '3px 6px', whiteSpace: 'nowrap' }}
-                                                    title="Ver datos sincronizados">
-                                                    {loadingViewData && viewData?.viewId !== v.viewId ? '⏳' : viewData?.viewId === v.viewId ? '🔼 Ocultar' : '📊 Datos'}
-                                                </button>
+                                            </td>
+                                            <td onClick={e => e.stopPropagation()}>
                                                 <button onClick={() => deleteView(v.viewId)}
-                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '2px 4px' }}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}
                                                     title="Eliminar vista">🗑️</button>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                            </td>
+                                        </tr>
+                                        {/* ── Expanded mapping config ── */}
+                                        {expandedViewId === v.viewId && (
+                                            <tr>
+                                                <td colSpan={7} style={{ background: '#f8fafc', padding: '16px', borderTop: 'none' }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                        <h5 style={{ margin: 0, fontSize: '13px', color: '#334155' }}>📎 Mapeo de Campos</h5>
+
+                                                        {v.columns.length === 0 ? (
+                                                            <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Sincronice la vista primero para ver las columnas disponibles.</p>
+                                                        ) : (
+                                                            <>
+                                                                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                                                    <div style={{ minWidth: '200px' }}>
+                                                                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Columna Persona:</label>
+                                                                        <select value={mappingPersonaCol}
+                                                                            onChange={e => { setMappingPersonaCol(e.target.value); saveMapping(v.viewId, 'PERSONA', e.target.value); }}
+                                                                            style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }}>
+                                                                            <option value="">— No mapear —</option>
+                                                                            {v.columns.filter(c => !c.startsWith('_')).map(c => <option key={c} value={c}>{c}</option>)}
+                                                                        </select>
+                                                                    </div>
+                                                                    <div style={{ minWidth: '200px' }}>
+                                                                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Columna CodAlmacen:</label>
+                                                                        <select value={mappingAlmacenCol}
+                                                                            onChange={e => { setMappingAlmacenCol(e.target.value); saveMapping(v.viewId, 'CODALMACEN', e.target.value); }}
+                                                                            style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }}>
+                                                                            <option value="">— No mapear —</option>
+                                                                            {v.columns.filter(c => !c.startsWith('_')).map(c => <option key={c} value={c}>{c}</option>)}
+                                                                        </select>
+                                                                    </div>
+                                                                    <button onClick={() => resolveMappings(v.viewId)}
+                                                                        disabled={resolvingMappings || (!mappingPersonaCol && !mappingAlmacenCol)}
+                                                                        style={{ background: '#10b981', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '6px 14px', height: '34px' }}>
+                                                                        {resolvingMappings ? '⏳ Resolviendo...' : '🔗 Resolver Mapeos'}
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* Mapping stats */}
+                                                                {viewMappingStats?.exists && viewMappingStats.hasMappingColumns && viewMappingStats.stats && (
+                                                                    <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#64748b', background: '#f0fdf4', borderRadius: '6px', padding: '8px 12px' }}>
+                                                                        <span>📊 Total: <strong>{viewMappingStats.stats.total}</strong></span>
+                                                                        <span>✅ CodAlmacen: <strong>{viewMappingStats.stats.withCodAlmacen}</strong></span>
+                                                                        <span>❌ Sin CodAlmacen: <strong style={{ color: viewMappingStats.stats.withoutCodAlmacen > 0 ? '#ef4444' : '#10b981' }}>{viewMappingStats.stats.withoutCodAlmacen}</strong></span>
+                                                                        <span>✅ Personal: <strong>{viewMappingStats.stats.withPersonalId}</strong></span>
+                                                                        <span>❌ Sin Personal: <strong style={{ color: viewMappingStats.stats.withoutPersonalId > 0 ? '#ef4444' : '#10b981' }}>{viewMappingStats.stats.withoutPersonalId}</strong></span>
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 ))}
                             </tbody>
                         </table>
@@ -510,55 +635,34 @@ export const InvgateAdmin: React.FC = () => {
                             </div>
                             {viewData.totalRows === 0 ? (
                                 <div className="empty-state">
-                                    <p>No hay datos sincronizados. Ejecutá una sincronización primero.</p>
+                                    <p>No hay datos sincronizados. Ejecutá una sincronización primero desde la pestaña "Sincronización".</p>
                                 </div>
                             ) : (
-                                <>
-                                    <div style={{ overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
-                                        <table className="custom-fields-table" style={{ fontSize: '12px' }}>
-                                            <thead>
-                                                <tr>
+                                <div style={{ overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
+                                    <table className="custom-fields-table" style={{ fontSize: '12px' }}>
+                                        <thead>
+                                            <tr>
+                                                {viewData.columns.map(col => (
+                                                    <th key={col} style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#e0f2fe' }}>
+                                                        {col}
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {viewData.data.map((row, i) => (
+                                                <tr key={i}>
                                                     {viewData.columns.map(col => (
-                                                        <th key={col} style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#e0f2fe' }}
-                                                            title={col}>
-                                                            {viewData.displayNames?.[col] || col}
-                                                        </th>
+                                                        <td key={col} style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '4px 10px' }}
+                                                            title={row[col] || ''}>
+                                                            {row[col] || ''}
+                                                        </td>
                                                     ))}
                                                 </tr>
-                                            </thead>
-                                            <tbody>
-                                                {viewData.data.map((row, i) => (
-                                                    <tr key={i}>
-                                                        {viewData.columns.map(col => (
-                                                            <td key={col} style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '4px 10px' }}
-                                                                title={row[col] || ''}>
-                                                                {row[col] || ''}
-                                                            </td>
-                                                        ))}
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    {(viewData.totalPages || 1) > 1 && (
-                                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '12px', fontSize: '13px' }}>
-                                            <button onClick={() => loadViewDataPage(viewData.viewId, (viewData.page || 1) - 1)}
-                                                disabled={loadingViewData || (viewData.page || 1) <= 1}
-                                                style={{ padding: '4px 12px', borderRadius: '4px', border: '1px solid #93c5fd', background: '#eff6ff', color: '#2563eb', cursor: 'pointer' }}>
-                                                ← Anterior
-                                            </button>
-                                            <span style={{ color: '#64748b' }}>
-                                                Página {viewData.page || 1} de {viewData.totalPages || 1}
-                                                &nbsp;({viewData.totalRows} registros)
-                                            </span>
-                                            <button onClick={() => loadViewDataPage(viewData.viewId, (viewData.page || 1) + 1)}
-                                                disabled={loadingViewData || (viewData.page || 1) >= (viewData.totalPages || 1)}
-                                                style={{ padding: '4px 12px', borderRadius: '4px', border: '1px solid #93c5fd', background: '#eff6ff', color: '#2563eb', cursor: 'pointer' }}>
-                                                Siguiente →
-                                            </button>
-                                        </div>
-                                    )}
-                                </>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             )}
                         </div>
                     )}

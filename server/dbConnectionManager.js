@@ -19,7 +19,7 @@ class DatabaseConnectionManager {
                 enableArithAbort: true
             },
             connectionTimeout: 15000,
-            requestTimeout: 30000,
+            requestTimeout: 300000,
             pool: {
                 max: 10,
                 min: 0,

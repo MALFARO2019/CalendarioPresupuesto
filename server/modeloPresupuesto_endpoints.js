@@ -89,37 +89,6 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     });
 
 
-    // POST /api/modelo-presupuesto/calcular
-    app.post('/api/modelo-presupuesto/calcular', authMiddleware, async (req, res) => {
-        try {
-            if (!requireModuleAccess(req, res)) return;
-            if (!req.user.ejecutarRecalculo) {
-                return res.status(403).json({ error: 'No tiene permiso para ejecutar recálculos' });
-            }
-            const { codAlmacen, mes } = req.body;
-            const result = await modeloPresupuesto.ejecutarCalculo(
-                req.user.email || req.user.nombre, codAlmacen, mes
-            );
-            res.json({ success: true, result });
-        } catch (err) {
-            console.error('Error POST /api/modelo-presupuesto/calcular:', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    // GET /api/modelo-presupuesto/validacion
-    app.get('/api/modelo-presupuesto/validacion', authMiddleware, async (req, res) => {
-        try {
-            if (!requireModuleAccess(req, res)) return;
-            const { nombrePresupuesto } = req.query;
-            const result = await modeloPresupuesto.getValidacion(nombrePresupuesto);
-            res.json(result);
-        } catch (err) {
-            console.error('Error GET /api/modelo-presupuesto/validacion:', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
-
     // ------------------------------------------
     // CONSOLIDADO MENSUAL
     // ------------------------------------------
@@ -181,6 +150,9 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     // POST /api/modelo-presupuesto/calcular
     app.post('/api/modelo-presupuesto/calcular', authMiddleware, async (req, res) => {
         try {
+            // Extend socket timeout for long-running SP (takes ~4 min)
+            req.setTimeout(600000);
+            res.setTimeout(600000);
             if (!requireModuleAccess(req, res)) return;
             if (!req.user.ejecutarRecalculo && !req.user.esAdmin) {
                 return res.status(403).json({ error: 'No tiene permiso para ejecutar recálculo' });
