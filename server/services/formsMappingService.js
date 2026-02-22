@@ -274,36 +274,76 @@ async function getDistinctUnmapped(sourceId, tableName) {
     const personaMapping = mappings.find(m => m.FieldType === 'PERSONA');
     const almacenMapping = mappings.find(m => m.FieldType === 'CODALMACEN');
 
-    const result = { persona: [], almacen: [] };
+    const result = { persona: [], almacen: [], errors: [] };
+
+    if (!personaMapping && !almacenMapping) {
+        result.errors.push('No hay mapeos configurados');
+        return result;
+    }
+
+    // Ensure _CODALMACEN / _PERSONAL_ID columns exist
+    try {
+        await ensureMappingColumns(tableName);
+    } catch (e) {
+        console.error(`  ❌ getDistinctUnmapped: ensureMappingColumns failed: ${e.message}`);
+        result.errors.push(`Error creando columnas: ${e.message.substring(0, 100)}`);
+    }
+
+    // Check which columns exist in the table
+    const colCheck = await pool.request()
+        .input('tbl', sql.NVarChar, tableName)
+        .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl`);
+    const existingCols = new Set(colCheck.recordset.map(r => r.COLUMN_NAME));
 
     if (almacenMapping) {
         const col = almacenMapping.ColumnName;
-        try {
-            const r = await pool.request().query(`
-                SELECT [${col}] AS sourceValue, COUNT(*) AS cnt
-                FROM [${tableName}]
-                WHERE _CODALMACEN IS NULL AND [${col}] IS NOT NULL AND RTRIM(LTRIM([${col}])) != ''
-                GROUP BY [${col}]
-                ORDER BY COUNT(*) DESC
-            `);
-            result.almacen = r.recordset;
-        } catch (e) { /* column might not exist */ }
+        if (!existingCols.has(col)) {
+            result.errors.push(`Columna almacen "${col}" no existe en tabla`);
+            console.warn(`  ⚠️ getDistinctUnmapped: Column "${col}" not found in ${tableName}`);
+        } else if (!existingCols.has('_CODALMACEN')) {
+            result.errors.push('Columna _CODALMACEN no existe en tabla');
+        } else {
+            try {
+                const r = await pool.request().query(`
+                    SELECT [${col}] AS sourceValue, COUNT(*) AS cnt
+                    FROM [${tableName}]
+                    WHERE _CODALMACEN IS NULL AND [${col}] IS NOT NULL AND RTRIM(LTRIM([${col}])) != ''
+                    GROUP BY [${col}]
+                    ORDER BY COUNT(*) DESC
+                `);
+                result.almacen = r.recordset;
+            } catch (e) {
+                console.error(`  ❌ getDistinctUnmapped almacen query error: ${e.message}`);
+                result.errors.push(`Error query almacen: ${e.message.substring(0, 100)}`);
+            }
+        }
     }
 
     if (personaMapping) {
         const col = personaMapping.ColumnName;
-        try {
-            const r = await pool.request().query(`
-                SELECT [${col}] AS sourceValue, COUNT(*) AS cnt
-                FROM [${tableName}]
-                WHERE _PERSONAL_ID IS NULL AND [${col}] IS NOT NULL AND RTRIM(LTRIM([${col}])) != ''
-                GROUP BY [${col}]
-                ORDER BY COUNT(*) DESC
-            `);
-            result.persona = r.recordset;
-        } catch (e) { /* column might not exist */ }
+        if (!existingCols.has(col)) {
+            result.errors.push(`Columna persona "${col}" no existe en tabla`);
+            console.warn(`  ⚠️ getDistinctUnmapped: Column "${col}" not found in ${tableName}`);
+        } else if (!existingCols.has('_PERSONAL_ID')) {
+            result.errors.push('Columna _PERSONAL_ID no existe en tabla');
+        } else {
+            try {
+                const r = await pool.request().query(`
+                    SELECT [${col}] AS sourceValue, COUNT(*) AS cnt
+                    FROM [${tableName}]
+                    WHERE _PERSONAL_ID IS NULL AND [${col}] IS NOT NULL AND RTRIM(LTRIM([${col}])) != ''
+                    GROUP BY [${col}]
+                    ORDER BY COUNT(*) DESC
+                `);
+                result.persona = r.recordset;
+            } catch (e) {
+                console.error(`  ❌ getDistinctUnmapped persona query error: ${e.message}`);
+                result.errors.push(`Error query persona: ${e.message.substring(0, 100)}`);
+            }
+        }
     }
 
+    console.log(`  📊 getDistinctUnmapped: almacen=${result.almacen.length}, persona=${result.persona.length}, errors=${result.errors.length}`);
     return result;
 }
 

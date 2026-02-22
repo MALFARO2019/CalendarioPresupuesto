@@ -477,10 +477,15 @@ export const FormsAdmin: React.FC = () => {
         if (!mappingSource) return;
         try {
             const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/distinct-unmapped`, { headers: headers() });
-            setDistinctUnmapped({ persona: r.data.persona || [], almacen: r.data.almacen || [] });
+            const data = r.data;
+            setDistinctUnmapped({ persona: data.persona || [], almacen: data.almacen || [] });
             setShowManualMapping(true);
             setManualAssignments({});
             setManualSearchResults({});
+            if (data.errors && data.errors.length > 0) {
+                console.warn('Mapping errors:', data.errors);
+                alert('⚠️ Advertencia:\n' + data.errors.join('\n'));
+            }
         } catch (e: any) {
             alert('Error: ' + (e.response?.data?.error || e.message));
         }
