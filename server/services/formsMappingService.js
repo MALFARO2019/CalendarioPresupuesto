@@ -1,7 +1,7 @@
 /**
  * formsMappingService.js
  * Manages field mappings for Forms tables:
- *   - Which column maps to "Persona" (resolved via DIM_PERSONAL)
+ *   - Which column maps to "Persona/Usuario" (resolved via APP_USUARIOS)
  *   - Which column maps to "CodAlmacen" (resolved via APP_STORE_ALIAS)
  * 
  * Every Frm_* table gets two extra columns: _CODALMACEN and _PERSONAL_ID
@@ -221,42 +221,42 @@ async function resolvePersonalId(personaValue) {
         const dict = await checkDictionary(personaValue, 'PERSONA');
         if (dict) return { id: parseInt(dict.ResolvedValue), nombre: dict.ResolvedLabel || dict.ResolvedValue };
 
-        // 2. Try DIM_PERSONAL
+        // 2. Try APP_USUARIOS (replaces DIM_PERSONAL)
         const mainPool = await poolPromise;
         const val = String(personaValue).trim();
 
-        // Try exact match on NOMBRE
+        // Try exact match on Nombre
         let result = await mainPool.request()
             .input('nombre', mainSql.NVarChar, val)
             .query(`
-                SELECT TOP 1 ID, NOMBRE FROM DIM_PERSONAL
-                WHERE NOMBRE = @nombre AND ACTIVO = 1
+                SELECT TOP 1 Id, Nombre FROM APP_USUARIOS
+                WHERE Nombre = @nombre AND Activo = 1
             `);
         if (result.recordset.length > 0) {
-            return { id: result.recordset[0].ID, nombre: result.recordset[0].NOMBRE };
+            return { id: result.recordset[0].Id, nombre: result.recordset[0].Nombre };
         }
 
         // Try LIKE match
         result = await mainPool.request()
             .input('nombre', mainSql.NVarChar, `%${val}%`)
             .query(`
-                SELECT TOP 1 ID, NOMBRE FROM DIM_PERSONAL
-                WHERE NOMBRE LIKE @nombre AND ACTIVO = 1
-                ORDER BY LEN(NOMBRE)
+                SELECT TOP 1 Id, Nombre FROM APP_USUARIOS
+                WHERE Nombre LIKE @nombre AND Activo = 1
+                ORDER BY LEN(Nombre)
             `);
         if (result.recordset.length > 0) {
-            return { id: result.recordset[0].ID, nombre: result.recordset[0].NOMBRE };
+            return { id: result.recordset[0].Id, nombre: result.recordset[0].Nombre };
         }
 
-        // Try by CORREO (email)
+        // Try by Email
         result = await mainPool.request()
             .input('correo', mainSql.NVarChar, val)
             .query(`
-                SELECT TOP 1 ID, NOMBRE FROM DIM_PERSONAL
-                WHERE CORREO = @correo AND ACTIVO = 1
+                SELECT TOP 1 Id, Nombre FROM APP_USUARIOS
+                WHERE Email = @correo AND Activo = 1
             `);
         if (result.recordset.length > 0) {
-            return { id: result.recordset[0].ID, nombre: result.recordset[0].NOMBRE };
+            return { id: result.recordset[0].Id, nombre: result.recordset[0].Nombre };
         }
 
         return null;
@@ -354,9 +354,9 @@ async function lookupPersonal(search) {
     const r = await mainPool.request()
         .input('search', mainSql.NVarChar, `%${search}%`)
         .query(`
-            SELECT TOP 20 ID, NOMBRE, CORREO FROM DIM_PERSONAL
-            WHERE ACTIVO = 1 AND (NOMBRE LIKE @search OR CORREO LIKE @search)
-            ORDER BY NOMBRE
+            SELECT TOP 20 Id AS ID, Nombre AS NOMBRE, Email AS CORREO FROM APP_USUARIOS
+            WHERE Activo = 1 AND (Nombre LIKE @search OR Email LIKE @search)
+            ORDER BY Nombre
         `);
     return r.recordset;
 }

@@ -171,6 +171,14 @@ async function ensureSecurityTables() {
             END
         `);
 
+        // Add Telefono column to APP_USUARIOS
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'Telefono')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD Telefono NVARCHAR(30) NULL;
+            END
+        `);
+
         // TODO:  Create performance indexes on RSM_ALCANCE_DIARIO if they don't exist
         // Temporarily commented out - KPI column doesn't exist in RSM_ALCANCE_DIARIO
         /*

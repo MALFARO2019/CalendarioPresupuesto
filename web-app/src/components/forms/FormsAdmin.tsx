@@ -776,7 +776,7 @@ export const FormsAdmin: React.FC = () => {
                                                             {syncingId === src.SourceID ? '⏳' : '🔄'}
                                                         </button>
                                                     )}
-                                                    <button className="btn-mapping btn-icon" onClick={() => openMappingModal(src)} title="Mapeos (Local/Persona)">🔗</button>
+                                                    <button className="btn-mapping btn-icon" onClick={() => openMappingModal(src)} title="Mapeos (Local/Usuario)">🔗</button>
                                                     <button className="btn-edit btn-icon" onClick={() => openEdit(src)} title="Editar">✏️</button>
                                                     <button className={`btn-toggle btn-icon ${src.Activo ? 'deactivate' : 'activate'}`} onClick={() => toggleActive(src)} title={src.Activo ? 'Desactivar' : 'Activar'}>
                                                         {src.Activo ? '⏸' : '▶️'}
@@ -1059,7 +1059,7 @@ export const FormsAdmin: React.FC = () => {
                         ) : (
                             <>
                                 <p style={{ color: '#6b7280', fontSize: 13, margin: '0 0 16px' }}>
-                                    Configure qué campo del formulario corresponde a un <strong>Local (CodAlmacen)</strong> y cuál a una <strong>Persona del Personal</strong>.
+                                    Configure qué campo del formulario corresponde a un <strong>Local (CodAlmacen)</strong> y cuál a un <strong>Usuario del sistema</strong>.
                                     Al sincronizar, el sistema intentará resolver estos campos automáticamente.
                                 </p>
 
@@ -1081,14 +1081,14 @@ export const FormsAdmin: React.FC = () => {
                                                 <small>Se buscará en APP_STORE_ALIAS para encontrar el código del local</small>
                                             </div>
                                             <div className="form-group">
-                                                <label>👤 Campo de Persona</label>
+                                                <label>👤 Campo de Usuario</label>
                                                 <select value={mappingPersona} onChange={e => setMappingPersona(e.target.value)} className="config-select">
                                                     <option value="">— Sin mapear —</option>
                                                     {mappingColumns.map(col => (
                                                         <option key={col} value={col}>{col}</option>
                                                     ))}
                                                 </select>
-                                                <small>Se buscará en DIM_PERSONAL para encontrar el ID de la persona</small>
+                                                <small>Se buscará en APP_USUARIOS para encontrar el ID del usuario</small>
                                             </div>
                                         </div>
 
@@ -1127,11 +1127,11 @@ export const FormsAdmin: React.FC = () => {
                                                 <span className="stat-value">{mappingStats.stats.withoutCodAlmacen}</span>
                                             </div>
                                             <div className="stat-item success">
-                                                <span className="stat-label">Con Persona</span>
+                                                <span className="stat-label">Con Usuario</span>
                                                 <span className="stat-value">{mappingStats.stats.withPersonalId}</span>
                                             </div>
                                             <div className="stat-item warning">
-                                                <span className="stat-label">Sin Persona</span>
+                                                <span className="stat-label">Sin Usuario</span>
                                                 <span className="stat-value">{mappingStats.stats.withoutPersonalId}</span>
                                             </div>
                                         </div>
@@ -1153,9 +1153,9 @@ export const FormsAdmin: React.FC = () => {
                                                             <th>Correo</th>
                                                             <th>Fecha</th>
                                                             {mappingAlmacen && <th>Valor Local</th>}
-                                                            {mappingPersona && <th>Valor Persona</th>}
+                                                            {mappingPersona && <th>Valor Usuario</th>}
                                                             <th>CodAlmacen</th>
-                                                            <th>PersonalID</th>
+                                                            <th>UsuarioID</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -1185,10 +1185,10 @@ export const FormsAdmin: React.FC = () => {
                                             <p style={{ color: '#6b7280', fontSize: 12, margin: '4px 0 0' }}>Busque el nombre y seleccione de la lista. Al guardar 💾, todos los registros con ese valor se resolverán automáticamente.</p>
                                         </div>
 
-                                        {/* Persona unmapped */}
+                                        {/* Usuario unmapped */}
                                         {distinctUnmapped.persona.length > 0 && (
                                             <div className="manual-type-section">
-                                                <h5>👤 Personas sin mapear ({distinctUnmapped.persona.length})</h5>
+                                                <h5>👤 Usuarios sin mapear ({distinctUnmapped.persona.length})</h5>
                                                 {distinctUnmapped.persona.map((item: any) => {
                                                     const key = `persona_${item.sourceValue}`;
                                                     const assignment = manualAssignments[key];
@@ -1210,7 +1210,7 @@ export const FormsAdmin: React.FC = () => {
                                                                         <>
                                                                             <input
                                                                                 className="manual-search-input"
-                                                                                placeholder="Buscar persona..."
+                                                                                placeholder="Buscar usuario..."
                                                                                 onChange={e => searchLookup(key, 'PERSONA', e.target.value)}
                                                                             />
                                                                             {(manualSearchResults[key]?.length > 0) && (
