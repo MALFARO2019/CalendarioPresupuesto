@@ -181,18 +181,40 @@ export const InvgateAdmin: React.FC = () => {
         }
     };
 
-    // ─── Sync a single view ──────────────────────────────────────
+    // ─── Sync a single view (async — polls for status) ────────────
     const syncView = async (viewId: number) => {
         setSyncingViewId(viewId);
         setViewError(null);
         try {
             const r = await axios.post(`${API_BASE}/invgate/views/${viewId}/sync`, {}, { headers: authHeaders() });
-            const result = r.data;
-            setViewError(`✅ Vista #${viewId}: ${result.totalNew || 0} nuevos, ${result.totalUpdated || 0} actualizados`);
-            await loadViews();
+            if (r.data.status === 'already_running') {
+                setViewError('⏳ Sync ya en progreso para esta vista...');
+            } else {
+                setViewError('⏳ Sincronización iniciada en segundo plano...');
+            }
+            // Poll for status
+            const pollInterval = setInterval(async () => {
+                try {
+                    const sr = await axios.get(`${API_BASE}/invgate/views/${viewId}/sync-status`, { headers: authHeaders() });
+                    const st = sr.data;
+                    if (st.status === 'done') {
+                        clearInterval(pollInterval);
+                        setViewError(st.message || '✅ Sincronización completada');
+                        setSyncingViewId(null);
+                        await loadViews();
+                    } else if (st.status === 'error') {
+                        clearInterval(pollInterval);
+                        setViewError(st.message || '❌ Error en sincronización');
+                        setSyncingViewId(null);
+                    } else {
+                        setViewError(`⏳ Sincronizando vista #${viewId}... (${st.message || 'procesando'})`);
+                    }
+                } catch { /* polling error, keep trying */ }
+            }, 5000);
         } catch (e: any) {
             setViewError('Error sincronizando: ' + (e.response?.data?.error || e.message));
-        } finally { setSyncingViewId(null); }
+            setSyncingViewId(null);
+        }
     };
 
     // ─── Load synced data for a view ─────────────────────────────

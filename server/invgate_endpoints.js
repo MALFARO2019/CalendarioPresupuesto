@@ -187,15 +187,51 @@ function registerInvgateEndpoints(app, authMiddleware) {
         }
     });
 
-    // Sync a single view
+    // ── In-memory tracking for background syncs ──
+    const viewSyncStatus = {}; // { viewId: { status: 'running'|'done'|'error', startedAt, message, result } }
+
+    // Sync a single view (fire-and-forget — runs in background)
     app.post('/api/invgate/views/:id/sync', authMiddleware, async (req, res) => {
         if (!requireAdmin(req, res)) return;
-        try {
-            const result = await invgateSyncService.syncSingleView(parseInt(req.params.id));
-            res.json(result);
-        } catch (err) {
-            res.status(500).json({ error: err.message });
+        const viewId = parseInt(req.params.id);
+
+        if (viewSyncStatus[viewId]?.status === 'running') {
+            return res.json({ status: 'already_running', message: 'Sync ya en progreso para esta vista' });
         }
+
+        // Start in background
+        viewSyncStatus[viewId] = { status: 'running', startedAt: new Date().toISOString(), message: 'Sincronización iniciada...' };
+        res.json({ status: 'started', message: 'Sincronización iniciada en segundo plano' });
+
+        // Run async — don't await
+        invgateSyncService.syncSingleView(viewId)
+            .then(result => {
+                viewSyncStatus[viewId] = {
+                    status: 'done',
+                    startedAt: viewSyncStatus[viewId]?.startedAt,
+                    finishedAt: new Date().toISOString(),
+                    message: `✅ ${result.totalNew || 0} nuevos, ${result.totalUpdated || 0} actualizados`,
+                    result
+                };
+                console.log(`✅ Background sync for view ${viewId} completed:`, result);
+            })
+            .catch(err => {
+                viewSyncStatus[viewId] = {
+                    status: 'error',
+                    startedAt: viewSyncStatus[viewId]?.startedAt,
+                    finishedAt: new Date().toISOString(),
+                    message: `❌ ${err.message}`
+                };
+                console.error(`❌ Background sync for view ${viewId} failed:`, err.message);
+            });
+    });
+
+    // Poll sync status for a view
+    app.get('/api/invgate/views/:id/sync-status', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        const viewId = parseInt(req.params.id);
+        const status = viewSyncStatus[viewId] || { status: 'idle' };
+        res.json(status);
     });
 
     // ──────────────────────────────────────────
