@@ -24,6 +24,8 @@ CREATE PROCEDURE [dbo].[SP_AJUSTAR_PRESUPUESTO]
     @ValorAjuste          DECIMAL(18,4),
     @MetodoDistribucion   NVARCHAR(50) = 'Mes',  -- 'Mes' / 'Semana' / 'TipoDia'
     @DiaSemana            INT = NULL,          -- For TipoDia distribution (1=Mon...7=Sun)
+    @FechaInicio          DATE = NULL,         -- For Semana distribution (week start)
+    @FechaFin             DATE = NULL,         -- For Semana distribution (week end)
     @Usuario              NVARCHAR(200),
     @Motivo               NVARCHAR(500),
     @TablaDestino         NVARCHAR(100) = NULL,
@@ -99,13 +101,13 @@ BEGIN
             Monto AS MontoActual,
             CASE
                 WHEN @distrib = ''Mes'' THEN Monto * @factor
-                WHEN @distrib = ''Semana'' AND idDia = @diaSem THEN Monto * @factor
+                WHEN @distrib = ''Semana'' AND Fecha BETWEEN @fInicio AND @fFin THEN Monto * @factor
                 WHEN @distrib = ''TipoDia'' AND idDia = @diaSem THEN Monto * @factor
                 ELSE Monto
             END AS MontoNuevo,
             CASE
                 WHEN @distrib = ''Mes'' THEN Monto * @factor - Monto
-                WHEN @distrib = ''Semana'' AND idDia = @diaSem THEN Monto * @factor - Monto
+                WHEN @distrib = ''Semana'' AND Fecha BETWEEN @fInicio AND @fFin THEN Monto * @factor - Monto
                 WHEN @distrib = ''TipoDia'' AND idDia = @diaSem THEN Monto * @factor - Monto
                 ELSE 0
             END AS Diferencia,
@@ -116,9 +118,9 @@ BEGIN
         ORDER BY Fecha';
 
         EXEC sp_executesql @SQL,
-            N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @factor FLOAT, @distrib NVARCHAR(50), @diaSem INT',
+            N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @factor FLOAT, @distrib NVARCHAR(50), @diaSem INT, @fInicio DATE, @fFin DATE',
             @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo,
-            @factor = @Factor, @distrib = @MetodoDistribucion, @diaSem = @DiaSemana;
+            @factor = @Factor, @distrib = @MetodoDistribucion, @diaSem = @DiaSemana, @fInicio = @FechaInicio, @fFin = @FechaFin;
 
         RETURN;
     END
@@ -134,9 +136,14 @@ BEGIN
 
     -- Determine which days to adjust based on distribution method
     DECLARE @WhereClause NVARCHAR(500) = N'';
+    DECLARE @ExtraParams NVARCHAR(500) = N'';
+    DECLARE @UseExtraParams BIT = 0;
 
-    IF @MetodoDistribucion = 'Semana' AND @DiaSemana IS NOT NULL
-        SET @WhereClause = N' AND idDia = ' + CAST(@DiaSemana AS NVARCHAR(5));
+    IF @MetodoDistribucion = 'Semana' AND @FechaInicio IS NOT NULL AND @FechaFin IS NOT NULL
+    BEGIN
+        SET @WhereClause = N' AND Fecha BETWEEN @fInicio AND @fFin';
+        SET @UseExtraParams = 1;
+    END
     ELSE IF @MetodoDistribucion = 'TipoDia' AND @DiaSemana IS NOT NULL
         SET @WhereClause = N' AND idDia = ' + CAST(@DiaSemana AS NVARCHAR(5));
 
@@ -147,9 +154,14 @@ BEGIN
     WHERE NombrePresupuesto = @nombre AND CodAlmacen = @cod AND Mes = @mes
       AND Canal = @canal AND Tipo = @tipo' + @WhereClause;
 
-    EXEC sp_executesql @SQL,
-        N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @factor FLOAT',
-        @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo, @factor = @Factor;
+    IF @UseExtraParams = 1
+        EXEC sp_executesql @SQL,
+            N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @factor FLOAT, @fInicio DATE, @fFin DATE',
+            @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo, @factor = @Factor, @fInicio = @FechaInicio, @fFin = @FechaFin;
+    ELSE
+        EXEC sp_executesql @SQL,
+            N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @factor FLOAT',
+            @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo, @factor = @Factor;
 
     -- ============================================
     -- 5. NORMALIZE: maintain sum-zero (monthly total unchanged)
@@ -169,14 +181,26 @@ BEGIN
         DECLARE @Diferencia FLOAT = @NuevoTotal - @TotalMensualActual;
         DECLARE @TotalNoAjustados FLOAT;
 
+        -- Build NOT clause for non-adjusted days
+        DECLARE @NotClause NVARCHAR(500) = N'1=0';
+        IF @MetodoDistribucion = 'Semana' AND @FechaInicio IS NOT NULL AND @FechaFin IS NOT NULL
+            SET @NotClause = N'Fecha BETWEEN @fInicio AND @fFin';
+        ELSE IF @MetodoDistribucion = 'TipoDia' AND @DiaSemana IS NOT NULL
+            SET @NotClause = N'idDia = ' + CAST(@DiaSemana AS NVARCHAR(5));
+
         -- Get total of non-adjusted days
         SET @SQL = N'SELECT @tot = SUM(Monto) FROM [' + @TablaDestino + '] 
                      WHERE NombrePresupuesto = @nombre AND CodAlmacen = @cod AND Mes = @mes 
-                     AND Canal = @canal AND Tipo = @tipo AND NOT (' +
-                     CASE WHEN @WhereClause != '' THEN 'idDia = ' + CAST(ISNULL(@DiaSemana, 0) AS NVARCHAR(5)) ELSE '1=0' END + ')';
-        EXEC sp_executesql @SQL,
-            N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @tot FLOAT OUTPUT',
-            @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo, @tot = @TotalNoAjustados OUTPUT;
+                     AND Canal = @canal AND Tipo = @tipo AND NOT (' + @NotClause + ')';
+
+        IF @MetodoDistribucion = 'Semana' AND @FechaInicio IS NOT NULL
+            EXEC sp_executesql @SQL,
+                N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @tot FLOAT OUTPUT, @fInicio DATE, @fFin DATE',
+                @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo, @tot = @TotalNoAjustados OUTPUT, @fInicio = @FechaInicio, @fFin = @FechaFin;
+        ELSE
+            EXEC sp_executesql @SQL,
+                N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @tot FLOAT OUTPUT',
+                @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo, @tot = @TotalNoAjustados OUTPUT;
 
         IF @TotalNoAjustados IS NOT NULL AND @TotalNoAjustados != 0
         BEGIN
@@ -186,11 +210,16 @@ BEGIN
             UPDATE [' + @TablaDestino + ']
             SET Monto = Monto * @rfactor
             WHERE NombrePresupuesto = @nombre AND CodAlmacen = @cod AND Mes = @mes
-              AND Canal = @canal AND Tipo = @tipo AND NOT (' +
-              CASE WHEN @WhereClause != '' THEN 'idDia = ' + CAST(ISNULL(@DiaSemana, 0) AS NVARCHAR(5)) ELSE '1=0' END + ')';
-            EXEC sp_executesql @SQL,
-                N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @rfactor FLOAT',
-                @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo, @rfactor = @RedistFactor;
+              AND Canal = @canal AND Tipo = @tipo AND NOT (' + @NotClause + ')';
+
+            IF @MetodoDistribucion = 'Semana' AND @FechaInicio IS NOT NULL
+                EXEC sp_executesql @SQL,
+                    N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @rfactor FLOAT, @fInicio DATE, @fFin DATE',
+                    @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo, @rfactor = @RedistFactor, @fInicio = @FechaInicio, @fFin = @FechaFin;
+            ELSE
+                EXEC sp_executesql @SQL,
+                    N'@nombre NVARCHAR(100), @cod NVARCHAR(10), @mes INT, @canal NVARCHAR(200), @tipo NVARCHAR(100), @rfactor FLOAT',
+                    @nombre = @NombrePresupuesto, @cod = @CodAlmacen, @mes = @Mes, @canal = @Canal, @tipo = @Tipo, @rfactor = @RedistFactor;
         END
     END
     ELSE IF @MetodoDistribucion = 'Mes'

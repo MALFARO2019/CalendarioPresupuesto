@@ -25,7 +25,7 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
     const [editId, setEditId] = useState<number | null>(null);
     const [nombre, setNombre] = useState('');
     const [ano, setAno] = useState(new Date().getFullYear());
-    const [tabla, setTabla] = useState('RSM_ALCANCE_DIARIO');
+    const [tablaSufijo, setTablaSufijo] = useState('');
     const [hora, setHora] = useState('06:00');
 
     // Validation
@@ -59,7 +59,7 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
         setEditId(null);
         setNombre('');
         setAno(new Date().getFullYear());
-        setTabla('RSM_ALCANCE_DIARIO');
+        setTablaSufijo('');
         setHora('06:00');
     };
 
@@ -67,7 +67,7 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
         setEditId(config.id);
         setNombre(config.nombrePresupuesto);
         setAno(config.anoModelo);
-        setTabla(config.tablaDestino);
+        setTablaSufijo(config.tablaDestino.replace(/^RSM_ALCANCE_DIARIO/, ''));
         setHora(config.horaCalculo);
         setShowForm(true);
         setMessage(null);
@@ -81,11 +81,12 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
         try {
             setSaving(true);
             setMessage(null);
+            const tablaFinal = 'RSM_ALCANCE_DIARIO' + tablaSufijo;
             await saveModeloConfig({
                 id: editId || undefined,
                 nombrePresupuesto: nombre.trim(),
                 anoModelo: ano,
-                tablaDestino: tabla,
+                tablaDestino: tablaFinal,
                 horaCalculo: hora,
             });
             setMessage({ type: 'success', text: editId ? 'Configuración actualizada' : 'Configuración creada' });
@@ -223,13 +224,19 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
                             <input type="number" value={ano} onChange={e => setAno(parseInt(e.target.value))}
                                 className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm" />
                         </div>
-                        <div>
+                        <div className="sm:col-span-2">
                             <label className="block text-xs font-bold text-gray-500 mb-1">Tabla Destino</label>
-                            <select value={tabla} onChange={e => setTabla(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm">
-                                <option value="RSM_ALCANCE_DIARIO">RSM_ALCANCE_DIARIO (Producción)</option>
-                                <option value="RSM_ALCANCE_DIARIO_TEST">RSM_ALCANCE_DIARIO_TEST (Pruebas)</option>
-                            </select>
+                            <div className="flex items-center gap-0">
+                                <span className="px-3 py-2 bg-gray-100 border border-r-0 border-gray-200 rounded-l-lg text-sm text-gray-600 font-mono whitespace-nowrap">RSM_ALCANCE_DIARIO</span>
+                                <input value={tablaSufijo}
+                                    onChange={e => {
+                                        const v = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+                                        setTablaSufijo(v ? (v.startsWith('_') ? v : '_' + v) : '');
+                                    }}
+                                    placeholder="(producción)"
+                                    className="flex-1 min-w-0 px-3 py-2 bg-white border border-gray-200 rounded-r-lg text-sm font-mono" />
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-1">Resultado: <span className="font-mono font-bold">RSM_ALCANCE_DIARIO{tablaSufijo}</span></p>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-gray-500 mb-1">Hora Cálculo</label>
@@ -371,10 +378,12 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
                                         <thead className="bg-gray-50 sticky top-0">
                                             <tr>
                                                 <th className="px-3 py-2 text-left text-xs font-bold text-gray-500">Local</th>
+                                                <th className="px-3 py-2 text-center text-xs font-bold text-gray-500">Año</th>
                                                 <th className="px-3 py-2 text-left text-xs font-bold text-gray-500">Mes</th>
                                                 <th className="px-3 py-2 text-left text-xs font-bold text-gray-500">Canal</th>
-                                                <th className="px-3 py-2 text-right text-xs font-bold text-gray-500">Esperado</th>
-                                                <th className="px-3 py-2 text-right text-xs font-bold text-gray-500">Real</th>
+                                                <th className="px-3 py-2 text-left text-xs font-bold text-gray-500">Tipo</th>
+                                                <th className="px-3 py-2 text-right text-xs font-bold text-gray-500">Consolidado</th>
+                                                <th className="px-3 py-2 text-right text-xs font-bold text-gray-500">Σ Diario</th>
                                                 <th className="px-3 py-2 text-right text-xs font-bold text-gray-500">Dif.</th>
                                             </tr>
                                         </thead>
@@ -382,10 +391,12 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
                                             {erroresVal.map((v, i) => (
                                                 <tr key={i} className="hover:bg-amber-50">
                                                     <td className="px-3 py-2">{v.local}</td>
+                                                    <td className="px-3 py-2 text-center">{v.ano}</td>
                                                     <td className="px-3 py-2">{meses[v.mes]}</td>
                                                     <td className="px-3 py-2">{v.canal}</td>
-                                                    <td className="px-3 py-2 text-right font-mono">{v.esperado.toLocaleString()}</td>
-                                                    <td className="px-3 py-2 text-right font-mono">{v.real.toLocaleString()}</td>
+                                                    <td className="px-3 py-2">{v.tipo}</td>
+                                                    <td className="px-3 py-2 text-right font-mono">{v.consolidado.toLocaleString()}</td>
+                                                    <td className="px-3 py-2 text-right font-mono">{v.sumaDiaria.toLocaleString()}</td>
                                                     <td className="px-3 py-2 text-right font-mono text-red-600">{v.diferencia.toLocaleString()}</td>
                                                 </tr>
                                             ))}

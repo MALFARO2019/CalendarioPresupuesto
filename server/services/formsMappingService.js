@@ -565,15 +565,17 @@ async function getMappingStats(sourceId, tableName) {
 async function resolveAfterSync(sourceId, tableName) {
     try {
         const mappings = await getMappings(sourceId);
-        if (mappings.length === 0) return;
+        if (mappings.length === 0) return { resolved: 0, failed: 0, total: 0 };
 
         await ensureMappingColumns(tableName);
         const result = await resolveAllMappings(sourceId, tableName);
         if (result.resolved > 0) {
             console.log(`  Mapping resolved: ${result.resolved}/${result.total} for ${tableName}`);
         }
+        return result;
     } catch (e) {
         console.warn(`  ! Post-sync mapping error: ${e.message.substring(0, 100)}`);
+        return { resolved: 0, failed: 0, total: 0 };
     }
 }
 

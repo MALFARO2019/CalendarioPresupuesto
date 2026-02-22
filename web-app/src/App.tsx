@@ -64,6 +64,8 @@ function App() {
   const [eventosYear, setEventosYear] = useState(new Date().getFullYear());
   const [verEventosAjuste, setVerEventosAjuste] = useState(false);
   const [eventosAjusteByDate, setEventosAjusteByDate] = useState<EventosByDate>({});
+  const [verEventosAA, setVerEventosAA] = useState(false);
+  const [eventosAAByDate, setEventosAAByDate] = useState<EventosByDate>({});
   const [adminNameForLocal, setAdminNameForLocal] = useState<PersonalAsignado[]>([]);
   const [appVersion, setAppVersion] = useState('');
 
@@ -115,6 +117,45 @@ function App() {
       fetchSPEventosPorAno(eventosYear)
     ]).then(([dim, sp]) => setEventosByYear(mergeEvents(dim, sp)));
   }, [verEventos, currentDate, eventosYear]);
+
+  // Fetch eventos del año anterior y mapear a fechas del año actual
+  useEffect(() => {
+    if (!verEventosAA) {
+      setEventosAAByDate({});
+      return;
+    }
+    const token = getToken();
+    if (!token) return;
+    const currentYear = currentDate.getFullYear();
+    const prevYear = currentYear - 1;
+    const month = currentDate.getMonth() + 1;
+
+    const mergeEvents = (a: EventosByDate, b: EventosByDate): EventosByDate => {
+      const merged = { ...a };
+      for (const [key, evs] of Object.entries(b)) {
+        merged[key] = [...(merged[key] || []), ...evs];
+      }
+      return merged;
+    };
+
+    // Remap date keys: 2025-MM-DD → 2026-MM-DD (shift to current year)
+    const remapYear = (events: EventosByDate): EventosByDate => {
+      const remapped: EventosByDate = {};
+      for (const [dateKey, evs] of Object.entries(events)) {
+        const newKey = `${currentYear}${dateKey.substring(4)}`; // Replace year prefix
+        remapped[newKey] = (remapped[newKey] || []).concat(
+          evs.map(e => ({ ...e, evento: `[${prevYear}] ${e.evento}` }))
+        );
+      }
+      return remapped;
+    };
+
+    // Fetch from same sources but for prevYear
+    Promise.all([
+      fetchEventosPorMes(prevYear, month),
+      fetchSPEventosPorMes(prevYear, month)
+    ]).then(([dim, sp]) => setEventosAAByDate(remapYear(mergeEvents(dim, sp))));
+  }, [verEventosAA, currentDate]);
 
   // Fetch all personal assigned to selected local (only for individual stores, not groups)
   useEffect(() => {
@@ -590,12 +631,12 @@ function App() {
               </button>
             )}
 
-            {/* Admin/Events button - for admin or eventos users */}
-            {(user?.esAdmin || user?.accesoEventos) && (
+            {/* Admin/Events/Modelo button - for admin, eventos, or modelo users */}
+            {(user?.esAdmin || user?.accesoEventos || user?.accesoModeloPresupuesto || user?.ajustarCurva || user?.verAjustePresupuesto || user?.verConfigModelo || user?.verConsolidadoMensual || user?.verVersiones || user?.verBitacora || user?.verReferencias || user?.editarConsolidado || user?.ejecutarRecalculo || user?.restaurarVersiones) && (
               <button
                 onClick={() => setView('admin')}
                 className="touch-target p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
-                title={user?.esAdmin ? "Configuración" : "Eventos"}
+                title={user?.esAdmin ? "Configuración" : user?.accesoEventos ? "Eventos" : "Modelo Presupuesto"}
               >
                 <Settings className="w-4 h-4" />
               </button>
@@ -852,6 +893,16 @@ function App() {
                       Ver Eventos
                     </button>
                     <button
+                      onClick={() => setVerEventosAA(v => !v)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${verEventosAA
+                        ? 'bg-purple-100 text-purple-700 border-purple-300'
+                        : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                        }`}
+                    >
+                      <span>{verEventosAA ? '🟣' : '⚪'}</span>
+                      Eventos Año Ant.
+                    </button>
+                    <button
                       onClick={() => setVerEventosAjuste(v => !v)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${verEventosAjuste
                         ? 'bg-red-100 text-red-700 border-red-300'
@@ -870,6 +921,7 @@ function App() {
                     kpi={filterKpi}
                     eventsByDate={verEventos ? eventsByDate : {}}
                     eventosAjusteByDate={verEventosAjuste ? eventosAjusteByDate : {}}
+                    eventosAAByDate={verEventosAA ? eventosAAByDate : {}}
                   />
                 </div>
               </div>
@@ -904,6 +956,8 @@ function App() {
                   eventsByDate={eventsByDate}
                   verEventosAjuste={verEventosAjuste}
                   eventosAjusteByDate={eventosAjusteByDate}
+                  verEventosAA={verEventosAA}
+                  eventosAAByDate={eventosAAByDate}
                 />
               </div>
             </div>

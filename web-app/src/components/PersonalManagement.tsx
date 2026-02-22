@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchAsignaciones, fetchProfiles, fetchPersonal, createAsignacion, updateAsignacion, deleteAsignacion as apiDeleteAsignacion } from '../api';
 import type { Profile, PersonalItem, Asignacion } from '../api';
 import { Plus, Edit2, Trash2, MapPin, RefreshCw, X, Calendar, AlertTriangle, Shield, Search } from 'lucide-react';
+import { SearchableSelect } from './SearchableSelect';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,11 @@ export const PersonalManagement: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     const activeProfileNames = profiles.map(p => p.nombre);
+
+    // Memoized options for SearchableSelect
+    const usuarioOptions = useMemo(() => usuarios.filter(u => u.ACTIVO).map(u => ({ value: u.ID.toString(), label: u.NOMBRE })), [usuarios]);
+    const localOptions = useMemo(() => allStores.map(l => ({ value: l, label: l })), [allStores]);
+    const perfilOptions = useMemo(() => activeProfileNames.map(p => ({ value: p, label: p })), [activeProfileNames]);
 
     // ─── Load ─────────────────────────────────────────────────────────────────
 
@@ -167,7 +173,7 @@ export const PersonalManagement: React.FC = () => {
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h2 className="text-xl font-bold text-gray-800">👥 Control de Personal</h2>
+                    <h2 className="text-xl font-bold text-gray-800">👥 Asignaciones de Usuarios</h2>
                     <p className="text-sm text-gray-500 mt-0.5">Asignaciones de usuarios a locales por perfil</p>
                 </div>
                 <div className="flex gap-2">
@@ -202,14 +208,20 @@ export const PersonalManagement: React.FC = () => {
                             <Plus className="w-4 h-4" /> Nueva Asignación
                         </button>
                         <input type="text" value={filterUsuario} onChange={e => setFilterUsuario(e.target.value)} placeholder="🔍 Usuario..." className="px-3 py-2 border border-gray-200 rounded-lg text-sm flex-1 min-w-[120px] max-w-[200px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                        <select value={filterLocal} onChange={e => setFilterLocal(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                            <option value="">Todos los locales</option>
-                            {allStores.map(l => <option key={l} value={l}>{l}</option>)}
-                        </select>
-                        <select value={filterPerfil} onChange={e => setFilterPerfil(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                            <option value="">Todos los perfiles</option>
-                            {activeProfileNames.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <SearchableSelect
+                            options={[{ value: '', label: 'Todos los locales' }, ...localOptions]}
+                            value={filterLocal}
+                            onChange={setFilterLocal}
+                            placeholder="Todos los locales"
+                            className="min-w-[160px]"
+                        />
+                        <SearchableSelect
+                            options={[{ value: '', label: 'Todos los perfiles' }, ...perfilOptions]}
+                            value={filterPerfil}
+                            onChange={setFilterPerfil}
+                            placeholder="Todos los perfiles"
+                            className="min-w-[160px]"
+                        />
                         <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2">
                             <Calendar className="w-4 h-4 text-gray-400" />
                             <input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} className="py-2 text-sm border-none focus:ring-0 w-32" placeholder="Desde" />
@@ -365,24 +377,31 @@ export const PersonalManagement: React.FC = () => {
                         <div className="space-y-3">
                             <div>
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">Usuario *</label>
-                                <select value={aUsuarioId} onChange={e => setAUsuarioId(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                                    <option value="">Seleccionar usuario...</option>
-                                    {usuarios.filter(u => u.ACTIVO).map(u => <option key={u.ID} value={u.ID}>{u.NOMBRE}</option>)}
-                                </select>
+                                <SearchableSelect
+                                    options={usuarioOptions}
+                                    value={aUsuarioId}
+                                    onChange={setAUsuarioId}
+                                    placeholder="Seleccionar usuario..."
+                                    disabled={!!editAsig}
+                                />
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">Local *</label>
-                                <select value={aLocal} onChange={e => setALocal(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                                    <option value="">Seleccionar local...</option>
-                                    {allStores.map(l => <option key={l} value={l}>{l}</option>)}
-                                </select>
+                                <SearchableSelect
+                                    options={localOptions}
+                                    value={aLocal}
+                                    onChange={setALocal}
+                                    placeholder="Seleccionar local..."
+                                />
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">Perfil *</label>
-                                <select value={aPerfil} onChange={e => setAPerfil(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                                    <option value="">Seleccionar perfil...</option>
-                                    {activeProfileNames.map(p => <option key={p} value={p}>{p}</option>)}
-                                </select>
+                                <SearchableSelect
+                                    options={perfilOptions}
+                                    value={aPerfil}
+                                    onChange={setAPerfil}
+                                    placeholder="Seleccionar perfil..."
+                                />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>

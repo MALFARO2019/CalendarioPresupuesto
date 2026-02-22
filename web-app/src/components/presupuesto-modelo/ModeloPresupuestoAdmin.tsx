@@ -2,10 +2,52 @@ import React, { useState, useCallback } from 'react';
 import { getUser, type ModeloConfig } from '../../api';
 import { ModeloConfig as ModeloConfigView } from './ModeloConfig';
 import { ConsolidadoGrid } from './ConsolidadoGrid';
-import { AjusteChart } from './AjusteChart';
+import { VistaAjustePresupuesto } from './ajuste-presupuesto/VistaAjustePresupuesto';
 import { VersionesPanel } from './VersionesPanel';
 import { BitacoraPanel } from './BitacoraPanel';
 import { ReferenciasPanel } from './ReferenciasPanel';
+
+// Error Boundary to catch runtime errors in VistaAjustePresupuesto
+class AjusteErrorBoundary extends React.Component<
+    { children: React.ReactNode },
+    { hasError: boolean; error: Error | null; info: string }
+> {
+    constructor(props: { children: React.ReactNode }) {
+        super(props);
+        this.state = { hasError: false, error: null, info: '' };
+    }
+    static getDerivedStateFromError(error: Error) {
+        return { hasError: true, error };
+    }
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+        console.error('[AjusteErrorBoundary]', error, errorInfo);
+        this.setState({ info: errorInfo.componentStack || '' });
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="p-6 bg-red-50 border border-red-200 rounded-xl mx-4 my-6">
+                    <h3 className="text-lg font-bold text-red-700 mb-2">⚠️ Error en Vista de Ajustes</h3>
+                    <p className="text-sm text-red-600 font-mono mb-2">{this.state.error?.message}</p>
+                    <details className="text-xs text-red-500">
+                        <summary className="cursor-pointer font-semibold">Stack trace</summary>
+                        <pre className="mt-2 whitespace-pre-wrap overflow-auto max-h-48">
+                            {this.state.error?.stack}
+                            {this.state.info}
+                        </pre>
+                    </details>
+                    <button
+                        onClick={() => this.setState({ hasError: false, error: null, info: '' })}
+                        className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
+                    >
+                        Reintentar
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
 
 type SubTab = 'config' | 'consolidado' | 'ajustes' | 'versiones' | 'bitacora' | 'referencias';
 
@@ -20,7 +62,6 @@ const TAB_CONFIG: { id: SubTab; label: string; icon: string; permiso: string }[]
 
 export const ModeloPresupuestoAdmin: React.FC = () => {
     const [selectedConfig, setSelectedConfig] = useState<ModeloConfig | null>(null);
-    const [activeTab, setActiveTab] = useState<SubTab>('config');
 
     const user = getUser();
     const isAdmin = user?.esAdmin;
@@ -28,8 +69,15 @@ export const ModeloPresupuestoAdmin: React.FC = () => {
     // Filter visible tabs based on permissions
     const visibleTabs = TAB_CONFIG.filter(tab => {
         if (isAdmin) return true;
+        // "Ajustar Curva" permission also grants access to the Ajustes tab
+        if (tab.id === 'ajustes' && (user as any)?.ajustarCurva) return true;
         return (user as any)?.[tab.permiso];
     });
+
+    // Default to first visible tab (not always 'config')
+    const [activeTab, setActiveTab] = useState<SubTab>(visibleTabs[0]?.id || 'config');
+
+
 
     const handleConfigSelect = useCallback((config: ModeloConfig | null) => {
         setSelectedConfig(config);
@@ -99,7 +147,7 @@ export const ModeloPresupuestoAdmin: React.FC = () => {
                             selectedConfigId={selectedConfig?.id || null}
                         />
                     )}
-                    {activeTab !== 'config' && !selectedConfig && (
+                    {activeTab !== 'config' && activeTab !== 'ajustes' && !selectedConfig && (
                         <div className="text-center py-10 text-gray-400 text-sm">
                             Vaya a la pestaña <strong>Configuración</strong> y seleccione una configuración primero.
                         </div>
@@ -107,8 +155,10 @@ export const ModeloPresupuestoAdmin: React.FC = () => {
                     {activeTab === 'consolidado' && selectedConfig && (
                         <ConsolidadoGrid anoModelo={anoModelo} nombrePresupuesto={nombrePresupuesto} />
                     )}
-                    {activeTab === 'ajustes' && selectedConfig && (
-                        <AjusteChart anoModelo={anoModelo} nombrePresupuesto={nombrePresupuesto} />
+                    {activeTab === 'ajustes' && (
+                        <AjusteErrorBoundary>
+                            <VistaAjustePresupuesto anoModelo={anoModelo} nombrePresupuesto={nombrePresupuesto} />
+                        </AjusteErrorBoundary>
                     )}
                     {activeTab === 'versiones' && selectedConfig && (
                         <VersionesPanel nombrePresupuesto={nombrePresupuesto} />

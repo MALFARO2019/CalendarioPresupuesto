@@ -1020,7 +1020,10 @@ export async function createAsignacion(usuarioId: number, local: string, perfil:
         headers: authHeaders(),
         body: JSON.stringify({ usuarioId, local, perfil, fechaInicio, fechaFin, notas })
     });
-    if (!response.ok) throw new Error('Error creating asignacion');
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Error creating asignacion');
+    }
     return response.json();
 }
 
@@ -1030,7 +1033,10 @@ export async function updateAsignacion(id: number, local: string, perfil: string
         headers: authHeaders(),
         body: JSON.stringify({ local, perfil, fechaInicio, fechaFin, notas })
     });
-    if (!response.ok) throw new Error('Error updating asignacion');
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Error updating asignacion');
+    }
     return response.json();
 }
 
@@ -1039,7 +1045,10 @@ export async function deleteAsignacion(id: number): Promise<void> {
         method: 'DELETE',
         headers: authHeaders()
     });
-    if (!response.ok) throw new Error('Error deleting asignacion');
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Error deleting asignacion');
+    }
 }
 
 export async function fetchLocalesSinCobertura(perfil?: string, month?: number, year?: number): Promise<{ Local: string, PerfilesFaltantes: string }[]> {
@@ -1109,7 +1118,12 @@ export async function fetchAdminPorLocal(local: string): Promise<PersonalAsignad
             headers: authHeaders()
         });
         if (!response.ok) return [];
-        return await response.json();
+        const data = await response.json();
+        // Map server field names (USUARIO_NOMBRE, PERFIL) to interface fields (nombre, perfil)
+        return (data || []).map((d: any) => ({
+            nombre: d.USUARIO_NOMBRE || d.nombre || '',
+            perfil: d.PERFIL || d.perfil || ''
+        }));
     } catch {
         return [];
     }
@@ -1349,11 +1363,12 @@ export async function fetchStoresWithNames(): Promise<StoreItem[]> {
 export interface ValidacionResult {
     codAlmacen: string;
     local: string;
+    ano: number;
     mes: number;
     canal: string;
     tipo: string;
-    esperado: number;
-    real: number;
+    consolidado: number;
+    sumaDiaria: number;
     diferencia: number;
     match: boolean;
 }
@@ -1440,6 +1455,33 @@ export async function fetchResumenMensual(nombrePresupuesto: string, codAlmacen?
     return response.json();
 }
 
+// Daily data for adjustment chart
+export interface DatosAjusteDia {
+    Fecha: string;
+    idDia: number;
+    Dia: number;
+    Presupuesto: number;
+    RealValor: number;
+    AnoAnterior: number;
+    AnoAnteriorAjustado: number;
+    PresupuestoAcum: number;
+    AnoAnteriorAcum: number;
+    AnoAnteriorAjustadoAcum: number;
+    DiferenciaPresupuesto: number;
+    DiferenciaAnoAnterior: number;
+}
+
+export async function fetchDatosAjuste(
+    nombrePresupuesto: string, codAlmacen: string, canal: string, tipo: string, mes?: number, ano?: number
+): Promise<DatosAjusteDia[]> {
+    const params = new URLSearchParams({ nombrePresupuesto, codAlmacen, canal, tipo });
+    if (mes) params.set('mes', mes.toString());
+    if (ano) params.set('ano', ano.toString());
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/datos-ajuste?${params}`, { headers: authHeaders() });
+    if (!response.ok) return [];
+    return response.json();
+}
+
 // Adjustments
 export async function fetchAjustes(nombrePresupuesto: string): Promise<AjustePresupuesto[]> {
     const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes?nombrePresupuesto=${encodeURIComponent(nombrePresupuesto)}`, { headers: authHeaders() });
@@ -1450,6 +1492,7 @@ export async function fetchAjustes(nombrePresupuesto: string): Promise<AjustePre
 export async function aplicarAjuste(data: {
     nombrePresupuesto: string; codAlmacen: string; mes: number; canal: string; tipo: string;
     metodoAjuste: string; valorAjuste: number; metodoDistribucion: string; motivo: string;
+    fecha?: string; dia?: number;
 }): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes/aplicar`, {
         method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
@@ -1464,6 +1507,14 @@ export async function previewAjuste(data: {
 }): Promise<{ preview: any[] }> {
     const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes/preview`, {
         method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+export async function desactivarAjuste(id: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes/${id}/desactivar`, {
+        method: 'PUT', headers: authHeaders()
     });
     if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
     return response.json();

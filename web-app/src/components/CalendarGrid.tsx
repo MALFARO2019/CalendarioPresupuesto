@@ -13,12 +13,13 @@ interface CalendarGridProps {
     kpi: string;
     eventsByDate?: Record<string, { id: number; evento: string; esFeriado: boolean; esInterno: boolean }[]>;
     eventosAjusteByDate?: Record<string, { id: number; evento: string; esFeriado: boolean; esInterno: boolean }[]>;
+    eventosAAByDate?: Record<string, { id: number; evento: string; esFeriado: boolean; esInterno: boolean }[]>;
 }
 
 // L = Lunes, K = Martes, M = Miércoles, J, V, S, D
 const DAYS_OF_WEEK = ['L', 'K', 'M', 'J', 'V', 'S', 'D'];
 
-export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, comparisonType, kpi, eventsByDate = {}, eventosAjusteByDate = {} }) => {
+export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, comparisonType, kpi, eventsByDate = {}, eventosAjusteByDate = {}, eventosAAByDate = {} }) => {
     const { formatPct100 } = useUserPreferences();
     const fc = useFormatCurrency();
     // Data is already filtered for the month by parent component
@@ -53,6 +54,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
         const dateKey = `${year}-${pad(month + 1)}-${pad(d)}`;
         const dayEvents = eventsByDate[dateKey] || [];
         const dayAjusteEvents = eventosAjusteByDate[dateKey] || [];
+        const dayAAEvents = eventosAAByDate[dateKey] || [];
         cells.push(
             <div key={`day-${d}`} className="relative">
                 <DayCell
@@ -131,6 +133,35 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                             </div>
                         </div>
                     ))
+                )}
+                {/* Año Anterior events (purple style) */}
+                {dayAAEvents.length > 0 && (
+                    <div className={`absolute ${dayEvents.length > 0 ? 'top-0.5' : 'bottom-0.5'} left-0 right-0 px-0.5 flex flex-col gap-0.5`}>
+                        {dayAAEvents.slice(0, 2).map((ev, i) => (
+                            <div key={`aa-${i}`} className="group/ev relative">
+                                <div className="text-[8px] leading-tight font-semibold truncate rounded px-0.5 cursor-default bg-purple-500 text-white">
+                                    {ev.evento}
+                                </div>
+                                <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/ev:flex flex-col min-w-[160px] max-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl p-2 text-left pointer-events-none">
+                                    <div className="text-[10px] font-bold px-1.5 py-0.5 rounded mb-1 inline-block bg-purple-100 text-purple-700">🟣 Año Anterior</div>
+                                    <p className="text-xs font-semibold text-gray-800 leading-snug">{ev.evento}</p>
+                                </div>
+                            </div>
+                        ))}
+                        {dayAAEvents.length > 2 && (
+                            <div className="group/more relative">
+                                <div className="text-[7px] text-purple-500 font-bold text-center cursor-default">+{dayAAEvents.length - 2} más</div>
+                                <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/more:flex flex-col min-w-[160px] max-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl p-2 pointer-events-none">
+                                    {dayAAEvents.map((ev2, j) => (
+                                        <div key={j} className="flex items-start gap-1.5 py-1 border-b last:border-0 border-gray-100">
+                                            <span className="mt-0.5 w-2 h-2 rounded-full flex-shrink-0 bg-purple-500" />
+                                            <p className="text-[10px] text-gray-800 font-medium leading-snug">{ev2.evento}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
         );

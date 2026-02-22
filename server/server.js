@@ -280,7 +280,7 @@ app.post('/api/personal/asignaciones', authMiddleware, async (req, res) => {
         const { usuarioId, local, perfil, fechaInicio, fechaFin, notas } = req.body;
         if (!usuarioId || !local || !perfil || !fechaInicio) return res.status(400).json({ error: 'usuarioId, local, perfil y fechaInicio son requeridos' });
         res.status(201).json(await personalModule.createAsignacion(usuarioId, local, perfil, fechaInicio, fechaFin, notas));
-    } catch (e) { res.status(400).json({ error: e.message }); }
+    } catch (e) { console.error('❌ Error creating asignacion:', e.message); res.status(400).json({ error: e.message }); }
 });
 
 app.put('/api/personal/asignaciones/:id', authMiddleware, async (req, res) => {

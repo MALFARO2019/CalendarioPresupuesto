@@ -17,7 +17,19 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     // Helper: Check base module access
     // ------------------------------------------
     function requireModuleAccess(req, res) {
-        if (!req.user.accesoModeloPresupuesto) {
+        // Allow access if user has the master flag OR any sub-permission
+        const hasAnyModeloPerm = req.user.accesoModeloPresupuesto
+            || req.user.ajustarCurva
+            || req.user.verAjustePresupuesto
+            || req.user.verConfigModelo
+            || req.user.verConsolidadoMensual
+            || req.user.verVersiones
+            || req.user.verBitacora
+            || req.user.verReferencias
+            || req.user.editarConsolidado
+            || req.user.ejecutarRecalculo
+            || req.user.restaurarVersiones;
+        if (!hasAnyModeloPerm) {
             res.status(403).json({ error: 'No tiene acceso al módulo Modelo de Presupuesto' });
             return false;
         }
@@ -29,12 +41,10 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     // ------------------------------------------
 
     // GET /api/modelo-presupuesto/config — returns ALL configs
+    // Any user with module access can list configs (needed to select one for other tabs)
     app.get('/api/modelo-presupuesto/config', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
-            if (!req.user.verConfigModelo) {
-                return res.status(403).json({ error: 'No tiene permiso para ver la configuración' });
-            }
             const configs = await modeloPresupuesto.getAllConfigs();
             res.json(configs);
         } catch (err) {
@@ -187,7 +197,7 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     app.get('/api/modelo-presupuesto/ajustes', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
-            if (!req.user.verAjustePresupuesto) {
+            if (!req.user.verAjustePresupuesto && !req.user.ajustarCurva) {
                 return res.status(403).json({ error: 'No tiene permiso para ver ajustes' });
             }
             const { nombrePresupuesto } = req.query;
@@ -203,12 +213,12 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     app.get('/api/modelo-presupuesto/datos-ajuste', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
-            if (!req.user.verAjustePresupuesto) {
+            if (!req.user.verAjustePresupuesto && !req.user.ajustarCurva) {
                 return res.status(403).json({ error: 'No tiene permiso para ver datos de ajuste' });
             }
-            const { nombrePresupuesto, codAlmacen, mes, canal, tipo } = req.query;
+            const { nombrePresupuesto, codAlmacen, mes, canal, tipo, ano } = req.query;
             const result = await modeloPresupuesto.getDatosAjuste(
-                nombrePresupuesto, codAlmacen, parseInt(mes), canal, tipo
+                nombrePresupuesto, codAlmacen, mes ? parseInt(mes) : null, canal, tipo, ano ? parseInt(ano) : null
             );
             res.json(result);
         } catch (err) {
@@ -416,7 +426,7 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     app.get('/api/modelo-presupuesto/resumen-mensual', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
-            if (!req.user.verAjustePresupuesto) {
+            if (!req.user.verAjustePresupuesto && !req.user.ajustarCurva) {
                 return res.status(403).json({ error: 'No tiene permiso para ver datos de ajuste' });
             }
             const { nombrePresupuesto, codAlmacen, tipo } = req.query;

@@ -12,11 +12,13 @@ interface DailyBehaviorChartProps {
     eventsByDate?: EventosByDate;
     verEventosAjuste?: boolean;
     eventosAjusteByDate?: EventosByDate;
+    verEventosAA?: boolean;
+    eventosAAByDate?: EventosByDate;
 }
 
 const DAY_LETTERS = ['D', 'L', 'K', 'M', 'J', 'V', 'S'];
 
-export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi, dateRange, verEventos = false, eventsByDate = {}, verEventosAjuste = false, eventosAjusteByDate = {} }) => {
+export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kpi, dateRange, verEventos = false, eventsByDate = {}, verEventosAjuste = false, eventosAjusteByDate = {}, verEventosAA = false, eventosAAByDate = {} }) => {
     const fc = useFormatCurrency();
     const { formatPct100 } = useUserPreferences();
     // State for controlling which lines are visible
@@ -120,6 +122,15 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                 const evs = eventosAjusteByDate[dateKey];
                 if (evs) ajusteEventsForDay.push(...evs);
             }
+            // Look up año anterior events for this day
+            const aaEventsForDay: { id: number; evento: string }[] = [];
+            if (verEventosAA && tooltipDate) {
+                const dd = String(tooltipDate.day).padStart(2, '0');
+                const mm = String(tooltipDate.month).padStart(2, '0');
+                const dateKey = `${tooltipDate.year}-${mm}-${dd}`;
+                const evs = eventosAAByDate[dateKey];
+                if (evs) aaEventsForDay.push(...evs);
+            }
             return (
                 <div className="bg-white p-4 border border-gray-100 shadow-xl rounded-xl min-w-[200px]">
                     <p className="font-bold text-gray-700 mb-2">{label}</p>
@@ -177,6 +188,17 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                 <div key={idx} className="flex items-center gap-2 text-xs font-medium">
                                     <div className="w-2 h-2 rounded-full bg-red-600"></div>
                                     <span className="text-red-700 font-semibold">{aev.evento}</span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+                    {aaEventsForDay.length > 0 && (
+                        <>
+                            <div className="h-px bg-purple-200 my-1.5" />
+                            {aaEventsForDay.map((aev, idx) => (
+                                <div key={idx} className="flex items-center gap-2 text-xs font-medium">
+                                    <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                                    <span className="text-purple-700 font-semibold">{aev.evento}</span>
                                 </div>
                             ))}
                         </>
@@ -522,6 +544,28 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                                     strokeWidth={2}
                                     strokeDasharray="4 2"
                                     label={{ value: '🔴', position: 'top', fontSize: 10 }}
+                                    isFront
+                                />
+                            );
+                        })}
+
+                        {/* Año Anterior Event Reference Lines (purple) */}
+                        {verEventosAA && Object.entries(eventosAAByDate).map(([dateStr, evs]) => {
+                            const [y, m, d] = dateStr.split('-').map(Number);
+                            const date = new Date(y, m - 1, d);
+                            const dayLetter = ['D', 'L', 'K', 'M', 'J', 'V', 'S'][date.getDay()];
+                            const dd = String(d).padStart(2, '0');
+                            const mm = String(m).padStart(2, '0');
+                            const yy = String(y).slice(-2);
+                            const xKey = `${dayLetter}_${dd}/${mm}/${yy}`;
+                            return (
+                                <ReferenceLine
+                                    key={`aa-${dateStr}`}
+                                    x={xKey}
+                                    stroke="#8B5CF6"
+                                    strokeWidth={2}
+                                    strokeDasharray="4 2"
+                                    label={{ value: '🟣', position: 'top', fontSize: 10 }}
                                     isFront
                                 />
                             );

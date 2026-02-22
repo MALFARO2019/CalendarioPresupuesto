@@ -49,6 +49,14 @@ async function ensurePersonalTable() {
             END
         `);
 
+        // Make PERSONAL_ID nullable so new inserts (that only use USUARIO_ID) don't fail
+        await pool.request().query(`
+            IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_ASIGNACIONES') AND name = 'PERSONAL_ID' AND is_nullable = 0)
+            BEGIN
+                ALTER TABLE DIM_PERSONAL_ASIGNACIONES ALTER COLUMN PERSONAL_ID INT NULL;
+            END
+        `);
+
 
         // 2. DIM_PERSONAL_CARGOS
         await pool.request().query(`

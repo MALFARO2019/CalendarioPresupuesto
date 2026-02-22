@@ -9,6 +9,7 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
     const formsCron = require('./jobs/formsCron');
     const { getFormsPool, sql } = require('./formsDb');
     const { getTableColumns, getTableKpis, getTableName } = require('./services/formsDynamicTable');
+    const formsMappingService = require('./services/formsMappingService');
 
     // ─── Azure AD Config ──────────────────────────────────────────────────────
 

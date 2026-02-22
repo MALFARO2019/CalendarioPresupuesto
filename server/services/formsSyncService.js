@@ -55,6 +55,9 @@ class FormsSyncService {
                 }
             }
 
+            // ── Resolve ALL pending mappings (even rows from previous syncs) ─────
+            await this.resolveAllPendingMappings();
+
             await formsService.updateConfig('LAST_SYNC_DATE', new Date().toISOString(), initiatedBy);
             console.log('✅ Full sync completed');
         } catch (error) {
@@ -106,6 +109,9 @@ class FormsSyncService {
                     syncLog.mensajeError = (syncLog.mensajeError || '') + `\n${source.Alias}: ${formError.message}`;
                 }
             }
+
+            // ── Resolve ALL pending mappings (even rows from previous syncs) ─────
+            await this.resolveAllPendingMappings();
 
             await formsService.updateConfig('LAST_SYNC_DATE', new Date().toISOString(), initiatedBy);
             console.log('✅ Incremental sync completed');
@@ -249,6 +255,39 @@ class FormsSyncService {
         }
 
         return { nuevos, actualizados };
+    }
+
+    // ─── Resolve ALL pending mappings across all sources ──────────────────────
+
+    async resolveAllPendingMappings() {
+        try {
+            const sources = await this.getActiveSources();
+            let totalResolved = 0;
+            for (const source of sources) {
+                const tableName = getTableName(source.SourceID, source.Alias);
+                try {
+                    // Check if table exists before attempting resolution
+                    const pool = await getFormsPool();
+                    const exists = await pool.request()
+                        .input('tbl', sql.NVarChar, tableName)
+                        .query(`SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tbl`);
+                    if (exists.recordset.length === 0) continue;
+
+                    const result = await formsMappingService.resolveAfterSync(source.SourceID, tableName);
+                    if (result && result.resolved > 0) {
+                        totalResolved += result.resolved;
+                    }
+                } catch (e) {
+                    // Non-critical — don't break the sync
+                    console.warn(`  ⚠️ Pending mapping resolve error for ${source.Alias}: ${e.message.substring(0, 100)}`);
+                }
+            }
+            if (totalResolved > 0) {
+                console.log(`🔗 Auto-resolved ${totalResolved} pending mapping(s) across all sources`);
+            }
+        } catch (e) {
+            console.warn(`  ⚠️ resolveAllPendingMappings error: ${e.message.substring(0, 100)}`);
+        }
     }
 
     // ─── Transform response ───────────────────────────────────────────────────

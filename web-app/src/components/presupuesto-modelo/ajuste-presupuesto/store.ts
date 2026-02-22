@@ -1,0 +1,384 @@
+// ============================================================
+// Vista de Ajuste — Zustand Store
+// ============================================================
+
+import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
+import type {
+    AjustePresupuesto,
+    BudgetSeriesPoint,
+    CurveKey,
+    EventToggleKey,
+    FiltrosState,
+    ModalType,
+    AjusteFormData,
+    CopiarLocalesData,
+    StoreItem,
+    GrupoLocal,
+    PresupuestoItem,
+    EventosByDate,
+} from './types';
+import { CURVE_DEFS } from './types';
+import { buildSeriesData, calcResumen } from './helpers';
+import * as services from './services';
+
+// ── Store interface ──
+
+interface AjusteStoreState {
+    // Auth
+    canAdjust: boolean;
+
+    // Data lists
+    presupuestos: PresupuestoItem[];
+    locales: StoreItem[];
+    gruposLocales: GrupoLocal[];
+
+    // Filters
+    filtros: FiltrosState;
+
+    // Data
+    seriesData: BudgetSeriesPoint[];
+    ajustes: AjustePresupuesto[];
+
+    // Events (raw, for building series)
+    eventosActual: EventosByDate;
+    eventosAA: EventosByDate;
+    eventosAjuste: EventosByDate;
+
+    // UI
+    loading: boolean;
+    chartLoading: boolean;
+    error: string | null;
+    message: { ok: boolean; text: string } | null;
+
+    // Curve visibility
+    visibleCurves: Record<CurveKey, boolean>;
+    visibleEvents: Record<EventToggleKey, boolean>;
+
+    // Selection & modals
+    selectedAjusteId: number | null;
+    formMode: 'crear' | 'editar' | null;
+    formData: AjusteFormData | null;
+    formDate: string | null; // When clicking a chart point
+    activeModal: ModalType;
+    pendingChanges: boolean;
+
+    // Actions
+    init: () => Promise<void>;
+    setFiltro: <K extends keyof FiltrosState>(key: K, value: FiltrosState[K]) => void;
+    loadChartData: () => Promise<void>;
+    refreshAjustes: () => Promise<void>;
+    toggleCurve: (key: CurveKey) => void;
+    toggleEvent: (key: EventToggleKey) => void;
+
+    // Ajuste CRUD
+    selectAjuste: (id: number | null) => void;
+    openCreateForm: (fecha?: string) => void;
+    openEditForm: (ajuste: AjustePresupuesto) => void;
+    closeForm: () => void;
+    saveAjuste: (data: AjusteFormData) => Promise<void>;
+    deleteAjuste: (id: number) => Promise<void>;
+    disassociateAjuste: (id: number) => Promise<void>;
+
+    // Bulk actions
+    openModal: (modal: ModalType) => void;
+    closeModal: () => void;
+    applyAllAjustes: () => Promise<void>;
+    copyToLocales: (data: CopiarLocalesData) => Promise<void>;
+
+    setMessage: (msg: { ok: boolean; text: string } | null) => void;
+    clearError: () => void;
+}
+
+export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
+    // Initial state
+    canAdjust: false,
+    presupuestos: [],
+    locales: [],
+    gruposLocales: [],
+    filtros: {
+        presupuestoId: null,
+        nombrePresupuesto: '',
+        codAlmacen: '',
+        mes: new Date().getMonth() + 1,
+        ano: new Date().getFullYear(),
+        canal: 'Todos',
+    },
+    seriesData: [],
+    ajustes: [],
+    eventosActual: {},
+    eventosAA: {},
+    eventosAjuste: {},
+    loading: true,
+    chartLoading: false,
+    error: null,
+    message: null,
+    visibleCurves: Object.fromEntries(CURVE_DEFS.map(c => [c.key, c.defaultVisible])) as Record<CurveKey, boolean>,
+    visibleEvents: { eventos: true, eventosAA: false, eventosAjuste: true },
+    selectedAjusteId: null,
+    formMode: null,
+    formData: null,
+    formDate: null,
+    activeModal: null,
+    pendingChanges: false,
+
+    // ── Init ──
+    init: async () => {
+        try {
+            set({ loading: true, error: null });
+
+            const user = services.getUser();
+            const canAdjust = !!(user?.esAdmin || (user as any)?.ajustarCurva);
+
+
+            const [presupuestos, locales, gruposLocales] = await Promise.all([
+                services.getPresupuestos(),
+                services.getLocales(),
+                services.getGruposLocales(),
+            ]);
+
+
+            const firstPpto = presupuestos[0];
+            const firstLocal = locales[0];
+
+
+            set({
+                canAdjust,
+                presupuestos,
+                locales,
+                gruposLocales,
+                filtros: {
+                    ...get().filtros,
+                    presupuestoId: firstPpto?.id ?? null,
+                    nombrePresupuesto: firstPpto?.nombre ?? '',
+                    ano: firstPpto?.ano ?? new Date().getFullYear(),
+                    codAlmacen: firstLocal?.code ?? '',
+                },
+                loading: false,
+            });
+
+            // Load chart data after init
+            if (firstPpto && firstLocal) {
+
+                await get().loadChartData();
+
+            } else {
+
+            }
+        } catch (e: any) {
+            console.error('[AjusteStore] init() ERROR:', e);
+            set({ error: e.message || 'Error al inicializar', loading: false });
+        }
+    },
+
+
+    // ── Filtros ──
+    setFiltro: (key, value) => {
+        const prev = get().filtros;
+        const updated = { ...prev, [key]: value };
+
+        // If changing presupuesto, update nombre and ano
+        if (key === 'presupuestoId') {
+            const ppto = get().presupuestos.find(p => p.id === value);
+            if (ppto) {
+                updated.nombrePresupuesto = ppto.nombre;
+                updated.ano = ppto.ano;
+            }
+        }
+
+        set({ filtros: updated });
+        // Defer loadChartData to avoid synchronous cascading state updates
+        // that cause "Maximum update depth exceeded"
+        setTimeout(() => get().loadChartData(), 0);
+    },
+
+    // ── Load chart data ──
+    loadChartData: async () => {
+        const { filtros } = get();
+        if (!filtros.nombrePresupuesto || !filtros.codAlmacen) return;
+
+        try {
+            set({ chartLoading: true, error: null });
+
+
+            const [dailyData, eventosActual, eventosAA, eventosAjuste] = await Promise.all([
+                services.getModeloPresupuesto({
+                    nombrePresupuesto: filtros.nombrePresupuesto,
+                    codAlmacen: filtros.codAlmacen,
+                    mes: filtros.mes,
+                    canal: filtros.canal,
+                    ano: filtros.ano,
+                }),
+                services.getEventosMes(filtros.ano, filtros.mes),
+                services.getEventosAnoAnterior(filtros.ano, filtros.mes),
+                services.getEventosAjuste(),
+            ]);
+
+
+
+            const ajustes = await services.getAjustesMes(
+                filtros.nombrePresupuesto,
+                filtros.codAlmacen,
+                filtros.mes,
+                filtros.ano,
+            );
+
+            const seriesData = buildSeriesData(dailyData, ajustes, eventosActual, eventosAA, eventosAjuste);
+
+
+            set({
+                seriesData,
+                ajustes,
+                eventosActual,
+                eventosAA,
+                eventosAjuste,
+                chartLoading: false,
+            });
+        } catch (e: any) {
+            console.error('[AjusteStore] loadChartData ERROR:', e);
+            set({ error: e.message || 'Error cargando datos', chartLoading: false });
+        }
+    },
+
+    // ── Refresh ajustes only ──
+    refreshAjustes: async () => {
+        const { filtros } = get();
+        if (!filtros.nombrePresupuesto || !filtros.codAlmacen) return;
+        try {
+            const ajustes = await services.getAjustesMes(
+                filtros.nombrePresupuesto,
+                filtros.codAlmacen,
+                filtros.mes,
+                filtros.ano,
+            );
+            set({ ajustes });
+        } catch { /* silent */ }
+    },
+
+    // ── Curve toggles ──
+    toggleCurve: (key) => set(s => ({
+        visibleCurves: { ...s.visibleCurves, [key]: !s.visibleCurves[key] },
+    })),
+
+    toggleEvent: (key) => set(s => ({
+        visibleEvents: { ...s.visibleEvents, [key]: !s.visibleEvents[key] },
+    })),
+
+    // ── Selection ──
+    selectAjuste: (id) => set({ selectedAjusteId: id }),
+
+    // ── Form ──
+    openCreateForm: (fecha) => set({
+        formMode: 'crear',
+        formData: {
+            fecha: fecha || new Date().toISOString().substring(0, 10),
+            tipoAjuste: 'Porcentaje',
+            canal: 'Todos',
+            valor: 0,
+            redistribucion: 'TodosLosDias',
+            comentario: '',
+        },
+        formDate: fecha || null,
+        selectedAjusteId: null,
+    }),
+
+    openEditForm: (ajuste) => set({
+        formMode: 'editar',
+        formData: {
+            fecha: ajuste.fechaAplicacion?.substring(0, 10) || '',
+            tipoAjuste: ajuste.metodoAjuste === 'Porcentaje' ? 'Porcentaje' : 'Monto',
+            canal: (ajuste.canal || 'Todos') as any,
+            valor: ajuste.valorAjuste,
+            redistribucion: ajuste.redistribucion,
+            comentario: ajuste.comentario || '',
+        },
+        selectedAjusteId: ajuste.id,
+    }),
+
+    closeForm: () => set({
+        formMode: null,
+        formData: null,
+        formDate: null,
+    }),
+
+    // ── CRUD ──
+    saveAjuste: async (data) => {
+        const { filtros } = get();
+        try {
+            set({ chartLoading: true });
+            await services.saveAjuste(
+                filtros.nombrePresupuesto,
+                filtros.codAlmacen,
+                filtros.mes,
+                data,
+            );
+            set({ message: { ok: true, text: 'Ajuste guardado correctamente' }, formMode: null, formData: null, pendingChanges: true });
+            await get().loadChartData();
+        } catch (e: any) {
+            set({ message: { ok: false, text: e.message || 'Error guardando ajuste' }, chartLoading: false });
+        }
+    },
+
+    deleteAjuste: async (id) => {
+        try {
+            set({ chartLoading: true });
+            await services.deleteAjuste(id);
+            set({ message: { ok: true, text: 'Ajuste eliminado' }, selectedAjusteId: null });
+            await get().loadChartData();
+        } catch (e: any) {
+            set({ message: { ok: false, text: e.message || 'Error eliminando ajuste' }, chartLoading: false });
+        }
+    },
+
+    disassociateAjuste: async (id) => {
+        try {
+            await services.disassociateAjuste(id);
+            set({ message: { ok: true, text: 'Ajuste desasociado' } });
+            await get().refreshAjustes();
+        } catch (e: any) {
+            set({ message: { ok: false, text: e.message || 'Error desasociando' } });
+        }
+    },
+
+    // ── Modals ──
+    openModal: (modal) => set({ activeModal: modal }),
+    closeModal: () => set({ activeModal: null }),
+
+    applyAllAjustes: async () => {
+        const { filtros } = get();
+        try {
+            set({ chartLoading: true, activeModal: null });
+            await services.applyAjustes(filtros.nombrePresupuesto, filtros.codAlmacen, filtros.mes);
+            set({ message: { ok: true, text: 'Ajustes aplicados correctamente' }, pendingChanges: false });
+            await get().loadChartData();
+        } catch (e: any) {
+            set({ message: { ok: false, text: e.message || 'Error aplicando ajustes' }, chartLoading: false });
+        }
+    },
+
+    copyToLocales: async (data) => {
+        try {
+            set({ chartLoading: true, activeModal: null });
+            const result = await services.copyAjusteToLocales(data);
+            set({
+                message: { ok: true, text: `Ajuste copiado a ${result.copiedCount} locales` },
+                chartLoading: false,
+            });
+        } catch (e: any) {
+            set({ message: { ok: false, text: e.message || 'Error copiando' }, chartLoading: false });
+        }
+    },
+
+    setMessage: (msg) => set({ message: msg }),
+    clearError: () => set({ error: null }),
+}));
+
+// ── Selector helpers ──
+// useShallow prevents infinite re-renders when selectors return new object references
+
+export const useResumen = () => useAjusteStore(
+    useShallow(s => calcResumen(s.seriesData, s.ajustes))
+);
+export const useSelectedAjuste = () => useAjusteStore(
+    s => s.ajustes.find(a => a.id === s.selectedAjusteId) || null
+);

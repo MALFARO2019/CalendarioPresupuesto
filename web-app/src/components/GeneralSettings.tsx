@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { fetchConfig, saveConfig } from '../api';
+import { fetchConfig, saveConfig, fetchModeloConfig } from '../api';
 import { Loader2, AlertCircle, CheckCircle, Database, AlertTriangle } from 'lucide-react';
 
 export const GeneralSettings: React.FC = () => {
     const [tableName, setTableName] = useState<string>('RSM_ALCANCE_DIARIO');
     const [originalValue, setOriginalValue] = useState<string>('RSM_ALCANCE_DIARIO');
+    const [availableTables, setAvailableTables] = useState<string[]>(['RSM_ALCANCE_DIARIO']);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [lastModified, setLastModified] = useState<string | null>(null);
@@ -18,14 +19,22 @@ export const GeneralSettings: React.FC = () => {
     const loadConfig = async () => {
         setLoading(true);
         try {
-            const data = await fetchConfig('ALCANCE_TABLE_NAME');
+            // Load current config and available tables in parallel
+            const [data, configs] = await Promise.all([
+                fetchConfig('ALCANCE_TABLE_NAME'),
+                fetchModeloConfig().catch(() => [])
+            ]);
             const val = data.Valor || 'RSM_ALCANCE_DIARIO';
             setTableName(val);
             setOriginalValue(val);
             setLastModified(data.FechaModificacion);
             setLastUser(data.UsuarioModificacion);
+
+            // Build unique table list: always include RSM_ALCANCE_DIARIO + all from configs
+            const tablesFromConfigs = configs.map((c: any) => c.tablaDestino as string);
+            const uniqueTables = Array.from(new Set(['RSM_ALCANCE_DIARIO', val, ...tablesFromConfigs]));
+            setAvailableTables(uniqueTables);
         } catch {
-            // Config key doesn't exist yet, use default
             setTableName('RSM_ALCANCE_DIARIO');
             setOriginalValue('RSM_ALCANCE_DIARIO');
         } finally {
@@ -49,8 +58,15 @@ export const GeneralSettings: React.FC = () => {
         }
     };
 
-    const isTest = tableName === 'RSM_ALCANCE_DIARIO_TEST';
+    const isProd = tableName === 'RSM_ALCANCE_DIARIO';
     const hasChanges = tableName !== originalValue;
+
+    const getTableLabel = (t: string) => {
+        if (t === 'RSM_ALCANCE_DIARIO') return 'Producción';
+        if (t === 'RSM_ALCANCE_DIARIO_TEST') return 'Pruebas';
+        const suffix = t.replace(/^RSM_ALCANCE_DIARIO_?/, '');
+        return suffix || t;
+    };
 
     if (loading) {
         return (
@@ -72,8 +88,8 @@ export const GeneralSettings: React.FC = () => {
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="px-6 py-5 border-b border-gray-100">
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isTest ? 'bg-amber-100' : 'bg-emerald-100'}`}>
-                            <Database className={`w-5 h-5 ${isTest ? 'text-amber-600' : 'text-emerald-600'}`} />
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${!isProd ? 'bg-amber-100' : 'bg-emerald-100'}`}>
+                            <Database className={`w-5 h-5 ${!isProd ? 'text-amber-600' : 'text-emerald-600'}`} />
                         </div>
                         <div>
                             <h3 className="text-sm font-bold text-gray-900">Tabla de Datos (Alcance)</h3>
@@ -83,65 +99,50 @@ export const GeneralSettings: React.FC = () => {
                 </div>
 
                 <div className="p-6 space-y-5">
-                    {/* Toggle */}
-                    <div className="flex flex-col sm:flex-row gap-3">
-                        <button
-                            onClick={() => setTableName('RSM_ALCANCE_DIARIO')}
-                            className={`flex-1 flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-all ${!isTest
-                                    ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100'
-                                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-                                }`}
-                        >
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${!isTest ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300'
-                                }`}>
-                                {!isTest && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                            </div>
-                            <div className="text-left">
-                                <div className={`text-sm font-bold ${!isTest ? 'text-emerald-800' : 'text-gray-700'}`}>
-                                    Producción
-                                </div>
-                                <div className="text-xs text-gray-500 mt-0.5">RSM_ALCANCE_DIARIO</div>
-                            </div>
-                            {!isTest && (
-                                <span className="ml-auto px-2 py-0.5 bg-emerald-200 text-emerald-800 text-[10px] font-bold rounded-full uppercase">
-                                    Activo
-                                </span>
-                            )}
-                        </button>
-
-                        <button
-                            onClick={() => setTableName('RSM_ALCANCE_DIARIO_TEST')}
-                            className={`flex-1 flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-all ${isTest
-                                    ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-100'
-                                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-                                }`}
-                        >
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isTest ? 'border-amber-500 bg-amber-500' : 'border-gray-300'
-                                }`}>
-                                {isTest && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                            </div>
-                            <div className="text-left">
-                                <div className={`text-sm font-bold ${isTest ? 'text-amber-800' : 'text-gray-700'}`}>
-                                    Pruebas
-                                </div>
-                                <div className="text-xs text-gray-500 mt-0.5">RSM_ALCANCE_DIARIO_TEST</div>
-                            </div>
-                            {isTest && (
-                                <span className="ml-auto px-2 py-0.5 bg-amber-200 text-amber-800 text-[10px] font-bold rounded-full uppercase">
-                                    Activo
-                                </span>
-                            )}
-                        </button>
+                    {/* Dynamic table options */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {availableTables.map(t => {
+                            const isSelected = tableName === t;
+                            const isProduction = t === 'RSM_ALCANCE_DIARIO';
+                            const borderColor = isSelected
+                                ? (isProduction ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100' : 'border-amber-400 bg-amber-50 ring-2 ring-amber-100')
+                                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50';
+                            const dotColor = isSelected
+                                ? (isProduction ? 'border-emerald-500 bg-emerald-500' : 'border-amber-500 bg-amber-500')
+                                : 'border-gray-300';
+                            const textColor = isSelected
+                                ? (isProduction ? 'text-emerald-800' : 'text-amber-800')
+                                : 'text-gray-700';
+                            return (
+                                <button key={t}
+                                    onClick={() => setTableName(t)}
+                                    className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-all text-left ${borderColor}`}
+                                >
+                                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${dotColor}`}>
+                                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className={`text-sm font-bold ${textColor}`}>{getTableLabel(t)}</div>
+                                        <div className="text-xs text-gray-500 mt-0.5 font-mono truncate">{t}</div>
+                                    </div>
+                                    {isSelected && (
+                                        <span className={`ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full uppercase flex-shrink-0 ${isProduction ? 'bg-emerald-200 text-emerald-800' : 'bg-amber-200 text-amber-800'}`}>
+                                            Activo
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
 
-                    {/* Test mode warning */}
-                    {isTest && (
+                    {/* Non-production warning */}
+                    {!isProd && (
                         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                             <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
                             <div>
-                                <p className="text-sm font-semibold text-amber-800">Modo de Pruebas Activo</p>
+                                <p className="text-sm font-semibold text-amber-800">Modo No-Producción Activo</p>
                                 <p className="text-xs text-amber-700 mt-1">
-                                    El sistema leerá datos de la tabla de pruebas. Los datos mostrados en presupuesto,
+                                    El sistema leerá datos de <strong className="font-mono">{tableName}</strong>. Los datos mostrados en presupuesto,
                                     tendencia y alcance <strong>no serán datos reales de producción</strong>.
                                 </p>
                             </div>

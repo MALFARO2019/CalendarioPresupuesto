@@ -38,12 +38,13 @@ interface AdminPageProps {
 }
 
 export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => {
-    // Security check: require admin OR eventos access
+    // Security check: require admin OR eventos access OR modelo permissions
     const isOfflineAdmin = currentUser?.offlineAdmin === true;
     const canAccessEvents = currentUser?.accesoEventos || currentUser?.esAdmin;
     const canAccessUsers = currentUser?.esAdmin;
+    const canAccessModelo = currentUser?.accesoModeloPresupuesto || currentUser?.ajustarCurva || currentUser?.verAjustePresupuesto || currentUser?.verConfigModelo || currentUser?.verConsolidadoMensual || currentUser?.verVersiones || currentUser?.verBitacora || currentUser?.verReferencias || currentUser?.editarConsolidado || currentUser?.ejecutarRecalculo || currentUser?.restaurarVersiones;
 
-    if (!currentUser || (!canAccessUsers && !canAccessEvents)) {
+    if (!currentUser || (!canAccessUsers && !canAccessEvents && !canAccessModelo)) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 p-6">
                 <div className="max-w-4xl mx-auto">
@@ -77,8 +78,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         );
     }
 
-    // Auto-select tab based on permissions: if user has eventos but not admin, default to eventos
-    const defaultTab = isOfflineAdmin ? 'database' : (canAccessUsers ? 'users' : 'events');
+    // Auto-select tab based on permissions: admin->users, modelo->modelo-presupuesto, eventos->events
+    const defaultTab = isOfflineAdmin ? 'database' : (canAccessUsers ? 'users' : (canAccessModelo ? 'modelo-presupuesto' : 'events'));
     const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit' | 'store-aliases'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -574,7 +575,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                         >
                             {canAccessUsers && <option value="users">👤 Usuarios</option>}
                             {canAccessUsers && <option value="profiles">🛡️ Perfiles</option>}
-                            {canAccessUsers && <option value="personal">👥 Personal</option>}
+                            {canAccessUsers && <option value="personal">👥 Asignaciones</option>}
                             {canAccessEvents && <option value="events">📅 Eventos Ajuste</option>}
                             {canAccessUsers && <option value="ia">🤖 IA Táctica</option>}
                             {canAccessUsers && <option value="general">⚙️ General</option>}
@@ -582,7 +583,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             {canAccessUsers && <option value="invgate">🎫 InvGate</option>}
                             {canAccessUsers && <option value="forms">📋 Forms</option>}
                             {canAccessUsers && <option value="uber-eats">🍔 Uber Eats</option>}
-                            {canAccessUsers && <option value="modelo-presupuesto">📈 Modelo Presupuesto</option>}
+                            {(canAccessUsers || canAccessModelo) && <option value="modelo-presupuesto">📈 Modelo Presupuesto</option>}
                             {canAccessUsers && <option value="kpi-admin">📊 Admin KPIs</option>}
                             {canAccessUsers && <option value="deploy">🚀 Publicación</option>}
 
@@ -610,7 +611,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             <button onClick={() => setActiveTab('personal')}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'personal' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
                                 <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                Personal
+                                Asignaciones
                             </button>
                         )}
 
@@ -643,7 +644,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             </button>
                         )}
 
-                        {canAccessUsers && (
+                        {(canAccessUsers || canAccessModelo) && (
                             <button onClick={() => setActiveTab('modelo-presupuesto')}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'modelo-presupuesto' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
                                 <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>

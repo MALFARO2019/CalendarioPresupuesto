@@ -352,16 +352,50 @@ async function getAjustes(nombrePresupuesto) {
  */
 async function aplicarAjuste(data) {
     const pool = await poolPromise;
+
+    // Map frontend distribution names to SP parameter names
+    let metodoDistribucionSP = data.metodoDistribucion || 'Mes';
+    let diaSemana = data.dia || null;
+    let fechaInicio = null;
+    let fechaFin = null;
+
+    if (metodoDistribucionSP === 'MismoDiaSemana') {
+        // Frontend sends 'MismoDiaSemana', SP expects 'TipoDia'
+        metodoDistribucionSP = 'TipoDia';
+        // Compute day-of-week from fecha if not provided
+        if (!diaSemana && data.fecha) {
+            const d = new Date(data.fecha.substring(0, 10) + 'T00:00:00Z');
+            const jsDay = d.getUTCDay(); // 0=Sun, 1=Mon
+            diaSemana = jsDay === 0 ? 7 : jsDay; // 1=Mon...7=Sun
+        }
+    } else if (metodoDistribucionSP === 'Semana') {
+        // For week-based distribution, compute the Monday-Sunday range
+        if (data.fecha) {
+            const dateStr = data.fecha.substring(0, 10);
+            const d = new Date(dateStr + 'T00:00:00Z');
+            const jsDay = d.getUTCDay(); // 0=Sun
+            const diffToMonday = jsDay === 0 ? -6 : 1 - jsDay;
+            const monday = new Date(d);
+            monday.setUTCDate(monday.getUTCDate() + diffToMonday);
+            const sunday = new Date(monday);
+            sunday.setUTCDate(sunday.getUTCDate() + 6);
+            fechaInicio = monday.toISOString().substring(0, 10);
+            fechaFin = sunday.toISOString().substring(0, 10);
+        }
+    }
+
     const result = await pool.request()
         .input('nombrePresupuesto', sql.NVarChar(100), data.nombrePresupuesto)
         .input('codAlmacen', sql.NVarChar(10), data.codAlmacen)
         .input('mes', sql.Int, data.mes)
-        .input('dia', sql.Int, data.dia || null)
+        .input('dia', sql.Int, diaSemana)
         .input('canal', sql.NVarChar(200), data.canal)
         .input('tipo', sql.NVarChar(100), data.tipo)
         .input('metodoAjuste', sql.NVarChar(50), data.metodoAjuste)
         .input('valorAjuste', sql.Decimal(18, 4), data.valorAjuste)
-        .input('metodoDistribucion', sql.NVarChar(50), data.metodoDistribucion || 'Mes')
+        .input('metodoDistribucion', sql.NVarChar(50), metodoDistribucionSP)
+        .input('fechaInicio', sql.Date, fechaInicio)
+        .input('fechaFin', sql.Date, fechaFin)
         .input('usuario', sql.NVarChar(200), data.usuario)
         .input('motivo', sql.NVarChar(500), data.motivo || '')
         .execute('SP_AJUSTAR_PRESUPUESTO');
@@ -765,11 +799,15 @@ async function getValidacion(nombrePresupuesto) {
                     FROM [${cfg.TablaDestino}] d
                     LEFT JOIN KpisRosti_Consolidado_Mensual c
                         ON d.CodAlmacen = c.CodAlmacen
-                        AND d.Tipo = c.Tipo
+                        AND c.Tipo = CASE d.Tipo
+                            WHEN 'Ventas' THEN 'VENTA'
+                            WHEN 'Transacciones' THEN 'TRANSACCIONES'
+                            WHEN 'TQP' THEN 'TQP'
+                            ELSE d.Tipo END
                         AND d.Mes = c.Mes
                         AND c.Ano = @ano
                     WHERE d.NombrePresupuesto = @nombrePresupuesto
-                      AND d.Año = @ano
+                      AND YEAR(d.Fecha) = @ano
                       AND d.Canal = @canal
                       AND d.Tipo IN ('Ventas', 'Transacciones')
                       AND LEFT(d.CodAlmacen, 1) != 'G'
@@ -779,9 +817,10 @@ async function getValidacion(nombrePresupuesto) {
                 `);
             for (const r of res.recordset) {
                 results.push({
-                    codAlmacen: r.codAlmacen, canal: r.canal, tipo: r.tipo, mes: r.mes,
+                    codAlmacen: r.codAlmacen, canal: r.canal, tipo: r.tipo,
+                    ano: cfg.AnoModelo, mes: r.mes,
                     local: r.codAlmacen,
-                    esperado: r.valorConsolidado || 0, real: r.sumaDiaria || 0,
+                    consolidado: r.valorConsolidado || 0, sumaDiaria: r.sumaDiaria || 0,
                     diferencia: (r.sumaDiaria || 0) - (r.valorConsolidado || 0),
                     match: false
                 });
@@ -798,19 +837,34 @@ async function getValidacion(nombrePresupuesto) {
 /**
  * Get daily budget data for the adjustment chart
  */
-async function getDatosAjuste(nombrePresupuesto, codAlmacen, mes, canal, tipo) {
+async function getDatosAjuste(nombrePresupuesto, codAlmacen, mes, canal, tipo, ano) {
     const pool = await poolPromise;
     const config = await getConfig();
     if (!config) throw new Error('No hay configuración activa');
 
-    const result = await pool.request()
+    const request = pool.request()
         .input('nombrePresupuesto', sql.NVarChar(100), nombrePresupuesto)
         .input('codAlmacen', sql.NVarChar(10), codAlmacen)
-        .input('mes', sql.Int, mes)
-        .input('canal', sql.NVarChar(200), canal)
-        .input('tipo', sql.NVarChar(100), tipo)
-        .query(`
-            SELECT Fecha, idDia, Dia,
+        .input('tipo', sql.NVarChar(100), tipo);
+
+    let mesFilter = '';
+    if (mes) {
+        request.input('mes', sql.Int, mes);
+        mesFilter = 'AND Mes = @mes';
+    }
+
+    let anoFilter = '';
+    if (ano) {
+        request.input('ano', sql.Int, ano);
+        anoFilter = 'AND YEAR(Fecha) = @ano';
+    }
+
+    let queryStr;
+    if (canal && canal !== 'Todos') {
+        // Individual canal — exact match
+        request.input('canal', sql.NVarChar(200), canal);
+        queryStr = `
+            SELECT Fecha, idDia, Dia, Mes,
                    Monto AS Presupuesto, MontoReal AS RealValor,
                    MontoAnterior AS AnoAnterior, MontoAnteriorAjustado AS AnoAnteriorAjustado,
                    Monto_Acumulado AS PresupuestoAcum,
@@ -821,11 +875,40 @@ async function getDatosAjuste(nombrePresupuesto, codAlmacen, mes, canal, tipo) {
             FROM [${config.tablaDestino}]
             WHERE NombrePresupuesto = @nombrePresupuesto
               AND CodAlmacen = @codAlmacen
-              AND Mes = @mes
+              ${mesFilter}
+              ${anoFilter}
               AND Canal = @canal
               AND Tipo = @tipo
             ORDER BY Fecha
-        `);
+        `;
+    } else {
+        // 'Todos' — aggregate across all canals
+        queryStr = `
+            SELECT Fecha, MIN(idDia) AS idDia, Dia, Mes,
+                   SUM(ISNULL(Monto,0)) AS Presupuesto,
+                   SUM(ISNULL(MontoReal,0)) AS RealValor,
+                   SUM(ISNULL(MontoAnterior,0)) AS AnoAnterior,
+                   SUM(ISNULL(MontoAnteriorAjustado,0)) AS AnoAnteriorAjustado,
+                   SUM(ISNULL(Monto_Acumulado,0)) AS PresupuestoAcum,
+                   SUM(ISNULL(MontoAnterior_Acumulado,0)) AS AnoAnteriorAcum,
+                   SUM(ISNULL(MontoAnteriorAjustado_Acumulado,0)) AS AnoAnteriorAjustadoAcum,
+                   SUM(ISNULL(Monto_Dif,0)) AS DiferenciaPresupuesto,
+                   SUM(ISNULL(MontoAnterior_Dif,0)) AS DiferenciaAnoAnterior
+            FROM [${config.tablaDestino}]
+            WHERE NombrePresupuesto = @nombrePresupuesto
+              AND CodAlmacen = @codAlmacen
+              ${mesFilter}
+              ${anoFilter}
+              AND Tipo = @tipo
+            GROUP BY Fecha, Dia, Mes
+            ORDER BY Fecha
+        `;
+    }
+
+    const result = await request.query(queryStr);
+
+
+
 
     return result.recordset;
 }
