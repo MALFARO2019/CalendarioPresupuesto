@@ -368,10 +368,30 @@ async function lookupStores(search) {
     const r = await mainPool.request()
         .input('search', mainSql.NVarChar, `%${search}%`)
         .query(`
-            SELECT TOP 20 CODALMACEN, NOMBRE_GENERAL
-            FROM DIM_NOMBRES_ALMACEN
-            WHERE CODALMACEN LIKE @search OR NOMBRE_GENERAL LIKE @search
-            ORDER BY NOMBRE_GENERAL
+            SELECT DISTINCT TOP 20
+                RTRIM(a.CodAlmacen) AS CODALMACEN,
+                COALESCE(
+                    n.NOMBRE_GENERAL,
+                    n.NOMBRE_OPERACIONES,
+                    n.NOMBRE_CONTA,
+                    n.NOMBRE_INOCUIDAD,
+                    n.NOMBRE_JUSTO,
+                    d.NOMBREALMACEN COLLATE Modern_Spanish_CI_AS,
+                    a.Alias
+                ) AS NOMBRE_GENERAL
+            FROM APP_STORE_ALIAS a
+            LEFT JOIN DIM_NOMBRES_ALMACEN n ON RTRIM(n.CODALMACEN) = RTRIM(a.CodAlmacen)
+            LEFT JOIN DIM_ALMACEN d ON RTRIM(d.CODALMACEN) COLLATE Modern_Spanish_CI_AS = RTRIM(a.CodAlmacen) COLLATE Modern_Spanish_CI_AS
+            WHERE a.Activo = 1
+              AND (
+                  a.CodAlmacen LIKE @search
+                  OR a.Alias LIKE @search
+                  OR n.NOMBRE_OPERACIONES LIKE @search
+                  OR n.NOMBRE_CONTA LIKE @search
+                  OR n.NOMBRE_INOCUIDAD LIKE @search
+                  OR d.NOMBREALMACEN LIKE @search COLLATE Modern_Spanish_CI_AS
+              )
+            ORDER BY CODALMACEN
         `);
     return r.recordset;
 }
