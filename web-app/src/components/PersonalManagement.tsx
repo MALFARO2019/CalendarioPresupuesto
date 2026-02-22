@@ -1,59 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchAsignaciones, fetchProfiles } from '../api';
-import type { Profile } from '../api';
+import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchAsignaciones, fetchProfiles, fetchPersonal, createAsignacion, updateAsignacion, deleteAsignacion as apiDeleteAsignacion } from '../api';
+import type { Profile, PersonalItem, Asignacion } from '../api';
 import { Plus, Edit2, Trash2, UserCheck, MapPin, RefreshCw, X, ChevronDown, ChevronUp, Calendar, AlertTriangle, Shield, Search } from 'lucide-react';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Persona {
-    ID: number;
-    NOMBRE: string;
-    CORREO: string | null;
-    CEDULA: string | null;
-    TELEFONO: string | null;
-    ACTIVO: boolean;
-    TotalAsignaciones: number;
-}
-
-interface Asignacion {
-    ID: number;
-    PERSONAL_ID: number;
-    PERSONAL_NOMBRE: string;
-    LOCAL: string;
-    PERFIL: string;
-    FECHA_INICIO: string;
-    FECHA_FIN: string | null;
-    NOTAS: string | null;
-    ACTIVO: boolean;
-}
-
-
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const PersonalManagement: React.FC = () => {
-    const [personas, setPersonas] = useState<Persona[]>([]);
+    const [usuarios, setUsuarios] = useState<PersonalItem[]>([]);
     const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'personas' | 'asignaciones' | 'cobertura'>('asignaciones');
+    const [activeTab, setActiveTab] = useState<'usuarios' | 'asignaciones' | 'cobertura'>('asignaciones');
     const [allStores, setAllStores] = useState<string[]>([]);
     const [localesSinCobertura, setLocalesSinCobertura] = useState<{ Local: string, PerfilesFaltantes: string }[]>([]);
     const [loadingCobertura, setLoadingCobertura] = useState(false);
 
-    // Persona form
-    const [showPersonaForm, setShowPersonaForm] = useState(false);
-    const [editPersona, setEditPersona] = useState<Persona | null>(null);
-    const [pNombre, setPNombre] = useState('');
-    const [pCorreo, setPCorreo] = useState('');
-    const [pCedula, setPCedula] = useState('');
-    const [pTelefono, setPTelefono] = useState('');
-    const [savingPersona, setSavingPersona] = useState(false);
-
     // Asignacion form
     const [showAsigForm, setShowAsigForm] = useState(false);
     const [editAsig, setEditAsig] = useState<Asignacion | null>(null);
-    const [aPersonalId, setAPersonalId] = useState('');
+    const [aUsuarioId, setAUsuarioId] = useState('');
     const [aLocal, setALocal] = useState('');
     const [aPerfil, setAPerfil] = useState('');
     const [aFechaInicio, setAFechaInicio] = useState('');
@@ -61,10 +26,8 @@ export const PersonalManagement: React.FC = () => {
     const [aNotas, setANotas] = useState('');
     const [savingAsig, setSavingAsig] = useState(false);
 
-
-
     // Filters
-    const [filterPersona, setFilterPersona] = useState('');
+    const [filterUsuario, setFilterUsuario] = useState('');
     const [filterLocal, setFilterLocal] = useState('');
     const [filterPerfil, setFilterPerfil] = useState('');
     const [filterDateStart, setFilterDateStart] = useState('');
@@ -72,13 +35,11 @@ export const PersonalManagement: React.FC = () => {
     const [coberturaPerfil, setCoberturaPerfil] = useState('Supervisor');
     const [coberturaMonth, setCoberturaMonth] = useState(new Date().getMonth() + 1);
     const [coberturaYear, setCoberturaYear] = useState(new Date().getFullYear());
-    const [expandedPersona, setExpandedPersona] = useState<number | null>(null);
+    const [expandedUsuario, setExpandedUsuario] = useState<number | null>(null);
 
     const [error, setError] = useState<string | null>(null);
 
     const activeProfileNames = profiles.map(p => p.nombre);
-
-    const headers = () => ({ Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' });
 
     // ─── Load ─────────────────────────────────────────────────────────────────
 
@@ -89,19 +50,17 @@ export const PersonalManagement: React.FC = () => {
         } catch (e: any) { console.error('Error loading profiles', e); }
     }, []);
 
-    const loadPersonas = useCallback(async () => {
+    const loadUsuarios = useCallback(async () => {
         setLoading(true);
         try {
-            const r = await fetch(`${API_BASE}/personal`, { headers: headers() });
-            const d = await r.json();
-            setPersonas(Array.isArray(d) ? d : []);
+            const d = await fetchPersonal();
+            setUsuarios(Array.isArray(d) ? d : []);
         } catch (e: any) { setError(e.message); }
         finally { setLoading(false); }
     }, []);
 
     const loadAsignaciones = useCallback(async () => {
         try {
-            // Can pass month/year here later if needed
             const d = await fetchAsignaciones();
             setAsignaciones(d);
         } catch (e: any) { setError(e.message); }
@@ -131,54 +90,20 @@ export const PersonalManagement: React.FC = () => {
 
     useEffect(() => {
         loadProfiles();
-        loadPersonas();
+        loadUsuarios();
         loadAsignaciones();
         loadStores();
-    }, [loadProfiles, loadPersonas, loadAsignaciones, loadStores]);
+    }, [loadProfiles, loadUsuarios, loadAsignaciones, loadStores]);
 
     useEffect(() => {
         loadCobertura();
     }, [loadCobertura]);
 
-    // ─── Persona CRUD ─────────────────────────────────────────────────────────
-
-    const openPersonaForm = (p?: Persona) => {
-        setEditPersona(p || null);
-        setPNombre(p?.NOMBRE || '');
-        setPCorreo(p?.CORREO || '');
-        setPCedula(p?.CEDULA || '');
-        setPTelefono(p?.TELEFONO || '');
-        setShowPersonaForm(true);
-    };
-
-    const savePersona = async () => {
-        if (!pNombre.trim()) { setError('El nombre es requerido'); return; }
-        setSavingPersona(true);
-        setError(null);
-        try {
-            const url = editPersona ? `${API_BASE}/personal/${editPersona.ID}` : `${API_BASE}/personal`;
-            const method = editPersona ? 'PUT' : 'POST';
-            const r = await fetch(url, { method, headers: headers(), body: JSON.stringify({ nombre: pNombre, correo: pCorreo, cedula: pCedula, telefono: pTelefono }) });
-            if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Error al guardar'); }
-            setShowPersonaForm(false);
-            await loadPersonas();
-        } catch (e: any) { setError(e.message); }
-        finally { setSavingPersona(false); }
-    };
-
-    const deletePersona = async (p: Persona) => {
-        if (!confirm(`¿Desactivar a "${p.NOMBRE}"?`)) return;
-        try {
-            await fetch(`${API_BASE}/personal/${p.ID}`, { method: 'DELETE', headers: headers() });
-            await loadPersonas();
-        } catch (e: any) { setError(e.message); }
-    };
-
     // ─── Asignacion CRUD ──────────────────────────────────────────────────────
 
     const openAsigForm = (a?: Asignacion) => {
         setEditAsig(a || null);
-        setAPersonalId(a?.PERSONAL_ID?.toString() || '');
+        setAUsuarioId(a?.USUARIO_ID?.toString() || '');
         setALocal(a?.LOCAL || '');
         setAPerfil(a?.PERFIL || '');
         setAFechaInicio(a?.FECHA_INICIO?.split('T')[0] || '');
@@ -188,39 +113,36 @@ export const PersonalManagement: React.FC = () => {
     };
 
     const saveAsig = async () => {
-        if (!aPersonalId || !aLocal || !aPerfil || !aFechaInicio) { setError('Persona, local, perfil y fecha inicio son requeridos'); return; }
+        if (!aUsuarioId || !aLocal || !aPerfil || !aFechaInicio) { setError('Usuario, local, perfil y fecha inicio son requeridos'); return; }
         setSavingAsig(true);
         setError(null);
         try {
-            const url = editAsig ? `${API_BASE}/personal/asignaciones/${editAsig.ID}` : `${API_BASE}/personal/asignaciones`;
-            const method = editAsig ? 'PUT' : 'POST';
-            const r = await fetch(url, {
-                method, headers: headers(),
-                body: JSON.stringify({ personalId: parseInt(aPersonalId), local: aLocal, perfil: aPerfil, fechaInicio: aFechaInicio, fechaFin: aFechaFin || null, notas: aNotas || null })
-            });
-            if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Error al guardar'); }
+            if (editAsig) {
+                await updateAsignacion(editAsig.ID, aLocal, aPerfil, aFechaInicio, aFechaFin || undefined, aNotas || undefined);
+            } else {
+                await createAsignacion(parseInt(aUsuarioId), aLocal, aPerfil, aFechaInicio, aFechaFin || undefined, aNotas || undefined);
+            }
             setShowAsigForm(false);
-            await loadAsignaciones(); await loadPersonas();
+            await loadAsignaciones(); await loadUsuarios();
         } catch (e: any) { setError(e.message); }
         finally { setSavingAsig(false); }
     };
 
     const deleteAsig = async (a: Asignacion) => {
-        if (!confirm(`¿Eliminar asignación de "${a.PERSONAL_NOMBRE}" en ${a.LOCAL}?`)) return;
+        if (!confirm(`¿Eliminar asignación de "${a.USUARIO_NOMBRE}" en ${a.LOCAL}?`)) return;
         try {
-            await fetch(`${API_BASE}/personal/asignaciones/${a.ID}`, { method: 'DELETE', headers: headers() });
-            await loadAsignaciones(); await loadPersonas();
+            await apiDeleteAsignacion(a.ID);
+            await loadAsignaciones(); await loadUsuarios();
         } catch (e: any) { setError(e.message); }
     };
 
     // ─── Derived ──────────────────────────────────────────────────────────────
 
     const filteredAsig = asignaciones.filter(a => {
-        const q = filterPersona.toLowerCase();
+        const q = filterUsuario.toLowerCase();
         const ql = filterLocal.toLowerCase();
         const qp = filterPerfil.toLowerCase();
 
-        // Date filter: Active within range
         const start = filterDateStart ? new Date(filterDateStart) : null;
         const end = filterDateEnd ? new Date(filterDateEnd) : null;
         const aStart = new Date(a.FECHA_INICIO);
@@ -229,7 +151,7 @@ export const PersonalManagement: React.FC = () => {
         const inDateRange = (!start || (!aEnd || aEnd >= start)) &&
             (!end || aStart <= end);
 
-        return (!q || a.PERSONAL_NOMBRE.toLowerCase().includes(q))
+        return (!q || a.USUARIO_NOMBRE.toLowerCase().includes(q))
             && (!ql || a.LOCAL.toLowerCase().includes(ql))
             && (!qp || a.PERFIL.toLowerCase().includes(qp))
             && inDateRange;
@@ -237,8 +159,6 @@ export const PersonalManagement: React.FC = () => {
 
     const fmtDate = (d: string | null) => !d ? '—' : new Date(d).toLocaleDateString('es-CR', { timeZone: 'UTC' });
     const isVigente = (a: Asignacion) => !a.FECHA_FIN || new Date(a.FECHA_FIN) >= new Date();
-
-
 
     // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -248,10 +168,10 @@ export const PersonalManagement: React.FC = () => {
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <h2 className="text-xl font-bold text-gray-800">👥 Control de Personal</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Asignaciones de personal a locales por perfil</p>
+                    <p className="text-sm text-gray-500 mt-0.5">Asignaciones de usuarios a locales por perfil</p>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={() => { loadPersonas(); loadAsignaciones(); loadProfiles(); }} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" title="Actualizar">
+                    <button onClick={() => { loadUsuarios(); loadAsignaciones(); loadProfiles(); }} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" title="Actualizar">
                         <RefreshCw className="w-4 h-4" />
                     </button>
                 </div>
@@ -265,10 +185,10 @@ export const PersonalManagement: React.FC = () => {
             )}
 
             <div className="flex items-center gap-1 sm:gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
-                {(['asignaciones', 'personas', 'cobertura'] as const).map(tab => (
+                {(['asignaciones', 'usuarios', 'cobertura'] as const).map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)}
                         className={`px-3 sm:px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : tab === 'personas' ? `👤 Personal (${personas.length})` : '🛡️ Cobertura'}
+                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : tab === 'usuarios' ? `👤 Usuarios (${usuarios.length})` : '🛡️ Cobertura'}
                     </button>
                 ))}
             </div>
@@ -281,7 +201,7 @@ export const PersonalManagement: React.FC = () => {
                         <button onClick={() => openAsigForm()} className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
                             <Plus className="w-4 h-4" /> Nueva Asignación
                         </button>
-                        <input type="text" value={filterPersona} onChange={e => setFilterPersona(e.target.value)} placeholder="🔍 Persona..." className="px-3 py-2 border border-gray-200 rounded-lg text-sm flex-1 min-w-[120px] max-w-[200px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                        <input type="text" value={filterUsuario} onChange={e => setFilterUsuario(e.target.value)} placeholder="🔍 Usuario..." className="px-3 py-2 border border-gray-200 rounded-lg text-sm flex-1 min-w-[120px] max-w-[200px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                         <select value={filterLocal} onChange={e => setFilterLocal(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
                             <option value="">Todos los locales</option>
                             {allStores.map(l => <option key={l} value={l}>{l}</option>)}
@@ -304,7 +224,7 @@ export const PersonalManagement: React.FC = () => {
                             <table className="w-full text-sm">
                                 <thead className="bg-gray-50 border-b border-gray-200">
                                     <tr>
-                                        <th className="text-left px-4 py-3 font-semibold text-gray-600">Persona</th>
+                                        <th className="text-left px-4 py-3 font-semibold text-gray-600">Usuario</th>
                                         <th className="text-left px-4 py-3 font-semibold text-gray-600">Local</th>
                                         <th className="text-left px-4 py-3 font-semibold text-gray-600">Perfil</th>
                                         <th className="text-left px-4 py-3 font-semibold text-gray-600">Inicio</th>
@@ -319,7 +239,7 @@ export const PersonalManagement: React.FC = () => {
                                     ) : filteredAsig.map(a => (
                                         <tr key={a.ID} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-4 py-3">
-                                                <div className="font-medium text-gray-800">{a.PERSONAL_NOMBRE}</div>
+                                                <div className="font-medium text-gray-800">{a.USUARIO_NOMBRE}</div>
                                                 {a.NOTAS && <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[180px]">{a.NOTAS}</div>}
                                             </td>
                                             <td className="px-4 py-3">
@@ -350,48 +270,44 @@ export const PersonalManagement: React.FC = () => {
                 </div>
             )}
 
-            {/* ── TAB: Personal ── */}
-            {activeTab === 'personas' && (
+            {/* ── TAB: Usuarios (read-only) ── */}
+            {activeTab === 'usuarios' && (
                 <div>
-                    <div className="flex gap-2 mb-4">
-                        <button onClick={() => openPersonaForm()} className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-                            <Plus className="w-4 h-4" /> Nueva Persona
-                        </button>
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                        ℹ️ Los usuarios se administran desde <strong>Configuración → Usuarios</strong>. Aquí solo se muestran para referencia al asignar.
                     </div>
 
                     {loading ? (
                         <div className="text-center py-10 text-gray-400">Cargando...</div>
                     ) : (
                         <div className="space-y-2">
-                            {personas.filter(p => p.ACTIVO).map(p => (
-                                <div key={p.ID} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                            {usuarios.map(u => (
+                                <div key={u.ID} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                                     <div className="flex items-center justify-between px-4 py-3">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
-                                                {p.NOMBRE.charAt(0).toUpperCase()}
+                                                {u.NOMBRE.charAt(0).toUpperCase()}
                                             </div>
                                             <div>
-                                                <div className="font-semibold text-gray-800">{p.NOMBRE}</div>
-                                                <div className="text-xs text-gray-400">{p.CORREO || p.CEDULA || '—'}</div>
+                                                <div className="font-semibold text-gray-800">{u.NOMBRE}</div>
+                                                <div className="text-xs text-gray-400">{u.CORREO || u.CEDULA || '—'}</div>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                                                <UserCheck className="w-3 h-3 inline mr-1" />{p.TotalAsignaciones} asig.
+                                                <UserCheck className="w-3 h-3 inline mr-1" />{u.TotalAsignaciones} asig.
                                             </span>
-                                            <button onClick={() => openPersonaForm(p)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => deletePersona(p)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => setExpandedPersona(expandedPersona === p.ID ? null : p.ID)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors">
-                                                {expandedPersona === p.ID ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                            <button onClick={() => setExpandedUsuario(expandedUsuario === u.ID ? null : u.ID)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors">
+                                                {expandedUsuario === u.ID ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                             </button>
                                         </div>
                                     </div>
-                                    {expandedPersona === p.ID && (
+                                    {expandedUsuario === u.ID && (
                                         <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
                                             <p className="text-xs font-semibold text-gray-500 mb-2">ASIGNACIONES ACTIVAS</p>
-                                            {asignaciones.filter(a => a.PERSONAL_ID === p.ID && isVigente(a)).length === 0 ? (
+                                            {asignaciones.filter(a => a.USUARIO_ID === u.ID && isVigente(a)).length === 0 ? (
                                                 <p className="text-xs text-gray-400">Sin asignaciones activas</p>
-                                            ) : asignaciones.filter(a => a.PERSONAL_ID === p.ID && isVigente(a)).map(a => (
+                                            ) : asignaciones.filter(a => a.USUARIO_ID === u.ID && isVigente(a)).map(a => (
                                                 <div key={a.ID} className="flex items-center gap-2 text-xs text-gray-600 mb-1">
                                                     <MapPin className="w-3 h-3 text-gray-400" />
                                                     <span className="font-medium">{a.LOCAL}</span>
@@ -493,43 +409,6 @@ export const PersonalManagement: React.FC = () => {
                 </div>
             )}
 
-
-
-            {/* ── Modal: Persona ── */}
-            {showPersonaForm && (
-                <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowPersonaForm(false)}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">{editPersona ? '✏️ Editar Persona' : '👤 Nueva Persona'}</h3>
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Nombre *</label>
-                                <input type="text" value={pNombre} onChange={e => setPNombre(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Nombre completo" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Correo</label>
-                                <input type="email" value={pCorreo} onChange={e => setPCorreo(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="correo@empresa.com" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className='col-span-1'>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Cédula</label>
-                                    <input type="text" value={pCedula} onChange={e => setPCedula(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                                </div>
-                                <div className='col-span-1'>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Teléfono</label>
-                                    <input type="text" value={pTelefono} onChange={e => setPTelefono(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex gap-2 mt-5">
-                            <button onClick={savePersona} disabled={savingPersona} className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50">
-                                {savingPersona ? 'Guardando...' : '💾 Guardar'}
-                            </button>
-                            <button onClick={() => setShowPersonaForm(false)} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50 transition-colors">Cancelar</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* ── Modal: Asignación ── */}
             {showAsigForm && (
                 <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowAsigForm(false)}>
@@ -537,10 +416,10 @@ export const PersonalManagement: React.FC = () => {
                         <h3 className="text-lg font-bold text-gray-800 mb-4">{editAsig ? '✏️ Editar Asignación' : '📋 Nueva Asignación'}</h3>
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Persona *</label>
-                                <select value={aPersonalId} onChange={e => setAPersonalId(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                                    <option value="">Seleccionar persona...</option>
-                                    {personas.filter(p => p.ACTIVO).map(p => <option key={p.ID} value={p.ID}>{p.NOMBRE}</option>)}
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Usuario *</label>
+                                <select value={aUsuarioId} onChange={e => setAUsuarioId(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                                    <option value="">Seleccionar usuario...</option>
+                                    {usuarios.filter(u => u.ACTIVO).map(u => <option key={u.ID} value={u.ID}>{u.NOMBRE}</option>)}
                                 </select>
                             </div>
                             <div>
@@ -581,9 +460,6 @@ export const PersonalManagement: React.FC = () => {
                     </div>
                 </div>
             )}
-
-
-
 
         </div>
     );

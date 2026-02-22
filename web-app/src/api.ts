@@ -37,6 +37,8 @@ export interface User {
     permitirEnvioClave?: boolean;
     perfilId?: number | null;
     offlineAdmin?: boolean;
+    cedula?: string | null;
+    telefono?: string | null;
 }
 
 
@@ -195,12 +197,14 @@ export async function createAdminUser(
     accesoPersonal: boolean = false,
     esAdmin: boolean = false,
     modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {},
-    perfilId: number | null = null
+    perfilId: number | null = null,
+    cedula: string | null = null,
+    telefono: string | null = null
 ): Promise<{ success: boolean; userId: number; clave: string }> {
     const response = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, ...modeloPerms })
+        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, cedula, telefono, ...modeloPerms })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -231,12 +235,14 @@ export async function updateAdminUser(
     esAdmin: boolean,
     permitirEnvioClave: boolean = true,
     perfilId: number | null = null,
-    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {}
+    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {},
+    cedula: string | null = null,
+    telefono: string | null = null
 ): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, ...modeloPerms })
+        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, cedula, telefono, ...modeloPerms })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -965,31 +971,29 @@ export async function syncProfilePermissions(profileId: number): Promise<{ succe
 // PERSONAL MODULE API
 // ==========================================
 
-export interface Personal {
-    id: number;
-    nombre: string;
-    correo: string | null;
-    cedula: string | null;
-    telefono: string | null;
-    activo: boolean;
-    fechaCreacion: string;
+export interface PersonalItem {
+    ID: number;
+    NOMBRE: string;
+    CORREO: string | null;
+    CEDULA: string | null;
+    TELEFONO: string | null;
+    ACTIVO: boolean;
+    TotalAsignaciones: number;
 }
 
 export interface Asignacion {
     ID: number;
-    PERSONAL_ID: number;
-    PERSONAL_NOMBRE: string;
+    USUARIO_ID: number;
+    USUARIO_NOMBRE: string;
     LOCAL: string;
     PERFIL: string;
     FECHA_INICIO: string;
     FECHA_FIN: string | null;
     NOTAS: string | null;
-    FECHA_ASIGNACION: string;
-    ASIGNADO_POR: string;
     ACTIVO: boolean;
 }
 
-export async function fetchPersonal(): Promise<Personal[]> {
+export async function fetchPersonal(): Promise<PersonalItem[]> {
     const response = await fetch(`${API_BASE}/personal`, {
         headers: authHeaders()
     });
@@ -997,37 +1001,9 @@ export async function fetchPersonal(): Promise<Personal[]> {
     return response.json();
 }
 
-export async function createPersona(nombre: string, correo?: string, cedula?: string, telefono?: string): Promise<Personal> {
-    const response = await fetch(`${API_BASE}/personal`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ nombre, correo, cedula, telefono })
-    });
-    if (!response.ok) throw new Error('Error creating persona');
-    return response.json();
-}
-
-export async function updatePersona(id: number, nombre: string, correo?: string, cedula?: string, telefono?: string, activo?: boolean): Promise<Personal> {
-    const response = await fetch(`${API_BASE}/personal/${id}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify({ nombre, correo, cedula, telefono, activo })
-    });
-    if (!response.ok) throw new Error('Error updating persona');
-    return response.json();
-}
-
-export async function deletePersona(id: number): Promise<void> {
-    const response = await fetch(`${API_BASE}/personal/${id}`, {
-        method: 'DELETE',
-        headers: authHeaders()
-    });
-    if (!response.ok) throw new Error('Error deleting persona');
-}
-
-export async function fetchAsignaciones(personalId?: number, month?: number, year?: number): Promise<Asignacion[]> {
+export async function fetchAsignaciones(usuarioId?: number, month?: number, year?: number): Promise<Asignacion[]> {
     const params = new URLSearchParams();
-    if (personalId) params.append('personalId', personalId.toString());
+    if (usuarioId) params.append('usuarioId', usuarioId.toString());
     if (month) params.append('month', month.toString());
     if (year) params.append('year', year.toString());
 
@@ -1038,11 +1014,11 @@ export async function fetchAsignaciones(personalId?: number, month?: number, yea
     return response.json();
 }
 
-export async function createAsignacion(personalId: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string): Promise<Asignacion> {
+export async function createAsignacion(usuarioId: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string): Promise<Asignacion> {
     const response = await fetch(`${API_BASE}/personal/asignaciones`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ personalId, local, perfil, fechaInicio, fechaFin, notas })
+        body: JSON.stringify({ usuarioId, local, perfil, fechaInicio, fechaFin, notas })
     });
     if (!response.ok) throw new Error('Error creating asignacion');
     return response.json();

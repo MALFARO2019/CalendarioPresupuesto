@@ -2047,85 +2047,9 @@ app.get('/api/eventos/por-mes', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// CONTROL DE PERSONAL
+// CONTROL DE PERSONAL (endpoints defined earlier in file, using APP_USUARIOS)
 // ==========================================
 
-// GET /api/personal
-app.get('/api/personal', authMiddleware, async (req, res) => {
-    try {
-        const data = await personalModule.getAllPersonal();
-        res.json(data);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// POST /api/personal
-app.post('/api/personal', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
-        const { nombre, correo, cedula, telefono } = req.body;
-        if (!nombre) return res.status(400).json({ error: 'nombre es requerido' });
-        const data = await personalModule.createPersona(nombre, correo, cedula, telefono);
-        res.json(data);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// PUT /api/personal/:id
-app.put('/api/personal/:id', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
-        const { nombre, correo, cedula, telefono, activo } = req.body;
-        const data = await personalModule.updatePersona(parseInt(req.params.id), nombre, correo, cedula, telefono, activo);
-        res.json(data);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// DELETE /api/personal/:id
-app.delete('/api/personal/:id', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
-        await personalModule.deletePersona(parseInt(req.params.id));
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// GET /api/personal/asignaciones?personalId=
-app.get('/api/personal/asignaciones', authMiddleware, async (req, res) => {
-    try {
-        const pid = req.query.personalId ? parseInt(req.query.personalId) : null;
-        const data = await personalModule.getAsignaciones(pid);
-        res.json(data);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// POST /api/personal/asignaciones
-app.post('/api/personal/asignaciones', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
-        const { personalId, local, perfil, fechaInicio, fechaFin, notas } = req.body;
-        if (!personalId || !local || !perfil || !fechaInicio) return res.status(400).json({ error: 'personalId, local, perfil y fechaInicio son requeridos' });
-        const data = await personalModule.createAsignacion(personalId, local, perfil, fechaInicio, fechaFin, notas);
-        res.json(data);
-    } catch (err) { res.status(400).json({ error: err.message }); }
-});
-
-// PUT /api/personal/asignaciones/:id
-app.put('/api/personal/asignaciones/:id', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
-        const { local, perfil, fechaInicio, fechaFin, notas } = req.body;
-        const data = await personalModule.updateAsignacion(parseInt(req.params.id), local, perfil, fechaInicio, fechaFin, notas);
-        res.json(data);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// DELETE /api/personal/asignaciones/:id
-app.delete('/api/personal/asignaciones/:id', authMiddleware, async (req, res) => {
-    try {
-        if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
-        await personalModule.deleteAsignacion(parseInt(req.params.id));
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
 
 // ==========================================
 // REPORT EMAIL ENDPOINT

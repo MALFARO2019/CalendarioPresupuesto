@@ -110,6 +110,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
     });
     const [newPerfilId, setNewPerfilId] = useState<number | null>(null);
+    const [newCedula, setNewCedula] = useState('');
+    const [newTelefono, setNewTelefono] = useState('');
     const [formError, setFormError] = useState('');
     const [formSuccess, setFormSuccess] = useState('');
 
@@ -140,6 +142,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     });
     const [editPermitirEnvioClave, setEditPermitirEnvioClave] = useState(true);
     const [editPerfilId, setEditPerfilId] = useState<number | null>(null);
+    const [editCedula, setEditCedula] = useState('');
+    const [editTelefono, setEditTelefono] = useState('');
 
     // Search functionality
     const [searchTerm, setSearchTerm] = useState('');
@@ -365,7 +369,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 newAccesoPersonal,
                 newEsAdmin,
                 newModeloPerms,
-                newPerfilId
+                newPerfilId,
+                newCedula || null,
+                newTelefono || null
             );
             setFormSuccess(`Usuario ${newEmail} creado. Clave: ${result.clave}`);
             setNewEmail('');
@@ -391,6 +397,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
             });
             setNewPerfilId(null);
+            setNewCedula('');
+            setNewTelefono('');
             setShowForm(false);
             loadData();
         } catch (err: any) {
@@ -433,6 +441,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         });
         setEditPermitirEnvioClave(user.permitirEnvioClave !== undefined ? user.permitirEnvioClave : true);
         setEditPerfilId(user.perfilId ?? null);
+        setEditCedula(user.cedula || '');
+        setEditTelefono(user.telefono || '');
     };
 
     const handleUpdateUser = async () => {
@@ -467,7 +477,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 editEsAdmin,
                 editPermitirEnvioClave,
                 editPerfilId,
-                editModeloPerms
+                editModeloPerms,
+                editCedula || null,
+                editTelefono || null
             );
             setFormSuccess(`Usuario ${editEmail} actualizado exitosamente`);
             setEditingUser(null);
@@ -784,6 +796,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                         placeholder="Auto-generada si vacía"
                                                         maxLength={6}
                                                         className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm transition-all tracking-[0.3em] font-mono"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Cédula</label>
+                                                    <input
+                                                        type="text"
+                                                        value={newCedula}
+                                                        onChange={e => setNewCedula(e.target.value)}
+                                                        placeholder="Número de cédula"
+                                                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm transition-all"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Teléfono</label>
+                                                    <input
+                                                        type="text"
+                                                        value={newTelefono}
+                                                        onChange={e => setNewTelefono(e.target.value)}
+                                                        placeholder="Número de teléfono"
+                                                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm transition-all"
                                                     />
                                                 </div>
                                             </div>
@@ -1309,6 +1344,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             maxLength={6}
                                                             className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring border-indigo-200 text-sm transition-all tracking-[0.3em] font-mono"
                                                         />
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Cédula</label>
+                                                            <input
+                                                                type="text"
+                                                                value={editCedula}
+                                                                onChange={e => setEditCedula(e.target.value)}
+                                                                placeholder="Número de cédula"
+                                                                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm transition-all"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Teléfono</label>
+                                                            <input
+                                                                type="text"
+                                                                value={editTelefono}
+                                                                onChange={e => setEditTelefono(e.target.value)}
+                                                                placeholder="Número de teléfono"
+                                                                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm transition-all"
+                                                            />
+                                                        </div>
                                                     </div>
 
                                                     <div>
