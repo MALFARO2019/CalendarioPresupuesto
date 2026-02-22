@@ -26,23 +26,20 @@ async function ensurePersonalTable() {
             )
         `);
 
-        // Migration: If table has old PERSONAL_ID column but no USUARIO_ID, add USUARIO_ID and migrate data
+        // Migration: If table has old PERSONAL_ID column but no USUARIO_ID, add USUARIO_ID
         await pool.request().query(`
             IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_ASIGNACIONES') AND name = 'PERSONAL_ID')
             AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_ASIGNACIONES') AND name = 'USUARIO_ID')
             BEGIN
                 ALTER TABLE DIM_PERSONAL_ASIGNACIONES ADD USUARIO_ID INT NULL;
-                -- Try to migrate: match DIM_PERSONAL.NOMBRE to APP_USUARIOS.Nombre
-                UPDATE a SET a.USUARIO_ID = u.Id
-                FROM DIM_PERSONAL_ASIGNACIONES a
-                INNER JOIN DIM_PERSONAL p ON p.ID = a.PERSONAL_ID
-                INNER JOIN APP_USUARIOS u ON LOWER(LTRIM(RTRIM(u.Nombre))) = LOWER(LTRIM(RTRIM(p.NOMBRE)))
-                WHERE a.USUARIO_ID IS NULL;
             END
+        `);
 
-            -- If USUARIO_ID exists but some are NULL (partial migration), try again
+        // Migrate PERSONAL_ID → USUARIO_ID via DIM_PERSONAL name matching (only if both columns and DIM_PERSONAL exist)
+        await pool.request().query(`
             IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_ASIGNACIONES') AND name = 'USUARIO_ID')
             AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_ASIGNACIONES') AND name = 'PERSONAL_ID')
+            AND EXISTS (SELECT 1 FROM sys.tables WHERE name = 'DIM_PERSONAL')
             BEGIN
                 UPDATE a SET a.USUARIO_ID = u.Id
                 FROM DIM_PERSONAL_ASIGNACIONES a
@@ -51,6 +48,7 @@ async function ensurePersonalTable() {
                 WHERE a.USUARIO_ID IS NULL;
             END
         `);
+
 
         // 2. DIM_PERSONAL_CARGOS
         await pool.request().query(`
