@@ -739,15 +739,7 @@ function App() {
                       <span className="hidden lg:inline">Rangos</span>
                     </button>
                   )}
-                  {user?.accesoEvaluaciones && (
-                    <button
-                      onClick={() => setDashboardTab('inocuidad')}
-                      className="touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all text-gray-400 hover:text-gray-600"
-                    >
-                      <BarChart3 className="w-3.5 h-3.5" />
-                      <span className="hidden lg:inline">Inocuidad</span>
-                    </button>
-                  )}
+
                 </>
               )}
               {/* Inocuidad sub-tabs: Tendencia and Mapa de Calor */}
@@ -1228,15 +1220,7 @@ function App() {
                   </button>
                 )}
 
-                {user?.accesoEvaluaciones && (
-                  <button
-                    onClick={() => setDashboardTab('inocuidad')}
-                    className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all text-gray-400 active:bg-gray-100"
-                  >
-                    <BarChart3 className="w-5 h-5" />
-                    <span className="text-[10px] font-semibold">Inocuidad</span>
-                  </button>
-                )}
+
               </>
             )}
 
