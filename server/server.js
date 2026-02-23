@@ -1322,10 +1322,13 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
                 Tipo,
                 SUM(MontoReal) AS MontoReal, 
                 SUM(Monto) AS Monto, 
+                SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) AS MontoDiasConDatos,
                 SUM(Monto_Acumulado) AS Monto_Acumulado, 
                 SUM(MontoAnterior) AS MontoAnterior, 
+                SUM(CASE WHEN MontoReal > 0 THEN MontoAnterior ELSE 0 END) AS AnteriorDiasConDatos,
                 SUM(MontoAnterior_Acumulado) AS MontoAnterior_Acumulado, 
                 SUM(MontoAnteriorAjustado) AS MontoAnteriorAjustado, 
+                SUM(CASE WHEN MontoReal > 0 THEN MontoAnteriorAjustado ELSE 0 END) AS AnteriorAjustadoDiasConDatos,
                 SUM(MontoAnteriorAjustado_Acumulado) AS MontoAnteriorAjustado_Acumulado
             FROM ${alcanceTable} 
             WHERE Año = @year AND ${localFilter} AND ${canalFilter} AND Tipo = @tipo
@@ -1359,6 +1362,133 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
         res.json(result.recordset);
     } catch (err) {
         console.error('Error in /api/budget:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/comparable-days?year=2026&month=2&local=...&canal=Todos&tipo=Ventas
+// Returns daily-level data with comparable year fields for the Comparable Days table
+app.get('/api/comparable-days', authMiddleware, async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const alcanceTable = await getAlcanceTableName(pool);
+        const year = parseInt(req.query.year) || 2026;
+        const month = parseInt(req.query.month);
+        const local = req.query.local;
+        let canal = req.query.canal || 'Todos';
+        const tipo = req.query.tipo || 'Ventas';
+
+        if (!local) return res.status(400).json({ error: 'El parámetro local es requerido' });
+        if (!month) return res.status(400).json({ error: 'El parámetro month es requerido' });
+
+        console.log(`📊 /api/comparable-days: year=${year}, month=${month}, local=${local}, canal=${canal}, tipo=${tipo}`);
+
+        // Check user permissions for requested store
+        const userStores = req.user.allowedStores || [];
+        if (userStores.length > 0 && !userStores.includes(local)) {
+            return res.status(403).json({ error: 'No tiene acceso a este local' });
+        }
+
+        // For users with limited channels
+        const userAllowedCanales = req.user.allowedCanales || [];
+        const allCanales = ['Salón', 'Llevar', 'Express', 'AutoPollo', 'UberEats', 'ECommerce', 'WhatsApp'];
+        const hasLimitedChannels = userAllowedCanales.length > 0 && userAllowedCanales.length < allCanales.length;
+        const useMultiChannel = canal === 'Todos' && hasLimitedChannels;
+
+        // Detect if local is a group
+        let memberLocals = null;
+        const idGrupoResult = await pool.request()
+            .input('groupName', sql.NVarChar, local)
+            .query(`
+                SELECT GA.IDGRUPO
+                FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENCAB GA
+                WHERE GA.CODVISIBLE = 20 AND GA.DESCRIPCION = @groupName
+            `);
+
+        if (idGrupoResult.recordset.length > 0) {
+            const idGrupos = idGrupoResult.recordset.map(r => r.IDGRUPO);
+            const memberCodesRequest = pool.request();
+            idGrupos.forEach((id, i) => memberCodesRequest.input(`idgrupo${i}`, sql.Int, id));
+            const memberCodesResult = await memberCodesRequest.query(`
+                SELECT DISTINCT GL.CODALMACEN
+                FROM ROSTIPOLLOS_P.DBO.GRUPOSALMACENLIN GL
+                WHERE GL.IDGRUPO IN (${idGrupos.map((_, i) => `@idgrupo${i}`).join(', ')})
+            `);
+            const memberCodes = memberCodesResult.recordset.map(r => r.CODALMACEN);
+
+            if (memberCodes.length > 0) {
+                const localsRequest = pool.request();
+                localsRequest.input('year', sql.Int, year);
+                memberCodes.forEach((code, i) => localsRequest.input(`mcode${i}`, sql.NVarChar, code));
+                const localsResult = await localsRequest.query(`
+                    SELECT DISTINCT Local FROM ${alcanceTable}
+                    WHERE Año = @year AND CODALMACEN IN (${memberCodes.map((_, i) => `@mcode${i}`).join(', ')})
+                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                `);
+                memberLocals = localsResult.recordset.map(r => r.Local);
+            }
+        }
+
+        // Build local filter
+        let localFilter = '';
+        const localParams = {};
+        if (memberLocals && memberLocals.length > 0) {
+            const ph = memberLocals.map((_, i) => `@ml${i}`).join(', ');
+            localFilter = `Local IN (${ph})`;
+            memberLocals.forEach((name, i) => { localParams[`ml${i}`] = name; });
+        } else {
+            localFilter = 'Local = @local';
+            localParams['local'] = local;
+        }
+
+        // Build canal filter
+        let canalFilter = '';
+        const canalParams = {};
+        if (useMultiChannel) {
+            const canalPlaceholders = userAllowedCanales.map((_, i) => `@ch${i}`).join(', ');
+            canalFilter = `Canal IN (${canalPlaceholders})`;
+            userAllowedCanales.forEach((ch, i) => { canalParams[`ch${i}`] = ch; });
+        } else {
+            canalFilter = `Canal = @canal`;
+            canalParams['canal'] = canal;
+        }
+
+        const query = `
+            SELECT 
+                Fecha,
+                Dia,
+                idDia,
+                Serie,
+                SUM(MontoReal) AS MontoReal,
+                SUM(Monto) AS Monto,
+                SUM(MontoAnterior) AS MontoAnterior,
+                SUM(MontoAnteriorAjustado) AS MontoAnteriorAjustado,
+                MIN(FechaAnterior) AS FechaAnterior,
+                MIN(FechaAnteriorAjustada) AS FechaAnteriorAjustada
+            FROM ${alcanceTable}
+            WHERE Año = @year AND Mes = @month AND ${localFilter} AND ${canalFilter} AND Tipo = @tipo
+                AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+            GROUP BY Fecha, Dia, idDia, Serie
+            ORDER BY Dia
+        `;
+
+        const request = pool.request()
+            .input('year', sql.Int, year)
+            .input('month', sql.Int, month)
+            .input('tipo', sql.NVarChar, tipo);
+
+        Object.entries(canalParams).forEach(([key, val]) => {
+            request.input(key, sql.NVarChar, val);
+        });
+        Object.entries(localParams).forEach(([key, val]) => {
+            request.input(key, sql.NVarChar, val);
+        });
+
+        const result = await request.query(query);
+        console.log(`📊 Comparable days for ${local} (${canal}/${tipo}) month ${month}: ${result.recordset.length} rows`);
+        res.json(result.recordset);
+    } catch (err) {
+        console.error('Error in /api/comparable-days:', err);
         res.status(500).json({ error: err.message });
     }
 });

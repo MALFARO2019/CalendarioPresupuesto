@@ -27,7 +27,7 @@ interface ServerConfig {
 }
 
 const DEFAULT_SERVERS: ServerConfig[] = [
-    { id: '1', ip: '10.29.1.25', user: 'Administrador', password: 'R0st1p017', appDir: 'C:\\Apps\\CalendarioPresupuesto', label: 'Servidor Principal' },
+    { id: '1', ip: '10.29.1.25', user: 'Administrador', password: 'R0st1p017', appDir: 'C:\\Deploy\\CalendarioPresupuesto', label: 'Servidor Principal' },
 ];
 
 function loadServers(): ServerConfig[] {
@@ -35,11 +35,11 @@ function loadServers(): ServerConfig[] {
         const data = localStorage.getItem('deploy_servers');
         if (data) {
             const servers: ServerConfig[] = JSON.parse(data);
-            // Migrate old C:\Deploy path to C:\Apps path (IIS serves from C:\Apps)
+            // Ensure appDir uses C:\Deploy path
             let migrated = false;
             servers.forEach(s => {
-                if (s.appDir && s.appDir.includes('\\Deploy\\')) {
-                    s.appDir = s.appDir.replace('\\Deploy\\', '\\Apps\\');
+                if (s.appDir && s.appDir.includes('\\Apps\\')) {
+                    s.appDir = s.appDir.replace('\\Apps\\', '\\Deploy\\');
                     migrated = true;
                 }
             });
@@ -90,7 +90,7 @@ export function DeployManagement() {
 
     // Server management
     const [showAddServer, setShowAddServer] = useState(false);
-    const [newServer, setNewServer] = useState<Partial<ServerConfig>>({ ip: '', user: 'Administrador', password: '', appDir: 'C:\\Apps\\CalendarioPresupuesto', label: '' });
+    const [newServer, setNewServer] = useState<Partial<ServerConfig>>({ ip: '', user: 'Administrador', password: '', appDir: 'C:\\Deploy\\CalendarioPresupuesto', label: '' });
 
     // Changelog state
     const [logEntries, setLogEntries] = useState<DeployLogEntry[]>([]);
@@ -289,7 +289,7 @@ export function DeployManagement() {
         saveServers(updated);
         setSelectedServerId(srv.id);
         setShowAddServer(false);
-        setNewServer({ ip: '', user: 'Administrador', password: '', appDir: 'C:\\Apps\\CalendarioPresupuesto', label: '' });
+        setNewServer({ ip: '', user: 'Administrador', password: '', appDir: 'C:\\Deploy\\CalendarioPresupuesto', label: '' });
     };
 
     const removeServer = async (id: string) => {

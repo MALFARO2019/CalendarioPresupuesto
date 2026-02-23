@@ -553,7 +553,44 @@
         "10.29.1.25"
       ],
       "deployedBy": "soporte@rostipolloscr.com",
-      "status": "deploying"
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": ""
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.1 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "\"DefaultAppPool\" se detuvo correctamente\r\n\"DefaultAppPool\" se inici� correctamente.\r\nIIS AppPool reciclado. Servicio NSSM reiniciado"
+        },
+        {
+          "step": "Verificando API",
+          "status": "warning",
+          "detail": "API responde \"v1.0\" pero se esperaba \"v1.1\". Diag: DIAG_ERR: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Ma"
+        }
+      ]
     }
   ]
 }

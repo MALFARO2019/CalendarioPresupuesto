@@ -438,9 +438,11 @@ BEGIN
     INSERT INTO #PesoFinal
     SELECT CodAlmacen, FechaTarget, MesTarget, Canal, Tipo,
         CASE
-            -- SPARSE DATA GUARD: if only 1-3 days have data out of >7 expected,
-            -- the weights are unreliable — use uniform distribution instead
-            WHEN DaysWithData <= 3 AND DaysInMonth > 7
+            -- SPARSE DATA GUARD: only use uniform distribution when there is
+            -- literally NO historical data for this store+channel+month.
+            -- Previous threshold (<=3) was too aggressive and caused flat budgets
+            -- for stores with limited but valid channel-level data.
+            WHEN DaysWithData = 0
                 THEN (1.0/NULLIF(CAST(DaysInMonth AS DECIMAL(19,6)),0))
             WHEN SumNoEvento>0 AND SumEvento<1.0
                 THEN CASE WHEN EsEvento=1 THEN PesoUsado ELSE PesoUsado*((1.0-SumEvento)/SumNoEvento) END
@@ -1108,6 +1110,220 @@ BEGIN
     END
     CLOSE ajuste_cursor;
     DEALLOCATE ajuste_cursor;
+
+    -- ============================================
+    -- 21b. POST-ADJUSTMENT RECALCULATION
+    -- After applying adjustments, recalculate derived values:
+    -- TQP, Todos channel, participations, accumulated values, keys
+    -- ============================================
+    IF EXISTS (SELECT 1 FROM MODELO_PRESUPUESTO_AJUSTES WHERE NombrePresupuesto=@NombrePresupuesto AND Activo=1
+              AND (@CodAlmacen IS NULL OR CodAlmacen=@CodAlmacen) AND (@Mes IS NULL OR Mes=@Mes))
+    BEGIN
+        PRINT 'Post-adjustment recalculation starting...';
+
+        -- 21b.1: Recalculate TQP for individual stores (non-group)
+        SET @SQL = N'
+        UPDATE t SET t.Monto = CASE WHEN trans.Monto > 0 THEN vent.Monto / trans.Monto ELSE 0 END
+        FROM [' + @TablaDestino + '] t
+        INNER JOIN [' + @TablaDestino + '] vent ON vent.Fecha=t.Fecha AND vent.CodAlmacen=t.CodAlmacen AND vent.Canal=t.Canal AND vent.Tipo=N''Ventas'' AND vent.NombrePresupuesto=t.NombrePresupuesto
+        INNER JOIN [' + @TablaDestino + '] trans ON trans.Fecha=t.Fecha AND trans.CodAlmacen=t.CodAlmacen AND trans.Canal=t.Canal AND trans.Tipo=N''Transacciones'' AND trans.NombrePresupuesto=t.NombrePresupuesto
+        WHERE t.NombrePresupuesto=@nombre AND t.Tipo=N''TQP'' AND LEFT(t.CodAlmacen,1)<>N''G'';';
+        EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+        -- 21b.2: Regenerate Todos channel for individual stores
+        -- Delete existing Todos for non-group stores
+        SET @SQL = N'DELETE FROM [' + @TablaDestino + '] WHERE NombrePresupuesto=@nombre AND Canal=N''Todos'' AND LEFT(CodAlmacen,1)<>N''G'';';
+        EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+        -- Recreate Todos for Ventas+Transacciones
+        SET @SQL = N'
+        INSERT INTO [' + @TablaDestino + '] (
+            Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
+            CodAlmacen, Participacion, Canal, Año, Tipo,
+            FechaAnterior, MontoAnterior, ParticipacionAnterior,
+            FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+            MontoReal, ParticipacionReal, NombrePresupuesto
+        )
+        SELECT
+            Fecha, MIN(idLocal), MIN([Local]), MIN(Serie), MIN(idDia), MIN(Dia), Mes,
+            SUM(Monto), CodAlmacen, 0, N''Todos'', MIN(Año), Tipo,
+            MIN(FechaAnterior), SUM(ISNULL(MontoAnterior,0)), 0,
+            MIN(FechaAnteriorAjustada), SUM(ISNULL(MontoAnteriorAjustado,0)), 0,
+            SUM(ISNULL(MontoReal,0)), 0, NombrePresupuesto
+        FROM [' + @TablaDestino + ']
+        WHERE NombrePresupuesto=@nombre AND Canal<>N''Todos'' AND LEFT(CodAlmacen,1)<>N''G''
+          AND Tipo IN (N''Ventas'', N''Transacciones'')
+        GROUP BY Fecha, CodAlmacen, Tipo, Mes, NombrePresupuesto;';
+        EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+        -- Recreate Todos TQP
+        SET @SQL = N'
+        INSERT INTO [' + @TablaDestino + '] (
+            Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
+            CodAlmacen, Participacion, Canal, Año, Tipo,
+            FechaAnterior, MontoAnterior, ParticipacionAnterior,
+            FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+            MontoReal, ParticipacionReal, NombrePresupuesto
+        )
+        SELECT
+            v.Fecha, v.idLocal, v.[Local], v.Serie, v.idDia, v.Dia, v.Mes,
+            CASE WHEN t.Monto > 0 THEN v.Monto / t.Monto ELSE 0 END,
+            v.CodAlmacen, 0, N''Todos'', v.Año, N''TQP'',
+            v.FechaAnterior, CASE WHEN t.MontoAnterior > 0 THEN v.MontoAnterior / t.MontoAnterior ELSE 0 END, 0,
+            v.FechaAnteriorAjustada, CASE WHEN t.MontoAnteriorAjustado > 0 THEN v.MontoAnteriorAjustado / t.MontoAnteriorAjustado ELSE 0 END, 0,
+            CASE WHEN t.MontoReal > 0 THEN v.MontoReal / t.MontoReal ELSE 0 END, 0, v.NombrePresupuesto
+        FROM [' + @TablaDestino + '] v
+        INNER JOIN [' + @TablaDestino + '] t ON t.Fecha=v.Fecha AND t.CodAlmacen=v.CodAlmacen AND t.Canal=N''Todos'' AND t.Tipo=N''Transacciones'' AND t.NombrePresupuesto=v.NombrePresupuesto
+        WHERE v.Canal=N''Todos'' AND v.Tipo=N''Ventas'' AND v.NombrePresupuesto=@nombre AND LEFT(v.CodAlmacen,1)<>N''G'';';
+        EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+        -- 21b.3: Regenerate Groups (if groups exist)
+        IF EXISTS (SELECT 1 FROM #GrupoMiembros)
+        BEGIN
+            -- Delete all group rows and regenerate
+            SET @SQL = N'DELETE FROM [' + @TablaDestino + '] WHERE NombrePresupuesto=@nombre AND LEFT(CodAlmacen,1)=N''G'';';
+            EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+            -- Re-insert group aggregations (Ventas + Transacciones)
+            SET @SQL = N'
+            INSERT INTO [' + @TablaDestino + '] (
+                Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
+                CodAlmacen, Participacion, Canal, Año, Tipo,
+                FechaAnterior, MontoAnterior, ParticipacionAnterior,
+                FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+                MontoReal, ParticipacionReal, NombrePresupuesto
+            )
+            SELECT
+                r.Fecha, g.IdLocalGrupo, g.NombreGrupo, g.SerieNum,
+                MIN(r.idDia), MIN(r.Dia), r.Mes,
+                SUM(r.Monto), g.CodGrupo, 0, r.Canal, MIN(r.Año), r.Tipo,
+                MIN(r.FechaAnterior), SUM(ISNULL(r.MontoAnterior,0)), 0,
+                MIN(r.FechaAnteriorAjustada), SUM(ISNULL(r.MontoAnteriorAjustado,0)), 0,
+                SUM(ISNULL(r.MontoReal,0)), 0, r.NombrePresupuesto
+            FROM [' + @TablaDestino + '] r
+            JOIN #GrupoMiembros gm ON gm.CodAlmacen=r.CodAlmacen
+            JOIN #GrpInfo g ON g.IDGRUPO=gm.IDGRUPO
+            WHERE r.NombrePresupuesto=@nombre AND LEFT(r.CodAlmacen,1)<>N''G'' AND r.Tipo IN (N''Ventas'',N''Transacciones'')
+            GROUP BY r.Fecha, g.CodGrupo, g.NombreGrupo, g.IdLocalGrupo, g.SerieNum, r.Canal, r.Tipo, r.Mes, r.NombrePresupuesto;';
+            EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+            -- Todos channel for groups
+            SET @SQL = N'
+            INSERT INTO [' + @TablaDestino + '] (
+                Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
+                CodAlmacen, Participacion, Canal, Año, Tipo,
+                FechaAnterior, MontoAnterior, ParticipacionAnterior,
+                FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+                MontoReal, ParticipacionReal, NombrePresupuesto
+            )
+            SELECT
+                Fecha, MIN(idLocal), MIN([Local]), MIN(Serie), MIN(idDia), MIN(Dia), Mes,
+                SUM(Monto), CodAlmacen, 0, N''Todos'', MIN(Año), Tipo,
+                MIN(FechaAnterior), SUM(ISNULL(MontoAnterior,0)), 0,
+                MIN(FechaAnteriorAjustada), SUM(ISNULL(MontoAnteriorAjustado,0)), 0,
+                SUM(ISNULL(MontoReal,0)), 0, NombrePresupuesto
+            FROM [' + @TablaDestino + ']
+            WHERE NombrePresupuesto=@nombre AND LEFT(CodAlmacen,1)=N''G'' AND Canal<>N''Todos'' AND Tipo IN (N''Ventas'',N''Transacciones'')
+            GROUP BY Fecha, CodAlmacen, Tipo, Mes, NombrePresupuesto;';
+            EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+            -- TQP for groups
+            SET @SQL = N'
+            INSERT INTO [' + @TablaDestino + '] (
+                Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
+                CodAlmacen, Participacion, Canal, Año, Tipo,
+                FechaAnterior, MontoAnterior, ParticipacionAnterior,
+                FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+                MontoReal, ParticipacionReal, NombrePresupuesto
+            )
+            SELECT v.Fecha,v.idLocal,v.[Local],v.Serie,v.idDia,v.Dia,v.Mes,
+                CASE WHEN tr.Monto>0 THEN v.Monto/tr.Monto ELSE 0 END,
+                v.CodAlmacen,0,v.Canal,v.Año,N''TQP'',
+                v.FechaAnterior,CASE WHEN tr.MontoAnterior>0 THEN v.MontoAnterior/tr.MontoAnterior ELSE 0 END,0,
+                v.FechaAnteriorAjustada,CASE WHEN tr.MontoAnteriorAjustado>0 THEN v.MontoAnteriorAjustado/tr.MontoAnteriorAjustado ELSE 0 END,0,
+                CASE WHEN tr.MontoReal>0 THEN v.MontoReal/tr.MontoReal ELSE 0 END,0,
+                v.NombrePresupuesto
+            FROM [' + @TablaDestino + '] v
+            JOIN [' + @TablaDestino + '] tr ON tr.Fecha=v.Fecha AND tr.CodAlmacen=v.CodAlmacen AND tr.Canal=v.Canal
+                AND tr.Tipo=N''Transacciones'' AND tr.NombrePresupuesto=v.NombrePresupuesto
+            WHERE LEFT(v.CodAlmacen,1)=N''G'' AND v.Tipo=N''Ventas'' AND v.NombrePresupuesto=@nombre;';
+            EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+            -- G30 super-group
+            SET @SQL = N'
+            INSERT INTO [' + @TablaDestino + '] (
+                Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
+                CodAlmacen, Participacion, Canal, Año, Tipo,
+                FechaAnterior, MontoAnterior, ParticipacionAnterior,
+                FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+                MontoReal, ParticipacionReal, NombrePresupuesto
+            )
+            SELECT
+                Fecha, idLocal, [Local], N''G0'', idDia, Dia, Mes, Monto,
+                N''G30'', Participacion, Canal, Año, Tipo,
+                FechaAnterior, MontoAnterior, ParticipacionAnterior,
+                FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+                MontoReal, ParticipacionReal, NombrePresupuesto
+            FROM [' + @TablaDestino + ']
+            WHERE NombrePresupuesto=@nombre AND LEFT(CodAlmacen,1)=N''G'' AND CodAlmacen<>N''G30''
+              AND CodAlmacen IN (N''G00'',N''G01'',N''G02'',N''G03'',N''G04'',N''G05'',N''G06'',N''G07'',N''G08'',N''G09'');';
+            EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+        END;
+
+        -- 21b.4: Recalculate participations for ALL records
+        SET @SQL = N'
+        ;WITH MT AS (
+            SELECT CodAlmacen,Canal,Mes,Tipo,
+                SUM(Monto) AS TotMonto,
+                SUM(ISNULL(MontoAnterior,0)) AS TotAnt,
+                SUM(ISNULL(MontoAnteriorAjustado,0)) AS TotAntAj,
+                SUM(ISNULL(MontoReal,0)) AS TotReal
+            FROM [' + @TablaDestino + '] WHERE NombrePresupuesto=@nombre GROUP BY CodAlmacen,Canal,Mes,Tipo
+        )
+        UPDATE t SET
+            t.Participacion = CASE WHEN m.TotMonto>0 THEN t.Monto/m.TotMonto ELSE 0 END,
+            t.ParticipacionAnterior = CASE WHEN m.TotAnt>0 THEN ISNULL(t.MontoAnterior,0)/m.TotAnt ELSE 0 END,
+            t.ParticipacionAnteriorAjustado = CASE WHEN m.TotAntAj>0 THEN ISNULL(t.MontoAnteriorAjustado,0)/m.TotAntAj ELSE 0 END,
+            t.ParticipacionReal = CASE WHEN m.TotReal>0 THEN ISNULL(t.MontoReal,0)/m.TotReal ELSE 0 END
+        FROM [' + @TablaDestino + '] t
+        JOIN MT m ON m.CodAlmacen=t.CodAlmacen AND m.Canal=t.Canal AND m.Mes=t.Mes AND m.Tipo=t.Tipo
+        WHERE t.NombrePresupuesto=@nombre;';
+        EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+        -- 21b.5: Recalculate accumulated values
+        SET @SQL = N'
+        ;WITH Acumulados AS (
+            SELECT Fecha,CodAlmacen,Canal,Tipo,Mes,
+                SUM(Monto) OVER (PARTITION BY CodAlmacen,Canal,Tipo,Mes,NombrePresupuesto ORDER BY Fecha) AS MAcum,
+                SUM(ISNULL(MontoAnterior,0)) OVER (PARTITION BY CodAlmacen,Canal,Tipo,Mes,NombrePresupuesto ORDER BY Fecha) AS MAAcum,
+                SUM(ISNULL(MontoAnteriorAjustado,0)) OVER (PARTITION BY CodAlmacen,Canal,Tipo,Mes,NombrePresupuesto ORDER BY Fecha) AS MAAAcum,
+                SUM(ISNULL(MontoReal,0)) OVER (PARTITION BY CodAlmacen,Canal,Tipo,Mes,NombrePresupuesto ORDER BY Fecha) AS MRAcum
+            FROM [' + @TablaDestino + '] WHERE NombrePresupuesto=@nombre
+        )
+        UPDATE t SET
+            Monto_Acumulado=a.MAcum,
+            MontoAnterior_Acumulado=a.MAAcum,
+            MontoAnteriorAjustado_Acumulado=a.MAAAcum,
+            Monto_Dif=a.MRAcum-a.MAcum,
+            MontoAnterior_Dif=a.MRAcum-a.MAAcum,
+            MontoAnteriorAjustado_Dif=a.MRAcum-a.MAAAcum
+        FROM [' + @TablaDestino + '] t
+        JOIN Acumulados a ON a.Fecha=t.Fecha AND a.CodAlmacen=t.CodAlmacen AND a.Canal=t.Canal AND a.Tipo=t.Tipo AND a.Mes=t.Mes
+        WHERE t.NombrePresupuesto=@nombre;';
+        EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+        -- 21b.6: Recalculate traceability keys
+        SET @SQL = N'
+        UPDATE t SET
+            Llave_Presupuesto = t.CodAlmacen + N''_'' + CAST(t.Año AS NVARCHAR(4)) + N''_'' + CAST(t.Mes AS NVARCHAR(2)) + N''_'' + CAST(DAY(t.Fecha) AS NVARCHAR(2)) + N''_'' + t.Canal + N''_'' + t.Tipo + N''_Presupuesto'',
+            Llave_AñoAnterior = CASE WHEN t.FechaAnterior IS NOT NULL THEN t.CodAlmacen + N''_'' + CAST(YEAR(t.FechaAnterior) AS NVARCHAR(4)) + N''_'' + CAST(MONTH(t.FechaAnterior) AS NVARCHAR(2)) + N''_'' + CAST(DAY(t.FechaAnterior) AS NVARCHAR(2)) + N''_'' + t.Canal + N''_'' + t.Tipo + N''_AñoAnterior'' ELSE NULL END,
+            Llave_AnoAnterior_Ajustado = CASE WHEN t.FechaAnteriorAjustada IS NOT NULL THEN t.CodAlmacen + N''_'' + CAST(YEAR(t.FechaAnteriorAjustada) AS NVARCHAR(4)) + N''_'' + CAST(MONTH(t.FechaAnteriorAjustada) AS NVARCHAR(2)) + N''_'' + CAST(DAY(t.FechaAnteriorAjustada) AS NVARCHAR(2)) + N''_'' + t.Canal + N''_'' + t.Tipo + N''_AñoAnteriorAjustado'' ELSE NULL END
+        FROM [' + @TablaDestino + '] t
+        WHERE t.NombrePresupuesto=@nombre;';
+        EXEC sp_executesql @SQL, N'@nombre NVARCHAR(100)', @nombre=@NombrePresupuesto;
+
+        PRINT 'Post-adjustment recalculation complete.';
+    END;
 
     -- ============================================
     -- 22. LOG EXECUTION

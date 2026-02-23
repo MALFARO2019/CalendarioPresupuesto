@@ -88,14 +88,14 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ dataVentas, dataTransa
                 // P. Mes/Año: sum ALL Monto from full month/year data (includes future budgeted days)
                 totalMes = fullMonthData.reduce((sum: number, d: any) => sum + (d.Monto || 0), 0);
 
-                // P. Acum: sum Monto only for days with real data (from filtered dataset)
-                totalAcum = filteredData.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.Monto || 0), 0);
+                // P. Acum: use pre-aggregated MontoDiasConDatos (per-store MontoReal > 0 check)
+                totalAcum = filteredData.reduce((sum: number, d: any) => sum + (d.MontoDiasConDatos || 0), 0);
             } else if (compareType === 'Año Anterior Ajustado') {
                 totalMes = fullMonthData.reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustado || 0), 0);
-                totalAcum = filteredData.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.MontoAnteriorAjustado || 0), 0);
+                totalAcum = filteredData.reduce((sum: number, d: any) => sum + (d.AnteriorAjustadoDiasConDatos || 0), 0);
             } else {
                 totalMes = fullMonthData.reduce((sum: number, d: any) => sum + (d.MontoAnterior || 0), 0);
-                totalAcum = filteredData.filter((d: any) => d.MontoReal > 0).reduce((sum: number, d: any) => sum + (d.MontoAnterior || 0), 0);
+                totalAcum = filteredData.reduce((sum: number, d: any) => sum + (d.AnteriorDiasConDatos || 0), 0);
             }
 
             const difAcum = totalActual - totalAcum;

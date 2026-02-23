@@ -350,11 +350,72 @@ export async function fetchBudgetData(
         DiaSemana: parseInt(row.idDia) || parseInt(row.iddia) || parseInt(row.DiaSemana) || 0,
         MontoReal: parseFloat(row.MontoReal) || 0,
         Monto: parseFloat(row.Monto) || 0,
+        MontoDiasConDatos: parseFloat(row.MontoDiasConDatos) || 0,
         MontoAcumulado: parseFloat(row.Monto_Acumulado) || parseFloat(row.MontoAcumulado) || 0,
         MontoAnterior: parseFloat(row.MontoAnterior) || 0,
+        AnteriorDiasConDatos: parseFloat(row.AnteriorDiasConDatos) || 0,
         MontoAnteriorAcumulado: parseFloat(row.MontoAnterior_Acumulado) || parseFloat(row.MontoAnteriorAcumulado) || 0,
         MontoAnteriorAjustado: parseFloat(row.MontoAnteriorAjustado) || 0,
+        AnteriorAjustadoDiasConDatos: parseFloat(row.AnteriorAjustadoDiasConDatos) || 0,
         MontoAnteriorAjustadoAcumulado: parseFloat(row.MontoAnteriorAjustado_Acumulado) || parseFloat(row.MontoAnteriorAjustadoAcumulado) || 0,
+    }));
+}
+
+export interface ComparableDayRecord {
+    Fecha: string;
+    Dia: number;
+    idDia: number;
+    Serie: string;
+    MontoReal: number;
+    Monto: number;
+    MontoAnterior: number;
+    MontoAnteriorAjustado: number;
+    FechaAnterior: string;
+    FechaAnteriorAjustada: string;
+}
+
+export async function fetchComparableDays(
+    year: number,
+    month: number,
+    local: string,
+    canal: string = 'Todos',
+    tipo: string = 'Ventas'
+): Promise<ComparableDayRecord[]> {
+    const params = new URLSearchParams({
+        year: year.toString(),
+        month: month.toString(),
+        local,
+        canal,
+        tipo
+    });
+
+    const response = await fetch(`${API_BASE}/comparable-days?${params}`, {
+        headers: authHeaders()
+    });
+
+    if (response.status === 401) {
+        clearToken();
+        window.location.reload();
+        return [];
+    }
+
+    if (!response.ok) {
+        throw new Error(`Error fetching comparable days: ${response.statusText}`);
+    }
+
+    const rawData = await response.json();
+
+    return rawData.map((row: any) => ({
+        Fecha: row.Fecha || '',
+        Dia: parseInt(row.Dia) || 0,
+        idDia: parseInt(row.idDia) || parseInt(row.iddia) || 0,
+        Serie: row.Serie || '',
+        MontoReal: parseFloat(row.MontoReal) || 0,
+        Monto: parseFloat(row.Monto) || 0,
+        MontoAnterior: parseFloat(row.MontoAnterior) || 0,
+        MontoAnteriorAjustado: parseFloat(row.MontoAnteriorAjustado) || 0,
+        FechaAnterior: row.FechaAnterior || '',
+        FechaAnteriorAjustada: row.FechaAnteriorAjustada || '',
     }));
 }
 

@@ -133,10 +133,9 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
             // PRESUP: sum ALL Monto for the full month (includes all budgeted days)
             const presupuesto = allMonthRecords.reduce((sum, d) => sum + d.Monto, 0);
 
-            // P. Acum: sum Monto ONLY for days with MontoReal > 0 (from filtered records)
+            // P. Acum: use pre-aggregated MontoDiasConDatos (per-store MontoReal > 0 check)
             const presupuestoConDatos = monthRecordsWithData
-                .filter(d => d.MontoReal > 0)
-                .reduce((sum, d) => sum + (d.Monto || 0), 0);
+                .reduce((sum, d) => sum + (d.MontoDiasConDatos || 0), 0);
 
             // Real: sum MontoReal (from filtered records)
             const real = monthRecordsWithData.reduce((sum, d) => sum + d.MontoReal, 0);
@@ -145,14 +144,13 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
             const anterior = allMonthRecords.reduce((sum, d) => sum + (d.MontoAnterior || 0), 0);
             const anteriorAjustado = allMonthRecords.reduce((sum, d) => sum + (d.MontoAnteriorAjustado || 0), 0);
 
-            // Ant. Acum: Calculate anteriorConDatos by filtering days with MontoReal > 0
+            // Ant. Acum: use pre-aggregated fields (per-store MontoReal > 0 check)
             const anteriorConDatos = monthRecordsWithData
-                .filter(d => d.MontoReal > 0)
                 .reduce((sum, d) => {
                     if (yearType === 'Año Anterior Ajustado') {
-                        return sum + (d.MontoAnteriorAjustado || 0);
+                        return sum + (d.AnteriorAjustadoDiasConDatos || 0);
                     }
-                    return sum + (d.MontoAnterior || 0);
+                    return sum + (d.AnteriorDiasConDatos || 0);
                 }, 0);
 
             accPresupuesto += presupuesto;

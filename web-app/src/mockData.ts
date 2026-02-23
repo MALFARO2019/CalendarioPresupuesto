@@ -8,10 +8,13 @@ export interface BudgetRecord {
     DiaSemana: number; // 0 = Sunday, 1 = Monday, etc.
     MontoReal: number;
     Monto: number; // Presupuesto
+    MontoDiasConDatos: number; // Monto only for stores with MontoReal > 0 (pre-aggregated)
     MontoAcumulado: number;
     MontoAnterior: number;
+    AnteriorDiasConDatos: number; // MontoAnterior only for stores with MontoReal > 0
     MontoAnteriorAcumulado: number;
     MontoAnteriorAjustado: number;
+    AnteriorAjustadoDiasConDatos: number; // MontoAnteriorAjustado only for stores with MontoReal > 0
     MontoAnteriorAjustadoAcumulado: number;
 }
 
@@ -50,10 +53,13 @@ export const generateMockData = (): BudgetRecord[] => {
             DiaSemana: day.getDay(),
             MontoReal: real,
             Monto: budget,
+            MontoDiasConDatos: isPastOrToday ? budget : 0,
             MontoAcumulado: cumulativeBudget,
             MontoAnterior: lastYear,
+            AnteriorDiasConDatos: isPastOrToday ? lastYear : 0,
             MontoAnteriorAcumulado: cumulativeLastYear,
             MontoAnteriorAjustado: lastYearAdj,
+            AnteriorAjustadoDiasConDatos: isPastOrToday ? lastYearAdj : 0,
             MontoAnteriorAjustadoAcumulado: cumulativeLastYearAdj,
         };
     });
