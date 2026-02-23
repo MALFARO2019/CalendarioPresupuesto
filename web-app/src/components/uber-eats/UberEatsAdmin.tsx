@@ -96,14 +96,22 @@ export function UberEatsAdmin() {
     });
     const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-    const token = localStorage.getItem('authToken');
-    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    const getHeaders = () => {
+        const t = localStorage.getItem('authToken');
+        return { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` };
+    };
 
     // ── Load config ──────────────────────────────────────────
     const loadConfig = useCallback(async () => {
         setConfigLoading(true);
         try {
-            const res = await fetch(`${API_BASE}/api/uber-eats/config`, { headers });
+            const h = getHeaders();
+            const res = await fetch(`${API_BASE}/api/uber-eats/config`, { headers: h });
+            if (res.status === 401) {
+                setConfigMsg({ type: 'error', text: '⏳ Tu sesión expiró. Necesitas volver a iniciar sesión.' });
+                setConfigLoading(false);
+                return;
+            }
             const data: UberConfig = await res.json();
             setConfig(data);
             setClientId(data.CLIENT_ID?.value || '');
@@ -118,10 +126,16 @@ export function UberEatsAdmin() {
 
         // Also check token status
         try {
-            const tsRes = await fetch(`${API_BASE}/api/uber-eats/token-status`, { headers });
+            const h = getHeaders();
+            const tsRes = await fetch(`${API_BASE}/api/uber-eats/token-status`, { headers: h });
             if (tsRes.ok) setTokenStatus(await tsRes.json());
         } catch { }
     }, []);
+
+    const handleSessionExpired = () => {
+        localStorage.clear();
+        window.location.href = '/';
+    };
 
     const saveConfig = async () => {
         setConfigSaving(true);
@@ -130,9 +144,17 @@ export function UberEatsAdmin() {
             const body: Record<string, unknown> = { clientId, syncEnabled, syncHour, daysBack, reportTypes: reportTypes.join(',') };
             if (clientSecret.trim()) body.clientSecret = clientSecret;
             console.log('[UberEats] Saving config:', { ...body, clientSecret: body.clientSecret ? '[SET]' : undefined });
+            const currentHeaders = getHeaders();
             const res = await fetch(`${API_BASE}/api/uber-eats/config`, {
-                method: 'POST', headers, body: JSON.stringify(body)
+                method: 'POST',
+                headers: currentHeaders,
+                body: JSON.stringify(body)
             });
+            if (res.status === 401) {
+                setConfigMsg({ type: 'error', text: '⏳ Tu sesión expiró. Necesitas volver a iniciar sesión.' });
+                setConfigSaving(false);
+                return;
+            }
             const data = await res.json();
             console.log('[UberEats] Save response:', res.status, data);
             if (!res.ok) throw new Error(data.error || 'Error al guardar');
@@ -153,7 +175,7 @@ export function UberEatsAdmin() {
         setTestLoading(true);
         setTestResult(null);
         try {
-            const res = await fetch(`${API_BASE}/api/uber-eats/test`, { method: 'POST', headers });
+            const res = await fetch(`${API_BASE}/api/uber-eats/test`, { method: 'POST', headers: getHeaders() });
             const data = await res.json();
             setTestResult(data);
         } catch (e: any) {
@@ -165,7 +187,7 @@ export function UberEatsAdmin() {
     const loadStores = useCallback(async () => {
         setStoresLoading(true);
         try {
-            const res = await fetch(`${API_BASE}/api/uber-eats/stores`, { headers });
+            const res = await fetch(`${API_BASE}/api/uber-eats/stores`, { headers: getHeaders() });
             setStores(await res.json());
         } catch { } finally { setStoresLoading(false); }
     }, []);
@@ -175,7 +197,7 @@ export function UberEatsAdmin() {
         setStoreMsg(null);
         try {
             const res = await fetch(`${API_BASE}/api/uber-eats/stores`, {
-                method: 'POST', headers,
+                method: 'POST', headers: getHeaders(),
                 body: JSON.stringify({ storeId: newStoreId.trim(), nombre: newStoreName.trim() || newStoreId.trim() })
             });
             const data = await res.json();
@@ -192,7 +214,7 @@ export function UberEatsAdmin() {
     const deleteStore = async (id: number) => {
         if (!await showConfirm({ message: '¿Eliminar este store?', destructive: true })) return;
         try {
-            await fetch(`${API_BASE}/api/uber-eats/stores/${id}`, { method: 'DELETE', headers });
+            await fetch(`${API_BASE}/api/uber-eats/stores/${id}`, { method: 'DELETE', headers: getHeaders() });
             loadStores();
         } catch { }
     };
@@ -200,7 +222,7 @@ export function UberEatsAdmin() {
     const toggleStoreActive = async (store: UberStore) => {
         try {
             await fetch(`${API_BASE}/api/uber-eats/stores/${store.Id}`, {
-                method: 'PUT', headers,
+                method: 'PUT', headers: getHeaders(),
                 body: JSON.stringify({ nombre: store.Nombre, activo: !store.Activo })
             });
             loadStores();
@@ -212,8 +234,8 @@ export function UberEatsAdmin() {
         setSyncLoading(true);
         try {
             const [statusRes, logRes] = await Promise.all([
-                fetch(`${API_BASE}/api/uber-eats/sync-status`, { headers }),
-                fetch(`${API_BASE}/api/uber-eats/sync-log?limit=15`, { headers })
+                fetch(`${API_BASE}/api/uber-eats/sync-status`, { headers: getHeaders() }),
+                fetch(`${API_BASE}/api/uber-eats/sync-log?limit=15`, { headers: getHeaders() })
             ]);
             const statusData = await statusRes.json();
             setCronStatus(statusData.cron);
@@ -226,7 +248,7 @@ export function UberEatsAdmin() {
         if (!await showConfirm({ message: '¿Iniciar sincronización manual ahora?' })) return;
         setSyncing(true);
         try {
-            await fetch(`${API_BASE}/api/uber-eats/sync`, { method: 'POST', headers, body: '{}' });
+            await fetch(`${API_BASE}/api/uber-eats/sync`, { method: 'POST', headers: getHeaders(), body: '{}' });
             setTimeout(() => loadSyncStatus(), 3000);
         } catch { } finally { setSyncing(false); }
     };
@@ -236,7 +258,7 @@ export function UberEatsAdmin() {
         setDashLoading(true);
         try {
             const res = await fetch(
-                `${API_BASE}/api/uber-eats/dashboard?from=${fromDate}&to=${toDate}`, { headers }
+                `${API_BASE}/api/uber-eats/dashboard?from=${fromDate}&to=${toDate}`, { headers: getHeaders() }
             );
             setDashboard(await res.json());
         } catch { } finally { setDashLoading(false); }
@@ -399,7 +421,15 @@ export function UberEatsAdmin() {
                                 {configMsg && (
                                     <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${configMsg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                                         {configMsg.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                                        {configMsg.text}
+                                        <span className="flex-1">{configMsg.text}</span>
+                                        {configMsg.text.includes('sesión expiró') && (
+                                            <button
+                                                onClick={handleSessionExpired}
+                                                className="ml-2 px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 transition-colors"
+                                            >
+                                                Cerrar sesión
+                                            </button>
+                                        )}
                                     </div>
                                 )}
 

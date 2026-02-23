@@ -476,7 +476,7 @@ async function resolveAllMappings(sourceId, tableName) {
 
 // --- Get unmapped records ---
 
-async function getUnmappedRecords(sourceId, tableName) {
+async function getUnmappedRecords(sourceId, tableName, filter) {
     const pool = await getFormsPool();
     const mappings = await getMappings(sourceId);
     const personaMapping = mappings.find(m => m.FieldType === 'PERSONA');
@@ -487,14 +487,31 @@ async function getUnmappedRecords(sourceId, tableName) {
     }
 
     const conditions = [];
-    if (almacenMapping) {
-        conditions.push(`(_CODALMACEN IS NULL AND [${almacenMapping.ColumnName}] IS NOT NULL AND RTRIM(LTRIM([${almacenMapping.ColumnName}])) != '')`);
-    }
-    if (personaMapping) {
-        conditions.push(`(_PERSONAL_ID IS NULL AND [${personaMapping.ColumnName}] IS NOT NULL AND RTRIM(LTRIM([${personaMapping.ColumnName}])) != '')`);
+    if (filter === 'local') {
+        // Show ALL records where _CODALMACEN is NULL (matches "Sin Local" stat)
+        if (almacenMapping) {
+            conditions.push(`_CODALMACEN IS NULL`);
+        }
+    } else if (filter === 'persona') {
+        // Show ALL records where _PERSONAL_ID is NULL (matches "Sin Persona" stat)
+        if (personaMapping) {
+            conditions.push(`_PERSONAL_ID IS NULL`);
+        }
+    } else {
+        // Original logic: source column has value but resolved is NULL
+        if (almacenMapping) {
+            conditions.push(`(_CODALMACEN IS NULL AND [${almacenMapping.ColumnName}] IS NOT NULL AND RTRIM(LTRIM([${almacenMapping.ColumnName}])) != '')`);
+        }
+        if (personaMapping) {
+            conditions.push(`(_PERSONAL_ID IS NULL AND [${personaMapping.ColumnName}] IS NOT NULL AND RTRIM(LTRIM([${personaMapping.ColumnName}])) != '')`);
+        }
     }
 
     const whereClause = conditions.length > 0 ? `WHERE (${conditions.join(' OR ')})` : '';
+
+    // Get count first
+    const countResult = await pool.request().query(`SELECT COUNT(*) AS cnt FROM [${tableName}] ${whereClause}`);
+    const unmappedCount = countResult.recordset[0].cnt;
 
     const unmapped = await pool.request().query(`
         SELECT TOP 100 ID, ResponseID, RespondentEmail, SubmittedAt,
@@ -511,7 +528,7 @@ async function getUnmappedRecords(sourceId, tableName) {
 
     return {
         unmapped: unmapped.recordset,
-        unmappedCount: unmapped.recordset.length,
+        unmappedCount,
         totalCount: total,
         mappingsConfigured: true,
         personaColumn: personaMapping?.ColumnName || null,

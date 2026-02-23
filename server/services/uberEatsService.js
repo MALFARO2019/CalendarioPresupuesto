@@ -5,32 +5,11 @@
  */
 const axios = require('axios');
 const { parse } = require('csv-parse/sync');
-const crypto = require('crypto');
 const { getUberEatsPool, sql } = require('../uberEatsDb');
+const { encryptValue, decryptValue } = require('../uberEatsCrypto');
 
 const UBER_AUTH_URL = 'https://auth.uber.com/oauth/v2/token';
 const UBER_API_BASE = 'https://api.uber.com/v1';
-
-const ENCRYPTION_ALGORITHM = 'aes-256-cbc';
-function getEncKey() {
-    const k = process.env.DB_ENCRYPTION_KEY || 'default-key-change-in-production-32';
-    return Buffer.from(k.padEnd(32, '0').substring(0, 32));
-}
-
-function encryptValue(text) {
-    if (!text) return null;
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, getEncKey(), iv);
-    return iv.toString('hex') + ':' + cipher.update(text, 'utf8', 'hex') + cipher.final('hex');
-}
-
-function decryptValue(encrypted) {
-    if (!encrypted) return '';
-    const parts = encrypted.split(':');
-    if (parts.length !== 2) return encrypted;
-    const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, getEncKey(), Buffer.from(parts[0], 'hex'));
-    return decipher.update(parts[1], 'hex', 'utf8') + decipher.final('utf8');
-}
 
 class UberEatsService {
     constructor() {

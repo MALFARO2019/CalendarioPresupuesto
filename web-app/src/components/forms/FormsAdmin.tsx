@@ -505,10 +505,11 @@ export const FormsAdmin: React.FC = () => {
         }
     };
 
-    const loadUnmapped = async () => {
+    const loadUnmapped = async (filter?: 'local' | 'persona') => {
         if (!mappingSource) return;
         try {
-            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/unmapped`, { headers: headers() });
+            const params = filter ? `?filter=${filter}` : '';
+            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/unmapped${params}`, { headers: headers() });
             setMappingUnmapped(r.data.unmapped || []);
             setMappingUnmappedCount(r.data.unmappedCount || 0);
             setShowUnmapped(true);
@@ -1263,18 +1264,40 @@ export const FormsAdmin: React.FC = () => {
                                                 <span className="stat-label">Con Local</span>
                                                 <span className="stat-value">{mappingStats.stats.withCodAlmacen}</span>
                                             </div>
-                                            <div className="stat-item warning">
-                                                <span className="stat-label">Sin Local</span>
-                                                <span className="stat-value">{mappingStats.stats.withoutCodAlmacen}</span>
-                                            </div>
+                                            {mappingAlmacen ? (
+                                                <button
+                                                    className="stat-item warning stat-clickable"
+                                                    onClick={() => { loadUnmapped('local'); setShowUnmapped(true); setUnmappedTab('byRecord'); }}
+                                                    title="Ver registros sin local mapeado"
+                                                >
+                                                    <span className="stat-label">Sin Local</span>
+                                                    <span className="stat-value">{mappingStats.stats.withoutCodAlmacen}</span>
+                                                </button>
+                                            ) : (
+                                                <div className="stat-item warning">
+                                                    <span className="stat-label">Sin Local</span>
+                                                    <span className="stat-value">{mappingStats.stats.withoutCodAlmacen}</span>
+                                                </div>
+                                            )}
                                             <div className="stat-item success">
                                                 <span className="stat-label">Con Persona</span>
                                                 <span className="stat-value">{mappingStats.stats.withPersonalId}</span>
                                             </div>
-                                            <div className="stat-item warning">
-                                                <span className="stat-label">Sin Persona</span>
-                                                <span className="stat-value">{mappingStats.stats.withoutPersonalId}</span>
-                                            </div>
+                                            {mappingPersona ? (
+                                                <button
+                                                    className="stat-item warning stat-clickable"
+                                                    onClick={() => { loadUnmapped('persona'); setShowUnmapped(true); setUnmappedTab('byRecord'); }}
+                                                    title="Ver registros sin persona mapeada"
+                                                >
+                                                    <span className="stat-label">Sin Persona</span>
+                                                    <span className="stat-value">{mappingStats.stats.withoutPersonalId}</span>
+                                                </button>
+                                            ) : (
+                                                <div className="stat-item warning">
+                                                    <span className="stat-label">Sin Persona</span>
+                                                    <span className="stat-value">{mappingStats.stats.withoutPersonalId}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -1437,10 +1460,9 @@ export const FormsAdmin: React.FC = () => {
                                                             <thead>
                                                                 <tr>
                                                                     <th>ID</th>
-                                                                    <th>Correo</th>
                                                                     <th>Fecha</th>
-                                                                    {mappingAlmacen && <th>Valor Local</th>}
-                                                                    {mappingPersona && <th>Valor Persona</th>}
+                                                                    {mappingAlmacen && <th>📝 {mappingAlmacen}</th>}
+                                                                    {mappingPersona && <th>📝 {mappingPersona}</th>}
                                                                     <th>CodAlmacen</th>
                                                                     <th>PersonalID</th>
                                                                 </tr>
@@ -1449,7 +1471,6 @@ export const FormsAdmin: React.FC = () => {
                                                                 {mappingUnmapped.slice(0, 50).map((row: any) => (
                                                                     <tr key={row.ID}>
                                                                         <td>{row.ID}</td>
-                                                                        <td>{row.RespondentEmail || '—'}</td>
                                                                         <td>{row.SubmittedAt ? new Date(row.SubmittedAt).toLocaleDateString('es-CR') : '—'}</td>
                                                                         {mappingAlmacen && <td className="unmapped-value">{row._SourceLocal || '—'}</td>}
                                                                         {mappingPersona && <td className="unmapped-value">{row._SourcePersona || '—'}</td>}

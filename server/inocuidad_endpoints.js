@@ -138,9 +138,41 @@ module.exports = function registerInocuidadEndpoints(app, authMiddleware) {
     // ═══════════════════════════════════════════════════════════════════════════
     app.get('/api/inocuidad/sources', authMiddleware, async (req, res) => {
         try {
+            console.log('🔍 [Inocuidad] Fetching sources...');
             const sources = await getFormsSources();
+            console.log(`✅ [Inocuidad] Found ${sources.length} source(s):`, sources.map(s => `${s.SourceID}:${s.Alias}`));
             res.json(sources);
         } catch (err) {
+            console.error('❌ [Inocuidad] Sources error:', err.message);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GET /api/inocuidad/available-years/:sourceId — available years with data
+    // ═══════════════════════════════════════════════════════════════════════════
+    app.get('/api/inocuidad/available-years/:sourceId', authMiddleware, async (req, res) => {
+        try {
+            const sourceId = parseInt(req.params.sourceId);
+            const pool = await getFormsPool();
+            const src = await pool.request()
+                .input('id', fSql.Int, sourceId)
+                .query('SELECT TableName FROM FormsSources WHERE SourceID = @id');
+            if (src.recordset.length === 0) return res.json([]);
+            const tableName = src.recordset[0].TableName;
+            if (!tableName) return res.json([]);
+
+            const tblCheck = await pool.request()
+                .input('tbl', fSql.NVarChar, tableName)
+                .query('SELECT 1 FROM sys.tables WHERE name = @tbl');
+            if (tblCheck.recordset.length === 0) return res.json([]);
+
+            const result = await pool.request().query(
+                `SELECT DISTINCT YEAR(SubmittedAt) AS yr FROM [${tableName}] WHERE _CODALMACEN IS NOT NULL ORDER BY yr DESC`
+            );
+            res.json(result.recordset.map(r => r.yr));
+        } catch (err) {
+            console.error('❌ available-years error:', err.message);
             res.status(500).json({ error: err.message });
         }
     });
@@ -325,13 +357,20 @@ module.exports = function registerInocuidadEndpoints(app, authMiddleware) {
             // Get KPI config for color thresholds
             const kpiConfig = await getKpiConfig('Inocuidad');
 
+            // Get available years for this source
+            const yearsResult = await pool.request()
+                .input('tblYears', fSql.NVarChar, tableName)
+                .query(`SELECT DISTINCT YEAR(SubmittedAt) AS yr FROM [${tableName}] WHERE _CODALMACEN IS NOT NULL ORDER BY yr DESC`);
+            const availableYears = yearsResult.recordset.map(r => r.yr);
+
             res.json({
                 rows: Object.values(groupedByLocal),
                 scoreColumn,
                 kpiConfig,
                 personalAsignado,
                 localNames,
-                year: yearInt
+                year: yearInt,
+                availableYears
             });
         } catch (err) {
             console.error('❌ inocuidad/tendencia error:', err);

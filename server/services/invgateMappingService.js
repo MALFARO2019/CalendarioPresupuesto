@@ -303,8 +303,8 @@ async function getUnmappedRecords(viewId) {
     }
 
     const mappings = await getMappings(viewId);
-    const personaMapping = mappings.find(m => m.FieldType === 'PERSONA');
-    const almacenMapping = mappings.find(m => m.FieldType === 'CODALMACEN');
+    const personaMapping = mappings.find(m => m.FieldType === 'PERSONA' && m.ColumnName !== '__NO_MAP__');
+    const almacenMapping = mappings.find(m => m.FieldType === 'CODALMACEN' && m.ColumnName !== '__NO_MAP__');
 
     if (!personaMapping && !almacenMapping) {
         return { unmapped: [], unmappedCount: 0, totalCount: 0, mappingsConfigured: false };
@@ -605,11 +605,32 @@ async function getResolvedMappings(viewId) {
                 GROUP BY [${colName}], [_CODALMACEN]
                 ORDER BY cnt DESC
             `);
-            result.almacen = rows.recordset.map(r => ({
-                sourceValue: r.sourceValue || '',
-                resolvedValue: r.resolvedValue,
-                count: r.cnt
-            }));
+            // Enrich with store names from main database
+            try {
+                const mainPool = await poolPromise;
+                const storesResult = await mainPool.request().query(`
+                    SELECT DISTINCT RTRIM(gi.CODALMACEN) AS CODALMACEN, am.NOMBREALMACEN AS NOMBRE
+                    FROM ROSTIPOLLOS_P.dbo.GRUPOSALMACENLIN gi
+                    INNER JOIN ROSTIPOLLOS_P.dbo.ALMACEN am ON am.CODALMACEN = gi.CODALMACEN
+                    WHERE IDGRUPO = '3000'
+                    ORDER BY CODALMACEN
+                `);
+                const storeMap = {};
+                for (const s of storesResult.recordset) { storeMap[s.CODALMACEN] = s.NOMBRE; }
+                result.almacen = rows.recordset.map(r => ({
+                    sourceValue: r.sourceValue || '',
+                    resolvedValue: r.resolvedValue,
+                    resolvedNombre: r.resolvedValue ? (storeMap[r.resolvedValue] || null) : null,
+                    count: r.cnt
+                }));
+            } catch (e) {
+                console.warn('  ! Could not enrich store names:', e.message?.substring(0, 80));
+                result.almacen = rows.recordset.map(r => ({
+                    sourceValue: r.sourceValue || '',
+                    resolvedValue: r.resolvedValue,
+                    count: r.cnt
+                }));
+            }
         }
     }
 

@@ -794,6 +794,7 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
         try {
             if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
             const sourceId = parseInt(req.params.id);
+            const filter = req.query.filter; // 'local' | 'persona' | undefined
 
             const pool = await getFormsPool();
             const src = await pool.request()
@@ -809,7 +810,7 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
                 return res.json({ unmapped: [], unmappedCount: 0, totalCount: 0, mappingsConfigured: false });
             }
 
-            const result = await formsMappingService.getUnmappedRecords(sourceId, tableName);
+            const result = await formsMappingService.getUnmappedRecords(sourceId, tableName, filter);
             res.json(result);
         } catch (err) {
             res.status(500).json({ error: err.message });

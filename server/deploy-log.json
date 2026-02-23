@@ -303,6 +303,54 @@
           "detail": "Servicio NSSM reiniciado"
         }
       ]
+    },
+    {
+      "id": 1771823596579,
+      "version": "v1.1",
+      "date": "2026-02-23T05:13:16.579Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at e26231e feat: post-deploy health check, appDir migration, warning status, deploy progress UI"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.1 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Correcto: se termin� el proceso \"node.exe\" con PID 63544.\r\nServicio NSSM reiniciado"
+        },
+        {
+          "step": "Verificando API",
+          "status": "warning",
+          "detail": "API responde \"v1.0\" pero se esperaba \"v1.1\". Puede haber un proceso node viejo ocupando el puerto."
+        }
+      ]
     }
   ]
 }

@@ -1220,6 +1220,19 @@
     background: #fffbeb;
 }
 
+button.stat-item.stat-clickable {
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+}
+
+button.stat-item.stat-clickable:hover {
+    transform: scale(1.04);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: #f59e0b;
+    background: #fef3c7;
+}
+
 .stat-label {
     font-size: 0.72rem;
     font-weight: 600;

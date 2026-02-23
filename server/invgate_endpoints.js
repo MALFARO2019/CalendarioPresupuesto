@@ -499,6 +499,68 @@ function registerInvgateEndpoints(app, authMiddleware) {
         }
     });
 
+    // Lookup stores for InvGate mapping dropdowns
+    app.get('/api/invgate/lookup-stores', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const { poolPromise } = require('./db');
+            const mainPool = await poolPromise;
+            const r = await mainPool.request().query(`
+                SELECT DISTINCT RTRIM(gi.CODALMACEN) AS CODALMACEN, am.NOMBREALMACEN AS NOMBRE
+                FROM ROSTIPOLLOS_P.dbo.GRUPOSALMACENLIN gi
+                INNER JOIN ROSTIPOLLOS_P.dbo.ALMACEN am ON am.CODALMACEN = gi.CODALMACEN
+                WHERE IDGRUPO = '3000'
+                ORDER BY CODALMACEN
+            `);
+            res.json(r.recordset.map(s => ({ CodAlmacen: s.CODALMACEN?.trim(), Nombre: s.NOMBRE?.trim() })));
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Lookup active users for persona mapping dropdowns
+    app.get('/api/invgate/lookup-users', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const { poolPromise } = require('./db');
+            const mainPool = await poolPromise;
+            const r = await mainPool.request().query(
+                `SELECT Id, Nombre FROM APP_USUARIOS WHERE Activo = 1 ORDER BY Nombre`
+            );
+            res.json(r.recordset);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Save a store alias (maps a source value → CodAlmacen)
+    app.post('/api/invgate/views/:id/map-store', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const { sourceValue, codAlmacen } = req.body;
+            if (!sourceValue || !codAlmacen) {
+                return res.status(400).json({ error: 'sourceValue and codAlmacen are required' });
+            }
+            const { poolPromise, sql: mainSql } = require('./db');
+            const mainPool = await poolPromise;
+            // Insert into APP_STORE_ALIAS
+            await mainPool.request()
+                .input('alias', mainSql.NVarChar, sourceValue.trim())
+                .input('cod', mainSql.NVarChar, codAlmacen.trim())
+                .input('fuente', mainSql.NVarChar, 'InvGate')
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM APP_STORE_ALIAS WHERE Alias = @alias AND CodAlmacen = @cod)
+                    INSERT INTO APP_STORE_ALIAS (Alias, CodAlmacen, Fuente, Activo) VALUES (@alias, @cod, @fuente, 1)
+                `);
+            // Re-resolve mappings for this view
+            await invgateMappingService.resolveAllMappings(parseInt(req.params.id));
+            const stats = await invgateMappingService.getMappingStats(parseInt(req.params.id));
+            res.json({ ok: true, stats });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     console.log('📋 InvGate endpoints registered');
 }
 

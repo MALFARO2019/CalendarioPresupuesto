@@ -5,8 +5,7 @@
  */
 const { getUberEatsPool, sql } = require('./uberEatsDb');
 const uberEatsService = require('./services/uberEatsService');
-// Import encrypt from single source (avoid duplication)
-const { encryptValue } = require('./services/uberEatsService');
+const { encryptValue } = require('./uberEatsCrypto');
 const uberEatsCron = require('./jobs/uberEatsCron');
 
 function requireAdmin(req, res) {

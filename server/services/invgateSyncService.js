@@ -819,20 +819,45 @@ class InvGateSyncService {
             const result = await pool.request().query(
                 'SELECT ViewID, Nombre, SyncEnabled, TotalTickets, ColumnsJSON, UltimaSync FROM InvgateViews ORDER BY ViewID'
             );
-            return result.recordset.map(r => ({
+            const views = result.recordset.map(r => ({
                 viewId: r.ViewID,
                 nombre: r.Nombre,
                 syncEnabled: !!r.SyncEnabled,
                 totalTickets: r.TotalTickets || 0,
                 columns: r.ColumnsJSON ? JSON.parse(r.ColumnsJSON) : [],
-                ultimaSync: r.UltimaSync
+                ultimaSync: r.UltimaSync,
+                ultimoRegistro: null
             }));
+
+            // For each view, try to get the latest record date from its data table
+            for (const v of views) {
+                try {
+                    const tableName = this._viewTableName(v.viewId, v.nombre);
+                    // Check if table exists
+                    const exists = await pool.request()
+                        .query(`SELECT OBJECT_ID('${tableName}', 'U') AS tid`);
+                    let actualTable = tableName;
+                    if (!exists.recordset[0]?.tid) {
+                        const oldName = `InvgateView_${parseInt(v.viewId)}`;
+                        const oldExists = await pool.request()
+                            .query(`SELECT OBJECT_ID('${oldName}', 'U') AS tid`);
+                        if (oldExists.recordset[0]?.tid) actualTable = oldName;
+                        else continue;
+                    }
+                    const maxResult = await pool.request()
+                        .query(`SELECT MAX([_SyncedAt]) AS UltimoRegistro FROM [${actualTable}]`);
+                    v.ultimoRegistro = maxResult.recordset[0]?.UltimoRegistro || null;
+                } catch (err) {
+                    // Ignore errors for individual views
+                }
+            }
+
+            return views;
         } catch (e) {
             console.warn('InvgateViews query error:', e.message);
             return [];
         }
     }
-
     /** Save/update a view configuration */
     async saveView(viewId, nombre, columns = []) {
         await this.ensureTables();

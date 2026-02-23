@@ -27,6 +27,7 @@ interface Helpdesk {
 interface ViewConfig {
     viewId: number; nombre: string; syncEnabled: boolean;
     totalTickets: number; columns: string[]; ultimaSync: string | null;
+    ultimoRegistro: string | null;
 }
 interface ViewPreview {
     viewId: number; totalCount: number; previewRows: number;
@@ -94,8 +95,10 @@ export const InvgateAdmin: React.FC = () => {
     const [loadingMapping, setLoadingMapping] = useState(false);
     const [resolvingMapping, setResolvingMapping] = useState(false);
     const [loadingUnmapped, setLoadingUnmapped] = useState(false);
-    const [resolvedMappings, setResolvedMappings] = useState<{ almacen: { sourceValue: string; resolvedValue: string; count: number }[]; persona: { sourceValue: string; resolvedId: number; resolvedName: string; count: number }[] } | null>(null);
+    const [resolvedMappings, setResolvedMappings] = useState<{ almacen: { sourceValue: string; resolvedValue: string; resolvedNombre?: string; count: number }[]; persona: { sourceValue: string; resolvedId: number; resolvedName: string; count: number }[] } | null>(null);
     const [loadingResolved, setLoadingResolved] = useState(false);
+    const [reviewMappingType, setReviewMappingType] = useState<'CODALMACEN' | 'PERSONA' | null>(null);
+    const [clearingMapping, setClearingMapping] = useState<string | null>(null);
 
     // Reference data for mapping combos
     const [storesList, setStoresList] = useState<{ CodAlmacen: string; Nombre: string }[]>([]);
@@ -274,8 +277,8 @@ export const InvgateAdmin: React.FC = () => {
         if (storesList.length > 0 && usersList.length > 0) return;
         try {
             const [storesRes, usersRes] = await Promise.all([
-                axios.get(`${API_BASE}/admin/store-aliases/stores`, { headers: authHeaders() }),
-                axios.get(`${API_BASE}/personal`, { headers: authHeaders() }),
+                axios.get(`${API_BASE}/invgate/lookup-stores`, { headers: authHeaders() }),
+                axios.get(`${API_BASE}/invgate/lookup-users`, { headers: authHeaders() }),
             ]);
             setStoresList(storesRes.data || []);
             setUsersList((usersRes.data || []).map((u: any) => ({ Id: u.ID || u.Id || u.id, Nombre: u.NOMBRE || u.Nombre || u.nombre })));
@@ -346,37 +349,38 @@ export const InvgateAdmin: React.FC = () => {
                 almacenCol: r.data.almacenColumn,
             });
         } catch (e: any) {
-            setViewError('Error cargando no mapeados: ' + (e.response?.data?.error || e.message));
+            showToast('Error cargando no mapeados: ' + (e.response?.data?.error || e.message), 'error');
         } finally { setLoadingUnmapped(false); }
     };
 
     // ─── Load ALL resolved mappings ───────────────────────────────
     const loadResolvedMappings = async (viewId: number) => {
-        if (resolvedMappings) { setResolvedMappings(null); return; }
         setLoadingResolved(true);
         try {
             const r = await axios.get(`${API_BASE}/invgate/views/${viewId}/resolved-mappings`, { headers: authHeaders() });
-            setResolvedMappings(r.data);
+            setResolvedMappings(r.data || { almacen: [], persona: [] });
         } catch (e: any) {
-            setViewError('Error cargando mapeos resueltos: ' + (e.response?.data?.error || e.message));
+            showToast('Error cargando mapeos resueltos: ' + (e.response?.data?.error || e.message), 'error');
         } finally { setLoadingResolved(false); }
     };
 
     // ─── Clear a resolved mapping ─────────────────────────────────
     const clearResolvedMapping = async (viewId: number, fieldType: string, sourceValue: string) => {
-        if (!(await showConfirm({ message: `¿Borrar mapeo de "${sourceValue}"? Los registros volverán a estado sin mapear.`, destructive: true }))) return;
+        const key = `${fieldType}:${sourceValue}`;
+        setClearingMapping(key);
         try {
             const r = await axios.delete(`${API_BASE}/invgate/views/${viewId}/resolved-mappings`, {
                 headers: authHeaders(),
                 data: { fieldType, sourceValue }
             });
-            showToast(`Mapeo borrado: ${r.data.cleared} registros afectados`, 'success');
-            setResolvedMappings(null);
+            showToast(`Limpiado: ${r.data.cleared} registros`, 'success');
             await loadResolvedMappings(viewId);
             // Refresh stats
             await openMappingPanel(viewId);
         } catch (e: any) {
-            setViewError('Error borrando mapeo: ' + (e.response?.data?.error || e.message));
+            showToast('Error borrando mapeo: ' + (e.response?.data?.error || e.message), 'error');
+        } finally {
+            setClearingMapping(null);
         }
     };
 
@@ -832,6 +836,7 @@ export const InvgateAdmin: React.FC = () => {
                                     <th>Nombre</th>
                                     <th style={{ width: '100px' }}>Tickets</th>
                                     <th style={{ width: '160px' }}>Última Sync</th>
+                                    <th style={{ width: '160px' }}>Último Registro</th>
                                     <th style={{ width: '80px', textAlign: 'center' }}>Sync</th>
                                     <th style={{ width: '170px' }}></th>
                                     <th style={{ width: '50px' }}></th>
@@ -852,6 +857,21 @@ export const InvgateAdmin: React.FC = () => {
                                             <td>{v.totalTickets}</td>
                                             <td style={{ fontSize: '12px' }}>
                                                 {v.ultimaSync ? new Date(v.ultimaSync).toLocaleString('es-CR') : '—'}
+                                            </td>
+                                            <td style={{ fontSize: '12px' }}>
+                                                {(() => {
+                                                    if (!v.ultimoRegistro) return '—';
+                                                    const d = new Date(v.ultimoRegistro);
+                                                    const hoursAgo = (Date.now() - d.getTime()) / (1000 * 60 * 60);
+                                                    const isOld = hoursAgo > 24;
+                                                    return (
+                                                        <span style={{ color: isOld ? '#ef4444' : 'inherit', fontWeight: isOld ? 700 : 400 }}
+                                                            title={isOld ? `Hace ${Math.floor(hoursAgo)} horas — más de 24h sin registro` : ''}>
+                                                            {d.toLocaleString('es-CR')}
+                                                            {isOld && ' ⚠️'}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </td>
                                             <td style={{ textAlign: 'center' }}>
                                                 <label className="toggle-switch">
@@ -899,116 +919,173 @@ export const InvgateAdmin: React.FC = () => {
                                         {mappingViewId === v.viewId && (
                                             <tr>
                                                 <td colSpan={7} style={{ padding: 0 }}>
-                                                    <div style={{ background: '#fefce8', border: '1px solid #fde68a', padding: '16px' }}>
+                                                    <div className="invgate-mapping-panel">
                                                         {loadingMapping ? (
-                                                            <p style={{ color: '#92400e' }}>Cargando mapeos...</p>
+                                                            <div className="forms-loading">Cargando mapeos...</div>
                                                         ) : mappingData ? (
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                                                                <h4 style={{ margin: 0, fontSize: '14px', color: '#92400e' }}>🔗 Mapeos — {v.nombre}</h4>
+                                                            <>
+                                                                <div className="detail-header">
+                                                                    <h3>🔗 Mapeos — {v.nombre}</h3>
+                                                                    <button className="btn-close" onClick={() => { setMappingViewId(null); setMappingData(null); setUnmappedData(null); setResolvedMappings(null); setReviewMappingType(null); }}>✕</button>
+                                                                </div>
 
-                                                                {/* Column selection with SearchableSelect */}
-                                                                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                                                                    <div style={{ flex: 1, minWidth: '220px' }}>
-                                                                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                                                                            👤 Campo Persona / Usuario
-                                                                        </label>
-                                                                        <SearchableSelect
-                                                                            options={columnOptions}
-                                                                            value={mappingData.mappings.find(m => m.FieldType === 'PERSONA')?.ColumnName || ''}
-                                                                            onChange={val => saveMapping(v.viewId, 'PERSONA', val)}
-                                                                            placeholder="— Sin mapear —"
-                                                                        />
-                                                                        {mappingData.mappings.find(m => m.FieldType === 'PERSONA')?.UpdatedBy && (
-                                                                            <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'block' }}>
-                                                                                {mappingData.mappings.find(m => m.FieldType === 'PERSONA')?.UpdatedBy === 'AUTO_DETECT' ? '🤖 Auto' : '👤 Manual'}
-                                                                            </span>
-                                                                        )}
+                                                                {/* Stats */}
+                                                                {mappingData.stats && (
+                                                                    <div className="mapping-stats">
+                                                                        <h4>📊 Estado de Mapeos</h4>
+                                                                        <div className="stats-grid">
+                                                                            <div className="stat-item">
+                                                                                <span className="stat-label">Total registros</span>
+                                                                                <span className="stat-value">{mappingData.stats.total}</span>
+                                                                            </div>
+                                                                            <div className="stat-item success">
+                                                                                <span className="stat-label">Con Local</span>
+                                                                                <span className="stat-value">{mappingData.stats.withCodAlmacen}</span>
+                                                                            </div>
+                                                                            {(() => {
+                                                                                const almacenCol = mappingData.mappings.find(m => m.FieldType === 'CODALMACEN')?.ColumnName;
+                                                                                const almacenMapped = almacenCol && almacenCol !== '__NO_MAP__';
+                                                                                return (
+                                                                                    <div
+                                                                                        className={`stat-item warning${almacenMapped ? ' clickable' : ''}`}
+                                                                                        onClick={almacenMapped ? () => loadUnmapped(v.viewId) : undefined}
+                                                                                        title={almacenMapped ? 'Click para ver sin mapear' : ''}
+                                                                                        style={almacenMapped ? { cursor: 'pointer' } : {}}
+                                                                                    >
+                                                                                        <span className="stat-label">Sin Local</span>
+                                                                                        <span className="stat-value">{mappingData.stats.withoutCodAlmacen}</span>
+                                                                                    </div>
+                                                                                );
+                                                                            })()}
+                                                                            <div className="stat-item success">
+                                                                                <span className="stat-label">Con Persona</span>
+                                                                                <span className="stat-value">{mappingData.stats.withPersonalId}</span>
+                                                                            </div>
+                                                                            {(() => {
+                                                                                const personaCol = mappingData.mappings.find(m => m.FieldType === 'PERSONA')?.ColumnName;
+                                                                                const personaMapped = personaCol && personaCol !== '__NO_MAP__';
+                                                                                return (
+                                                                                    <div
+                                                                                        className={`stat-item warning${personaMapped ? ' clickable' : ''}`}
+                                                                                        onClick={personaMapped ? () => loadUnmapped(v.viewId) : undefined}
+                                                                                        title={personaMapped ? 'Click para ver sin mapear' : ''}
+                                                                                        style={personaMapped ? { cursor: 'pointer' } : {}}
+                                                                                    >
+                                                                                        <span className="stat-label">Sin Persona</span>
+                                                                                        <span className="stat-value">{mappingData.stats.withoutPersonalId}</span>
+                                                                                    </div>
+                                                                                );
+                                                                            })()}
+                                                                        </div>
                                                                     </div>
-                                                                    <div style={{ flex: 1, minWidth: '220px' }}>
-                                                                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                                                                            🏪 Campo Local / CodAlmacen
-                                                                        </label>
+                                                                )}
+
+                                                                {/* Column selection */}
+                                                                <div className="mapping-fields">
+                                                                    <div className="form-group">
+                                                                        <label>🏪 Campo de Local (CodAlmacen)</label>
                                                                         <SearchableSelect
                                                                             options={columnOptions}
                                                                             value={mappingData.mappings.find(m => m.FieldType === 'CODALMACEN')?.ColumnName || ''}
                                                                             onChange={val => saveMapping(v.viewId, 'CODALMACEN', val)}
                                                                             placeholder="— Sin mapear —"
                                                                         />
-                                                                        {mappingData.mappings.find(m => m.FieldType === 'CODALMACEN')?.UpdatedBy && (
-                                                                            <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'block' }}>
-                                                                                {mappingData.mappings.find(m => m.FieldType === 'CODALMACEN')?.UpdatedBy === 'AUTO_DETECT' ? '🤖 Auto' : '👤 Manual'}
-                                                                            </span>
-                                                                        )}
+                                                                        <small>Se buscará en APP_STORE_ALIAS para encontrar el código del local</small>
+                                                                    </div>
+                                                                    <div className="form-group">
+                                                                        <label>👤 Campo de Persona</label>
+                                                                        <SearchableSelect
+                                                                            options={columnOptions}
+                                                                            value={mappingData.mappings.find(m => m.FieldType === 'PERSONA')?.ColumnName || ''}
+                                                                            onChange={val => saveMapping(v.viewId, 'PERSONA', val)}
+                                                                            placeholder="— Sin mapear —"
+                                                                        />
+                                                                        <small>Se buscará en APP_USUARIOS para encontrar el ID del usuario</small>
                                                                     </div>
                                                                 </div>
 
-                                                                {/* Stats + actions row */}
-                                                                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                                                    {mappingData.stats && (
-                                                                        <div style={{ display: 'flex', gap: '10px', fontSize: '12px' }}>
-                                                                            <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 8px', borderRadius: '10px', fontWeight: 600 }}>
-                                                                                🏪 {mappingData.stats.withCodAlmacen}/{mappingData.stats.total}
-                                                                            </span>
-                                                                            <span style={{ background: '#dbeafe', color: '#1e40af', padding: '3px 8px', borderRadius: '10px', fontWeight: 600 }}>
-                                                                                👤 {mappingData.stats.withPersonalId}/{mappingData.stats.total}
-                                                                            </span>
-                                                                            {(mappingData.stats.withoutCodAlmacen > 0 || mappingData.stats.withoutPersonalId > 0) && (
-                                                                                <span style={{ background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: '10px', fontWeight: 600 }}>
-                                                                                    ⚠ {Math.max(mappingData.stats.withoutCodAlmacen, mappingData.stats.withoutPersonalId)} sin resolver
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                    <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-                                                                        <button onClick={() => resolveMappings(v.viewId)}
-                                                                            disabled={resolvingMapping}
-                                                                            className="btn-secondary btn-sm"
-                                                                            style={{ fontSize: '12px' }}>
-                                                                            {resolvingMapping ? '⏳ Resolviendo...' : '🔄 Resolver mapeos'}
-                                                                        </button>
-                                                                        <button onClick={() => loadUnmapped(v.viewId)}
-                                                                            disabled={loadingUnmapped}
-                                                                            className="btn-secondary btn-sm"
-                                                                            style={{ fontSize: '12px' }}>
-                                                                            {loadingUnmapped ? '⏳...' : unmappedData ? '🔼 Ocultar' : '🔍 No mapeados'}
-                                                                        </button>
-                                                                        <button onClick={() => loadResolvedMappings(v.viewId)}
-                                                                            disabled={loadingResolved}
-                                                                            className="btn-secondary btn-sm"
-                                                                            style={{ fontSize: '12px', background: resolvedMappings ? '#e0f2fe' : undefined }}>
-                                                                            {loadingResolved ? '⏳...' : resolvedMappings ? '🔼 Ocultar' : '📋 Ver mapeos'}
-                                                                        </button>
-                                                                    </div>
+                                                                {/* Action buttons */}
+                                                                <div className="mapping-actions">
+                                                                    <button className="btn-save" onClick={() => saveMapping(v.viewId, 'CODALMACEN', mappingData.mappings.find(m => m.FieldType === 'CODALMACEN')?.ColumnName || '')}>
+                                                                        💾 Guardar Mapeos
+                                                                    </button>
+                                                                    <button className="btn-resolve-mapping" onClick={() => resolveMappings(v.viewId)} disabled={resolvingMapping}>
+                                                                        {resolvingMapping ? '⏳ Resolviendo...' : '🔄 Resolver Pendientes'}
+                                                                    </button>
+                                                                    <button className="btn-unmapped" onClick={() => { if (unmappedData) { setUnmappedData(null); } else { loadUnmapped(v.viewId); } }}>
+                                                                        {loadingUnmapped ? '⏳...' : unmappedData ? '✕ Cerrar' : '🔍 Ver Sin Mapear'}
+                                                                    </button>
+                                                                    <button className="btn-review-mapping" onClick={() => { if (reviewMappingType === 'CODALMACEN') { setReviewMappingType(null); } else { setReviewMappingType('CODALMACEN'); loadResolvedMappings(v.viewId); } }}>
+                                                                        {reviewMappingType === 'CODALMACEN' ? '✕ Cerrar' : '🏪 Revisar Locales'}
+                                                                    </button>
+                                                                    <button className="btn-review-mapping" onClick={() => { if (reviewMappingType === 'PERSONA') { setReviewMappingType(null); } else { setReviewMappingType('PERSONA'); loadResolvedMappings(v.viewId); } }}>
+                                                                        {reviewMappingType === 'PERSONA' ? '✕ Cerrar' : '👤 Revisar Personas'}
+                                                                    </button>
                                                                 </div>
+
+                                                                {/* Review ALL resolved mappings panel */}
+                                                                {reviewMappingType && (
+                                                                    <div className="review-mappings-panel">
+                                                                        <h4>{reviewMappingType === 'CODALMACEN' ? '🏪 Mapeos de Locales (Tabla)' : '👤 Mapeos de Personas (Tabla)'}</h4>
+                                                                        <p style={{ color: '#6b7280', fontSize: 12, margin: '0 0 10px' }}>Todos los valores resueltos en la tabla de datos, incluyendo automáticos. Use ❌ para limpiar un mapeo.</p>
+
+                                                                        {loadingResolved ? (
+                                                                            <div className="forms-loading" style={{ padding: '8px 0' }}>Cargando...</div>
+                                                                        ) : resolvedMappings ? (
+                                                                            <>
+                                                                                {(reviewMappingType === 'CODALMACEN' ? resolvedMappings.almacen : resolvedMappings.persona).length === 0 ? (
+                                                                                    <p style={{ color: '#9ca3af', fontSize: 13, fontStyle: 'italic' }}>No hay mapeos resueltos en la tabla.</p>
+                                                                                ) : (
+                                                                                    <div className="review-mapping-list">
+                                                                                        {(reviewMappingType === 'CODALMACEN' ? resolvedMappings.almacen : resolvedMappings.persona).map((m: any, i: number) => (
+                                                                                            <div className="review-mapping-row" key={i}>
+                                                                                                <span className="review-source" title={m.sourceValue}>{m.sourceValue}</span>
+                                                                                                <span className="review-arrow">→</span>
+                                                                                                <span className="review-resolved">
+                                                                                                    {reviewMappingType === 'CODALMACEN'
+                                                                                                        ? (m.resolvedNombre ? `${m.resolvedValue} — ${m.resolvedNombre}` : (m.resolvedValue || '⚠️ Sin resolver'))
+                                                                                                        : (m.resolvedName ? `${m.resolvedName} (${m.resolvedId})` : (m.resolvedId || '⚠️ Sin resolver'))}
+                                                                                                </span>
+                                                                                                <span className="review-count">{m.count || m.cnt} reg.</span>
+                                                                                                {(m.resolvedValue || m.resolvedId) && (
+                                                                                                    <button
+                                                                                                        className="review-clear-btn"
+                                                                                                        disabled={clearingMapping === `${reviewMappingType}:${m.sourceValue}`}
+                                                                                                        onClick={() => clearResolvedMapping(v.viewId, reviewMappingType, m.sourceValue)}
+                                                                                                        title="Limpiar mapeo (poner en NULL)"
+                                                                                                    >{clearingMapping === `${reviewMappingType}:${m.sourceValue}` ? '⏳' : '❌'}</button>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                )}
+                                                                            </>
+                                                                        ) : null}
+                                                                    </div>
+                                                                )}
 
                                                                 {/* Unmapped values with manual mapping */}
                                                                 {unmappedData && (
-                                                                    <div style={{ borderTop: '1px solid #fde68a', paddingTop: '12px' }}>
+                                                                    <div className="unmapped-section">
                                                                         {unmappedData.records.length === 0 ? (
-                                                                            <p style={{ color: '#16a34a', fontSize: '13px', fontWeight: 600 }}>✅ Todos los registros están mapeados</p>
+                                                                            <p style={{ color: '#059669', fontSize: 13, padding: '16px 0' }}>✅ Todos los registros están mapeados correctamente</p>
                                                                         ) : (
                                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                                                                <h5 style={{ margin: 0, fontSize: '13px', color: '#92400e' }}>
-                                                                                    🔍 Valores No Mapeados ({unmappedData.count} registros de {unmappedData.total})
-                                                                                </h5>
+                                                                                <h4>🔍 Valores No Mapeados ({unmappedData.count} registros de {unmappedData.total})</h4>
 
                                                                                 {/* Unmapped almacen values */}
                                                                                 {unmappedUniqueValues.almacen.length > 0 && (
-                                                                                    <div>
-                                                                                        <h6 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#166534', fontWeight: 600 }}>
-                                                                                            🏪 Local / CodAlmacen — {unmappedUniqueValues.almacen.length} valores únicos sin mapear
-                                                                                        </h6>
-                                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                                    <div className="mapping-group">
+                                                                                        <h5>🏪 Locales sin mapear ({unmappedUniqueValues.almacen.length})</h5>
+                                                                                        <div className="mapping-value-list">
                                                                                             {unmappedUniqueValues.almacen.map(([val, count]) => (
-                                                                                                <div key={val} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 12px', flexWrap: 'wrap' }}>
-                                                                                                    <span style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b', minWidth: '150px', flex: '0 0 auto' }} title={val}>
-                                                                                                        "{val}"
-                                                                                                    </span>
-                                                                                                    <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                                                                                                        ({count} reg.)
-                                                                                                    </span>
-                                                                                                    <span style={{ fontSize: '12px', color: '#64748b' }}>→</span>
-                                                                                                    <div style={{ flex: 1, minWidth: '220px' }}>
+                                                                                                <div className="mapping-value-row" key={val}>
+                                                                                                    <div className="mv-source">
+                                                                                                        <span className="mv-value" title={val}>{val}</span>
+                                                                                                        <span className="mv-count">{count} reg.</span>
+                                                                                                    </div>
+                                                                                                    <div className="mv-arrow">→</div>
+                                                                                                    <div className="mv-target">
                                                                                                         <SearchableSelect
                                                                                                             options={storeOptions}
                                                                                                             value=""
@@ -1024,21 +1101,17 @@ export const InvgateAdmin: React.FC = () => {
 
                                                                                 {/* Unmapped persona values */}
                                                                                 {unmappedUniqueValues.persona.length > 0 && (
-                                                                                    <div>
-                                                                                        <h6 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#1e40af', fontWeight: 600 }}>
-                                                                                            👤 Persona / Usuario — {unmappedUniqueValues.persona.length} valores únicos sin mapear
-                                                                                        </h6>
-                                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                                    <div className="mapping-group">
+                                                                                        <h5>👤 Personas sin mapear ({unmappedUniqueValues.persona.length})</h5>
+                                                                                        <div className="mapping-value-list">
                                                                                             {unmappedUniqueValues.persona.map(([val, count]) => (
-                                                                                                <div key={val} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 12px', flexWrap: 'wrap' }}>
-                                                                                                    <span style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b', minWidth: '150px', flex: '0 0 auto' }} title={val}>
-                                                                                                        "{val}"
-                                                                                                    </span>
-                                                                                                    <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                                                                                                        ({count} reg.)
-                                                                                                    </span>
-                                                                                                    <span style={{ fontSize: '12px', color: '#64748b' }}>→</span>
-                                                                                                    <div style={{ flex: 1, minWidth: '220px' }}>
+                                                                                                <div className="mapping-value-row" key={val}>
+                                                                                                    <div className="mv-source">
+                                                                                                        <span className="mv-value" title={val}>{val}</span>
+                                                                                                        <span className="mv-count">{count} reg.</span>
+                                                                                                    </div>
+                                                                                                    <div className="mv-arrow">→</div>
+                                                                                                    <div className="mv-target">
                                                                                                         <SearchableSelect
                                                                                                             options={userOptions}
                                                                                                             value=""
@@ -1054,96 +1127,8 @@ export const InvgateAdmin: React.FC = () => {
                                                                             </div>
                                                                         )}
                                                                     </div>
-                                                                )
-                                                                }
-
-                                                                {/* ── Resolved mappings panel ── */}
-                                                                {resolvedMappings && (
-                                                                    <div style={{ borderTop: '1px solid #fde68a', paddingTop: '12px' }}>
-                                                                        {resolvedMappings.almacen.length === 0 && resolvedMappings.persona.length === 0 ? (
-                                                                            <p style={{ color: '#92400e', fontSize: '13px' }}>No hay mapeos resueltos aún.</p>
-                                                                        ) : (
-                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                                                                <h5 style={{ margin: 0, fontSize: '13px', color: '#1e40af' }}>
-                                                                                    📋 Mapeos Resueltos ({resolvedMappings.almacen.length + resolvedMappings.persona.length} grupos)
-                                                                                </h5>
-
-                                                                                {/* Almacen resolved */}
-                                                                                {resolvedMappings.almacen.length > 0 && (
-                                                                                    <div>
-                                                                                        <h6 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#166534', fontWeight: 600 }}>
-                                                                                            🏪 CodAlmacen — {resolvedMappings.almacen.length} mapeos
-                                                                                        </h6>
-                                                                                        <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                                                                                            <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                                                                                                <thead>
-                                                                                                    <tr style={{ background: '#f0fdf4' }}>
-                                                                                                        <th style={{ padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid #bbf7d0' }}>Valor Fuente</th>
-                                                                                                        <th style={{ padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid #bbf7d0' }}>→ CodAlmacen</th>
-                                                                                                        <th style={{ padding: '6px 10px', textAlign: 'center', borderBottom: '1px solid #bbf7d0', width: '70px' }}>Reg.</th>
-                                                                                                        <th style={{ padding: '6px 10px', textAlign: 'center', borderBottom: '1px solid #bbf7d0', width: '50px' }}></th>
-                                                                                                    </tr>
-                                                                                                </thead>
-                                                                                                <tbody>
-                                                                                                    {resolvedMappings.almacen.map((m, i) => (
-                                                                                                        <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                                                                                            <td style={{ padding: '5px 10px', fontWeight: 500 }}>"{m.sourceValue}"</td>
-                                                                                                            <td style={{ padding: '5px 10px', color: '#166534', fontFamily: 'monospace' }}>{m.resolvedValue}</td>
-                                                                                                            <td style={{ padding: '5px 10px', textAlign: 'center', color: '#64748b' }}>{m.count}</td>
-                                                                                                            <td style={{ padding: '5px 10px', textAlign: 'center' }}>
-                                                                                                                <button onClick={() => clearResolvedMapping(v.viewId, 'CODALMACEN', m.sourceValue)}
-                                                                                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }}
-                                                                                                                    title="Borrar este mapeo">🗑️</button>
-                                                                                                            </td>
-                                                                                                        </tr>
-                                                                                                    ))}
-                                                                                                </tbody>
-                                                                                            </table>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                )}
-
-                                                                                {/* Persona resolved */}
-                                                                                {resolvedMappings.persona.length > 0 && (
-                                                                                    <div>
-                                                                                        <h6 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#1e40af', fontWeight: 600 }}>
-                                                                                            👤 Persona — {resolvedMappings.persona.length} mapeos
-                                                                                        </h6>
-                                                                                        <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                                                                                            <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                                                                                                <thead>
-                                                                                                    <tr style={{ background: '#eff6ff' }}>
-                                                                                                        <th style={{ padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid #bfdbfe' }}>Valor Fuente</th>
-                                                                                                        <th style={{ padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid #bfdbfe' }}>→ Persona</th>
-                                                                                                        <th style={{ padding: '6px 10px', textAlign: 'center', borderBottom: '1px solid #bfdbfe', width: '60px' }}>ID</th>
-                                                                                                        <th style={{ padding: '6px 10px', textAlign: 'center', borderBottom: '1px solid #bfdbfe', width: '70px' }}>Reg.</th>
-                                                                                                        <th style={{ padding: '6px 10px', textAlign: 'center', borderBottom: '1px solid #bfdbfe', width: '50px' }}></th>
-                                                                                                    </tr>
-                                                                                                </thead>
-                                                                                                <tbody>
-                                                                                                    {resolvedMappings.persona.map((m, i) => (
-                                                                                                        <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                                                                                            <td style={{ padding: '5px 10px', fontWeight: 500 }}>"{m.sourceValue}"</td>
-                                                                                                            <td style={{ padding: '5px 10px', color: '#1e40af' }}>{m.resolvedName}</td>
-                                                                                                            <td style={{ padding: '5px 10px', textAlign: 'center', fontFamily: 'monospace', color: '#64748b' }}>{m.resolvedId}</td>
-                                                                                                            <td style={{ padding: '5px 10px', textAlign: 'center', color: '#64748b' }}>{m.count}</td>
-                                                                                                            <td style={{ padding: '5px 10px', textAlign: 'center' }}>
-                                                                                                                <button onClick={() => clearResolvedMapping(v.viewId, 'PERSONA', m.sourceValue)}
-                                                                                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }}
-                                                                                                                    title="Borrar este mapeo">🗑️</button>
-                                                                                                            </td>
-                                                                                                        </tr>
-                                                                                                    ))}
-                                                                                                </tbody>
-                                                                                            </table>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
                                                                 )}
-                                                            </div>
+                                                            </>
                                                         ) : null}
                                                     </div>
                                                 </td>
