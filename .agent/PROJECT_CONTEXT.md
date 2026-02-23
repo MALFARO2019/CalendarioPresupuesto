@@ -1,5 +1,21 @@
 # Contexto del Proyecto - KPIs Rosti
 
+## 🔗 Coordinación Multi-Agente
+
+> [!WARNING]
+> **Este proyecto es editado simultáneamente por 3 agentes IA:**
+> - **Antigravity** (tú) → config en `.agent/`
+> - **ChatGPT / Codex** → config en `AGENTS.md`
+> - **OpenCode** → config en `opencode.json` + `.opencode/`
+>
+> **Reglas:**
+> 1. Antes de editar, revisa `git diff` y `git status` para detectar cambios de otros agentes
+> 2. Haz commits frecuentes con mensajes descriptivos
+> 3. Consulta `.agent/CHATS_ACTIVOS.md` para ver qué chats están activos
+> 4. Si hay conflictos, avisa al usuario — NO los resuelvas automáticamente
+> 5. No modifiques los archivos de configuración de otros agentes (`AGENTS.md`, `.opencode/`)
+
+
 ## ⚠️ REGLA OBLIGATORIA: Identificación de Chat
 
 > [!CAUTION]

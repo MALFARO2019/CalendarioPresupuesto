@@ -1,0 +1,6 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "instructions": [
+        "Lee .opencode/INSTRUCTIONS.md para el contexto completo del proyecto y reglas de coordinación multi-agente."
+    ]
+}

@@ -45,3 +45,7 @@ server/setup-forms.ps1
 
 # Server-side generated files
 server/server-versions.json
+
+# AI agent tokens/cache (no versionar secrets)
+.opencode/cache/
+.opencode/.token*
