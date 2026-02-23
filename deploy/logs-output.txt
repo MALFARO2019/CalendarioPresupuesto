@@ -1,0 +1,23 @@
+﻿.env EXISTS
+server.js exists: True
+node_modules exists: True
+Server files: .env, alcanceConfig.js, auth.js, check-invgate.js, db.js, dbAuxiliaryRoutes.js, dbConfig.js, dbConnectionManager.js, debug_pacum.js, deploy.js, deploy_sp.js, diagnose_spike.js, emailService.js, ensureDBConfig.js, eventos.js, eventos_endpoints_temp.js, extract_sp_and_events.js, fix-invgate-url.js, fix_forms_config.js, formsDb.js
+Starting service...
+Port 3000 after start: NO
+Service status: Running
+STDERR (new):
+(node:157044) [DEP0123] DeprecationWarning: Setting the TLS ServerName to an IP address is not permitted by RFC 6066. This will be ignored in a future version.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+STDOUT (new):
+[dotenv@17.3.1] injecting env (9) from .env -- tip: âš™ï¸  suppress all logs with { quiet: true }
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ðŸ” encrypt with Dotenvx: https://dotenvx.com
+âœ… KPI Admin endpoints registered
+ðŸ“‹ Uber Eats endpoints registered
+ðŸ“‹ InvGate endpoints registered
+ðŸ“Š Modelo Presupuesto endpoints registered
+ðŸš€ Server running at http://localhost:80
+ðŸŒ Frontend served from: C:\Apps\CalendarioPresupuesto\web-app\dist
+ðŸ“Š Database mode: primary
+ðŸ›¡ï¸ Cra
+API TEST: ERROR - No es posible conectar con el servidor remoto

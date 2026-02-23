@@ -46,6 +46,7 @@ const registerInocuidadEndpoints = require('./inocuidad_endpoints');
 const personalModule = require('./personal');
 const { ensureUberEatsTables } = require('./uberEatsDb');
 const uberEatsCron = require('./jobs/uberEatsCron');
+const presupuestoCron = require('./jobs/presupuestoCron');
 const registerUberEatsEndpoints = require('./uberEats_endpoints');
 const registerInvgateEndpoints = require('./invgate_endpoints');
 const spEventsService = require('./services/sharepointEventsService');
@@ -76,6 +77,8 @@ app.use(express.json());
     try { await ensureKpiAdminTables(); } catch (e) { console.error('KPI Admin DB error:', e.message); }
     try { await ensureStoreAliasTable(); } catch (e) { console.error('StoreAlias DB error:', e.message); }
     try { await uberEatsCron.start(); } catch (e) { console.error('UberEats cron error:', e.message); }
+    // Start budget recalculation cron job
+    try { await presupuestoCron.start(); } catch (e) { console.error('Budget cron error:', e.message); }
     // SharePoint Eventos Rosti: initial sync + periodic refresh (every 60 min)
     try {
         await spEventsService.syncEventos();

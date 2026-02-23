@@ -5,6 +5,7 @@
 // ==========================================
 
 const modeloPresupuesto = require('./modeloPresupuesto');
+const presupuestoCron = require('./jobs/presupuestoCron');
 
 /**
  * Register all Modelo Presupuesto endpoints
@@ -61,6 +62,8 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
                 return res.status(403).json({ error: 'No tiene permiso para editar la configuración' });
             }
             const id = await modeloPresupuesto.saveConfig(parseInt(req.params.id), req.body);
+            // Restart cron to pick up schedule/job changes
+            try { await presupuestoCron.restart(); } catch (e) { console.warn('⚠️ Cron restart:', e.message); }
             res.json({ success: true, id });
         } catch (err) {
             console.error('Error PUT /api/modelo-presupuesto/config:', err);
@@ -76,6 +79,8 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
                 return res.status(403).json({ error: 'No tiene permiso para editar la configuración' });
             }
             const newId = await modeloPresupuesto.saveConfig(null, req.body);
+            // Restart cron to pick up new config
+            try { await presupuestoCron.restart(); } catch (e) { console.warn('⚠️ Cron restart:', e.message); }
             res.json({ success: true, id: newId });
         } catch (err) {
             console.error('Error PUT /api/modelo-presupuesto/config (create):', err);
@@ -466,6 +471,19 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
             res.json(stores);
         } catch (err) {
             console.error('Error GET /api/modelo-presupuesto/stores:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ------------------------------------------
+    // JOB STATUS
+    // ------------------------------------------
+    app.get('/api/modelo-presupuesto/job-status', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            res.json(presupuestoCron.getStatus());
+        } catch (err) {
+            console.error('Error GET /api/modelo-presupuesto/job-status:', err);
             res.status(500).json({ error: err.message });
         }
     });

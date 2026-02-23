@@ -543,6 +543,17 @@
           "detail": "API responde \"v1.0\" pero se esperaba \"v1.1\". Diag: DIAG_ERROR: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Ma"
         }
       ]
+    },
+    {
+      "id": 1771860376539,
+      "version": "v1.1",
+      "date": "2026-02-23T15:26:16.539Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "deploying"
     }
   ]
 }

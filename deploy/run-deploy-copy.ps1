@@ -1,4 +1,4 @@
-# Deploy via direct file copy (no git needed on server)
+# Deploy via direct file copy - FIXED path: dist contents go directly into web-app/
 param(
     [string]$ServerIp = "10.29.1.25",
     [string]$User = "Administrador",
@@ -52,19 +52,24 @@ try {
     Write-Host "  [!!] No se pudo detener el servicio: $_" -ForegroundColor Yellow
 }
 
-# Step 3: Copy frontend (dist)
-Write-Host "[3/5] Copiando frontend ($WebAppDist -> $RemoteAppDir\web-app\dist)..." -ForegroundColor Yellow
+# Step 3: Copy frontend — dist CONTENTS go directly into web-app/ (IIS physical path)
+Write-Host "[3/5] Copiando frontend (dist -> web-app/)..." -ForegroundColor Yellow
 try {
-    # Ensure remote directories exist
+    # Ensure remote web-app dir exists
     Invoke-Command -Session $session -ScriptBlock {
         param($dir)
-        New-Item -ItemType Directory -Path "$dir\web-app\dist" -Force | Out-Null
-        New-Item -ItemType Directory -Path "$dir\server" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$dir\web-app" -Force | Out-Null
     } -ArgumentList $RemoteAppDir
 
-    # Copy dist folder
-    Copy-Item -Path "$WebAppDist\*" -Destination "$RemoteAppDir\web-app\dist" -ToSession $session -Recurse -Force
-    Write-Host "  [OK] Frontend copiado" -ForegroundColor Green
+    # Copy dist CONTENTS directly into web-app/ (NOT into web-app/dist/)
+    Copy-Item -Path "$WebAppDist\*" -Destination "$RemoteAppDir\web-app" -ToSession $session -Recurse -Force
+    
+    # Verify
+    $fileCount = Invoke-Command -Session $session -ScriptBlock {
+        param($dir)
+        (Get-ChildItem "$dir\web-app" -Recurse -File).Count
+    } -ArgumentList $RemoteAppDir
+    Write-Host "  [OK] Frontend copiado ($fileCount archivos en web-app/)" -ForegroundColor Green
 } catch {
     Write-Host "  [ERROR] Copiando frontend: $_" -ForegroundColor Red
     Remove-PSSession $session
@@ -74,6 +79,13 @@ try {
 # Step 4: Copy backend files
 Write-Host "[4/5] Copiando backend..." -ForegroundColor Yellow
 try {
+    # Ensure remote server dir exists
+    Invoke-Command -Session $session -ScriptBlock {
+        param($dir)
+        New-Item -ItemType Directory -Path "$dir\server" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$dir\server\logs" -Force | Out-Null
+    } -ArgumentList $RemoteAppDir
+
     # Copy all .js files
     Get-ChildItem -Path $ServerSrc -Filter "*.js" | ForEach-Object {
         Copy-Item -Path $_.FullName -Destination "$RemoteAppDir\server\$($_.Name)" -ToSession $session -Force
@@ -96,7 +108,7 @@ try {
                 New-Item -ItemType Directory -Path "$dir\server\$sub" -Force | Out-Null
             } -ArgumentList $RemoteAppDir, $subDir
             Copy-Item -Path "$subPath\*" -Destination "$RemoteAppDir\server\$subDir" -ToSession $session -Recurse -Force
-            Write-Host "  [..] Copiado: $subDir/" -ForegroundColor Gray
+            Write-Host "  [..] Copiado: server/$subDir/" -ForegroundColor Gray
         }
     }
 
@@ -147,10 +159,23 @@ try {
     Write-Host "  [!!] Verificacion de API no disponible aun" -ForegroundColor Yellow
 }
 
+# Check what index.html looks like on server
+try {
+    $indexCheck = Invoke-Command -Session $session -ScriptBlock {
+        param($dir)
+        if (Test-Path "$dir\web-app\index.html") {
+            "index.html EXISTE en web-app/"
+        } else {
+            "index.html NO existe en web-app/ - Archivos: " + ((Get-ChildItem "$dir\web-app" -Name) -join ", ")
+        }
+    } -ArgumentList $RemoteAppDir
+    Write-Host "  [..] $indexCheck" -ForegroundColor Gray
+} catch {}
+
 # Clean up session
 Remove-PSSession $session
 
 Write-Host "`n========================================" -ForegroundColor Green
-Write-Host "  DEPLOY COMPLETADO EXITOSAMENTE" -ForegroundColor Green
+Write-Host "  DEPLOY COMPLETADO" -ForegroundColor Green
 Write-Host "  Acceso: http://$ServerIp" -ForegroundColor White
 Write-Host "========================================`n" -ForegroundColor Green

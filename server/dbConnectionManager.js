@@ -19,7 +19,7 @@ class DatabaseConnectionManager {
                 enableArithAbort: true
             },
             connectionTimeout: 15000,
-            requestTimeout: 300000,
+            requestTimeout: 600000, // 10 min — budget SP takes ~4.5 min on production
             pool: {
                 max: 10,
                 min: 0,
