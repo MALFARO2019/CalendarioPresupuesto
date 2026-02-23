@@ -240,10 +240,16 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
     try {
         const restartResult = await runPowerShell(
             `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
-            `taskkill /F /IM node.exe 2>$null; Start-Sleep -Seconds 2; ` +
             `$svc = Get-Service 'CalendarioPresupuesto-API' -ErrorAction SilentlyContinue; ` +
-            `if ($svc) { Start-Service 'CalendarioPresupuesto-API'; Write-Output 'Servicio NSSM reiniciado' } ` +
-            `else { ` +
+            `if ($svc) { ` +
+            `Stop-Service 'CalendarioPresupuesto-API' -Force -ErrorAction SilentlyContinue; ` +
+            `Start-Sleep -Seconds 3; ` +
+            `taskkill /F /IM node.exe 2>$null; ` +
+            `Start-Sleep -Seconds 2; ` +
+            `Start-Service 'CalendarioPresupuesto-API'; ` +
+            `Write-Output 'Servicio NSSM reiniciado' ` +
+            `} else { ` +
+            `taskkill /F /IM node.exe 2>$null; Start-Sleep -Seconds 2; ` +
             `Start-Process cmd -ArgumentList '/c cd /d ${appDir}\\\\server && node server.js' -WindowStyle Hidden; ` +
             `Write-Output 'Node.js reiniciado manualmente' } }`
         );
@@ -258,7 +264,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
     try {
         const healthResult = await runPowerShell(
             `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
-            `Start-Sleep -Seconds 3; ` +
+            `Start-Sleep -Seconds 8; ` +
             `try { $r = Invoke-RestMethod -Uri 'http://localhost/api/version-check' -TimeoutSec 10; $r.version } ` +
             `catch { Write-Output 'ERROR: ' + $_.Exception.Message } }`
         );
