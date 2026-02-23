@@ -259,22 +259,50 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
         return { success: false, steps };
     }
 
-    // Step 6: Post-deploy health check — verify the API actually returns the new version
+    // Step 6: Post-deploy health check with diagnostics and retries
     steps.push({ step: 'Verificando API', status: 'running' });
     try {
-        const healthResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
-            `Start-Sleep -Seconds 8; ` +
-            `try { $r = Invoke-RestMethod -Uri 'http://localhost/api/version-check' -TimeoutSec 10; $r.version } ` +
-            `catch { Write-Output 'ERROR: ' + $_.Exception.Message } }`
-        );
-        const remoteVersion = healthResult.trim();
+        // First, gather diagnostics: NSSM AppDirectory and deploy-log.json content
+        let diagInfo = '';
+        try {
+            const diag = await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+                `$nssmPath = (nssm get CalendarioPresupuesto-API AppDirectory 2>$null); ` +
+                `$logPath = Join-Path $nssmPath 'deploy-log.json'; ` +
+                `$logExists = Test-Path $logPath; ` +
+                `$logContent = if ($logExists) { (Get-Content $logPath -Raw | ConvertFrom-Json).entries[-1].version } else { 'NO_FILE' }; ` +
+                `Write-Output "NSSM_DIR=$nssmPath|LOG_VER=$logContent|DEPLOY_DIR=${appDir}" }`
+            );
+            diagInfo = diag.trim();
+        } catch (de) {
+            diagInfo = `DIAG_ERROR: ${de.message.substring(0, 100)}`;
+        }
+
+        // Retry health check up to 3 times with increasing wait
+        let remoteVersion = '';
+        const retryDelays = [5, 8, 12];
+        for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+            try {
+                const healthResult = await runPowerShell(
+                    `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+                    `Start-Sleep -Seconds ${retryDelays[attempt]}; ` +
+                    `try { $r = Invoke-RestMethod -Uri 'http://localhost/api/version-check' -TimeoutSec 10; $r.version } ` +
+                    `catch { Write-Output ('ERROR: ' + $_.Exception.Message) } }`
+                );
+                remoteVersion = healthResult.trim();
+                if (deployVersion && remoteVersion === deployVersion) break;
+                // If wrong version, try again (old process might still be releasing port)
+            } catch (retryErr) {
+                remoteVersion = `ERROR: ${retryErr.message.substring(0, 80)}`;
+            }
+        }
+
         if (deployVersion && remoteVersion === deployVersion) {
             steps[steps.length - 1] = { step: 'Verificando API', status: 'success', detail: `API responde ${remoteVersion} ✓` };
         } else if (remoteVersion.startsWith('ERROR:')) {
-            steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `API no responde: ${remoteVersion.substring(0, 150)}` };
+            steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `API no responde: ${remoteVersion.substring(0, 150)}. Diag: ${diagInfo}` };
         } else {
-            steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `API responde "${remoteVersion}" pero se esperaba "${deployVersion}". Puede haber un proceso node viejo ocupando el puerto.` };
+            steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `API responde "${remoteVersion}" pero se esperaba "${deployVersion}". Diag: ${diagInfo}` };
         }
     } catch (e) {
         steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `No se pudo verificar: ${e.message.substring(0, 150)}` };
