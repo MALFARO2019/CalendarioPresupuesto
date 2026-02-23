@@ -898,6 +898,53 @@ module.exports = function registerFormsEndpoints(app, authMiddleware) {
         }
     });
 
+    // GET /api/forms/sources/:id/resolved-mappings — all distinct resolved values from the actual table
+    app.get('/api/forms/sources/:id/resolved-mappings', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            const sourceId = parseInt(req.params.id);
+            const pool = await getFormsPool();
+
+            const src = await pool.request()
+                .input('id', sql.Int, sourceId)
+                .query('SELECT SourceID, Alias, TableName FROM FormsSources WHERE SourceID = @id');
+            if (src.recordset.length === 0) return res.status(404).json({ error: 'Formulario no encontrado' });
+
+            const tableName = src.recordset[0].TableName || getTableName(sourceId, src.recordset[0].Alias);
+            const result = await formsMappingService.getResolvedMappings(sourceId, tableName);
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // POST /api/forms/sources/:id/clear-mapping — clear resolved value for a specific source value
+    app.post('/api/forms/sources/:id/clear-mapping', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin) return res.status(403).json({ error: 'Sin permisos' });
+            const sourceId = parseInt(req.params.id);
+            const { mappingType, sourceValue } = req.body;
+            if (!mappingType || !sourceValue) return res.status(400).json({ error: 'mappingType y sourceValue son requeridos' });
+
+            const pool = await getFormsPool();
+            const src = await pool.request()
+                .input('id', sql.Int, sourceId)
+                .query('SELECT SourceID, Alias, TableName FROM FormsSources WHERE SourceID = @id');
+            if (src.recordset.length === 0) return res.status(404).json({ error: 'Formulario no encontrado' });
+
+            const tableName = src.recordset[0].TableName || getTableName(sourceId, src.recordset[0].Alias);
+
+            const mappings = await formsMappingService.getMappings(sourceId);
+            const fieldMapping = mappings.find(m => m.FieldType === mappingType);
+            if (!fieldMapping) return res.status(400).json({ error: `No hay mapeo configurado para ${mappingType}` });
+
+            const result = await formsMappingService.clearTableMappings(tableName, mappingType, fieldMapping.ColumnName, sourceValue);
+            res.json({ success: true, ...result });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // Start cron on startup
     (async () => {
         try {

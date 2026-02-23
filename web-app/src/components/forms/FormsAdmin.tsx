@@ -136,6 +136,9 @@ export const FormsAdmin: React.FC = () => {
     const [valueMappings, setValueMappings] = useState<any[]>([]);
     const [reviewMappingType, setReviewMappingType] = useState<'CODALMACEN' | 'PERSONA' | null>(null);
     const [deletingMappingId, setDeletingMappingId] = useState<number | null>(null);
+    const [resolvedMappings, setResolvedMappings] = useState<{ almacen: any[]; persona: any[] }>({ almacen: [], persona: [] });
+    const [loadingResolved, setLoadingResolved] = useState(false);
+    const [clearingMapping, setClearingMapping] = useState<string | null>(null);
 
     const headers = () => ({ Authorization: `Bearer ${getToken()}` });
     const { showToast, showConfirm } = useToast();
@@ -586,6 +589,39 @@ export const FormsAdmin: React.FC = () => {
             showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
         } finally {
             setDeletingMappingId(null);
+        }
+    };
+
+    const loadResolvedMappings = async () => {
+        if (!mappingSource) return;
+        setLoadingResolved(true);
+        try {
+            const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/resolved-mappings`, { headers: headers() });
+            setResolvedMappings(r.data || { almacen: [], persona: [] });
+        } catch (e: any) {
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
+        } finally {
+            setLoadingResolved(false);
+        }
+    };
+
+    const clearMapping = async (mappingType: string, sourceValue: string) => {
+        if (!mappingSource) return;
+        const key = `${mappingType}:${sourceValue}`;
+        setClearingMapping(key);
+        try {
+            const r = await axios.post(`${API_BASE}/forms/sources/${mappingSource.SourceID}/clear-mapping`, {
+                mappingType, sourceValue
+            }, { headers: headers() });
+            showToast(`Limpiado: ${r.data.cleared} registros`, 'success');
+            await loadResolvedMappings();
+            // Reload stats
+            const stats = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, { headers: headers() });
+            setMappingStats(stats.data.stats ? stats.data : { ...stats.data });
+        } catch (e: any) {
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
+        } finally {
+            setClearingMapping(null);
         }
     };
 
@@ -1138,38 +1174,76 @@ export const FormsAdmin: React.FC = () => {
                                             <button className="btn-unmapped" onClick={() => { loadUnmapped(); loadDistinctUnmapped(); setShowUnmapped(true); setUnmappedTab('byValue'); }}>
                                                 🔍 Ver Sin Mapear
                                             </button>
-                                            <button className="btn-review-mapping" onClick={() => { if (reviewMappingType === 'CODALMACEN') { setReviewMappingType(null); } else { setReviewMappingType('CODALMACEN'); loadValueMappings('CODALMACEN'); } }}>
+                                            <button className="btn-review-mapping" onClick={() => { if (reviewMappingType === 'CODALMACEN') { setReviewMappingType(null); } else { setReviewMappingType('CODALMACEN'); loadResolvedMappings(); loadValueMappings('CODALMACEN'); } }}>
                                                 {reviewMappingType === 'CODALMACEN' ? '✕ Cerrar' : '🏪 Revisar Locales'}
                                             </button>
-                                            <button className="btn-review-mapping" onClick={() => { if (reviewMappingType === 'PERSONA') { setReviewMappingType(null); } else { setReviewMappingType('PERSONA'); loadValueMappings('PERSONA'); } }}>
+                                            <button className="btn-review-mapping" onClick={() => { if (reviewMappingType === 'PERSONA') { setReviewMappingType(null); } else { setReviewMappingType('PERSONA'); loadResolvedMappings(); loadValueMappings('PERSONA'); } }}>
                                                 {reviewMappingType === 'PERSONA' ? '✕ Cerrar' : '👤 Revisar Personas'}
                                             </button>
                                         </div>
 
-                                        {/* Review existing mappings panel */}
+                                        {/* Review ALL resolved mappings panel */}
                                         {reviewMappingType && (
                                             <div className="review-mappings-panel">
-                                                <h4>{reviewMappingType === 'CODALMACEN' ? '🏪 Mapeos de Locales' : '👤 Mapeos de Personas'}</h4>
-                                                {valueMappings.filter(m => m.MappingType === reviewMappingType).length === 0 ? (
-                                                    <p style={{ color: '#6b7280', fontSize: 13 }}>No hay mapeos manuales guardados para este tipo.</p>
+                                                <h4>{reviewMappingType === 'CODALMACEN' ? '🏪 Mapeos de Locales (Tabla)' : '👤 Mapeos de Personas (Tabla)'}</h4>
+                                                <p style={{ color: '#6b7280', fontSize: 12, margin: '0 0 10px' }}>Todos los valores resueltos en la tabla de datos, incluyendo automáticos. Use ❌ para limpiar un mapeo.</p>
+
+                                                {loadingResolved ? (
+                                                    <div className="forms-loading" style={{ padding: '8px 0' }}>Cargando...</div>
                                                 ) : (
-                                                    <div className="review-mapping-list">
-                                                        {valueMappings.filter(m => m.MappingType === reviewMappingType).map(m => (
-                                                            <div className="review-mapping-row" key={m.ID}>
-                                                                <span className="review-source">{m.SourceValue}</span>
-                                                                <span className="review-arrow">→</span>
-                                                                <span className="review-resolved">
-                                                                    {m.ResolvedLabel ? `${m.ResolvedLabel} (${m.ResolvedValue})` : m.ResolvedValue}
-                                                                </span>
-                                                                <button
-                                                                    className="review-delete-btn"
-                                                                    disabled={deletingMappingId === m.ID}
-                                                                    onClick={() => deleteValueMappingById(m.ID)}
-                                                                    title="Eliminar mapeo"
-                                                                >{deletingMappingId === m.ID ? '⏳' : '🗑️'}</button>
+                                                    <>
+                                                        {/* Table-level resolved mappings */}
+                                                        {(reviewMappingType === 'CODALMACEN' ? resolvedMappings.almacen : resolvedMappings.persona).length === 0 ? (
+                                                            <p style={{ color: '#9ca3af', fontSize: 13, fontStyle: 'italic' }}>No hay mapeos resueltos en la tabla.</p>
+                                                        ) : (
+                                                            <div className="review-mapping-list">
+                                                                {(reviewMappingType === 'CODALMACEN' ? resolvedMappings.almacen : resolvedMappings.persona).map((m, i) => (
+                                                                    <div className={`review-mapping-row ${!m.resolvedValue && !m.resolvedId ? 'unresolved' : ''}`} key={i}>
+                                                                        <span className="review-source" title={m.sourceValue}>{m.sourceValue}</span>
+                                                                        <span className="review-arrow">→</span>
+                                                                        <span className={`review-resolved ${!m.resolvedValue && !m.resolvedId ? 'no-resolve' : ''}`}>
+                                                                            {reviewMappingType === 'CODALMACEN'
+                                                                                ? (m.resolvedValue || '⚠️ Sin resolver')
+                                                                                : (m.resolvedNombre ? `${m.resolvedNombre} (${m.resolvedId})` : (m.resolvedId || '⚠️ Sin resolver'))}
+                                                                        </span>
+                                                                        <span className="review-count">{m.cnt} reg.</span>
+                                                                        {(m.resolvedValue || m.resolvedId) && (
+                                                                            <button
+                                                                                className="review-clear-btn"
+                                                                                disabled={clearingMapping === `${reviewMappingType}:${m.sourceValue}`}
+                                                                                onClick={() => clearMapping(reviewMappingType, m.sourceValue)}
+                                                                                title="Limpiar mapeo (poner en NULL)"
+                                                                            >{clearingMapping === `${reviewMappingType}:${m.sourceValue}` ? '⏳' : '❌'}</button>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
                                                             </div>
-                                                        ))}
-                                                    </div>
+                                                        )}
+
+                                                        {/* Manual dictionary entries */}
+                                                        {valueMappings.filter(m => m.MappingType === reviewMappingType).length > 0 && (
+                                                            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #e5e7eb' }}>
+                                                                <h5 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: '#6b7280' }}>📖 Diccionario Manual</h5>
+                                                                <div className="review-mapping-list">
+                                                                    {valueMappings.filter(m => m.MappingType === reviewMappingType).map(m => (
+                                                                        <div className="review-mapping-row dict-row" key={m.ID}>
+                                                                            <span className="review-source">{m.SourceValue}</span>
+                                                                            <span className="review-arrow">→</span>
+                                                                            <span className="review-resolved">
+                                                                                {m.ResolvedLabel ? `${m.ResolvedLabel} (${m.ResolvedValue})` : m.ResolvedValue}
+                                                                            </span>
+                                                                            <button
+                                                                                className="review-delete-btn"
+                                                                                disabled={deletingMappingId === m.ID}
+                                                                                onClick={() => deleteValueMappingById(m.ID)}
+                                                                                title="Eliminar del diccionario"
+                                                                            >{deletingMappingId === m.ID ? '⏳' : '🗑️'}</button>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </>
                                                 )}
                                             </div>
                                         )}

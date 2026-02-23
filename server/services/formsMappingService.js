@@ -579,6 +579,66 @@ async function resolveAfterSync(sourceId, tableName) {
     }
 }
 
+// --- Get ALL distinct resolved mappings from the actual data table ---
+
+async function getResolvedMappings(sourceId, tableName) {
+    const pool = await getFormsPool();
+    const mappings = await getMappings(sourceId);
+    const personaMapping = mappings.find(m => m.FieldType === 'PERSONA');
+    const almacenMapping = mappings.find(m => m.FieldType === 'CODALMACEN');
+
+    const result = { almacen: [], persona: [] };
+
+    // Check table + columns exist
+    const colCheck = await pool.request()
+        .input('tbl', sql.NVarChar, tableName)
+        .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl`);
+    const existingCols = new Set(colCheck.recordset.map(r => r.COLUMN_NAME));
+
+    if (almacenMapping && existingCols.has(almacenMapping.ColumnName) && existingCols.has('_CODALMACEN')) {
+        const r = await pool.request().query(`
+            SELECT [${almacenMapping.ColumnName}] AS sourceValue, _CODALMACEN AS resolvedValue, COUNT(*) AS cnt
+            FROM [${tableName}]
+            WHERE [${almacenMapping.ColumnName}] IS NOT NULL AND RTRIM(LTRIM([${almacenMapping.ColumnName}])) != ''
+            GROUP BY [${almacenMapping.ColumnName}], _CODALMACEN
+            ORDER BY [${almacenMapping.ColumnName}]
+        `);
+        result.almacen = r.recordset;
+    }
+
+    if (personaMapping && existingCols.has(personaMapping.ColumnName) && existingCols.has('_PERSONAL_ID')) {
+        const r = await pool.request().query(`
+            SELECT [${personaMapping.ColumnName}] AS sourceValue, _PERSONAL_ID AS resolvedId, _PERSONAL_NOMBRE AS resolvedNombre, COUNT(*) AS cnt
+            FROM [${tableName}]
+            WHERE [${personaMapping.ColumnName}] IS NOT NULL AND RTRIM(LTRIM([${personaMapping.ColumnName}])) != ''
+            GROUP BY [${personaMapping.ColumnName}], _PERSONAL_ID, _PERSONAL_NOMBRE
+            ORDER BY [${personaMapping.ColumnName}]
+        `);
+        result.persona = r.recordset;
+    }
+
+    return result;
+}
+
+// --- Clear mapping for a specific source value in the actual data table ---
+
+async function clearTableMappings(tableName, mappingType, sourceColumn, sourceValue) {
+    const pool = await getFormsPool();
+
+    if (mappingType === 'CODALMACEN') {
+        const r = await pool.request()
+            .input('sv', sql.NVarChar, sourceValue)
+            .query(`UPDATE [${tableName}] SET _CODALMACEN = NULL WHERE [${sourceColumn}] = @sv`);
+        return { cleared: r.rowsAffected[0] };
+    } else if (mappingType === 'PERSONA') {
+        const r = await pool.request()
+            .input('sv', sql.NVarChar, sourceValue)
+            .query(`UPDATE [${tableName}] SET _PERSONAL_ID = NULL, _PERSONAL_NOMBRE = NULL WHERE [${sourceColumn}] = @sv`);
+        return { cleared: r.rowsAffected[0] };
+    }
+    return { cleared: 0 };
+}
+
 module.exports = {
     ensureMappingTable,
     getMappings,
@@ -596,4 +656,7 @@ module.exports = {
     getDistinctUnmapped,
     lookupPersonal,
     lookupStores: getAllStores,
+    // Table-level review
+    getResolvedMappings,
+    clearTableMappings,
 };
