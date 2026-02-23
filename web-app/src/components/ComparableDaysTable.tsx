@@ -43,7 +43,7 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
 
     const rows = useMemo(() => {
         if (!data || data.length === 0) return [];
-        return data.map(d => {
+        const mapped = data.map(d => {
             const vtaAnterior = isAjustado ? d.MontoAnteriorAjustado : d.MontoAnterior;
             const fechaAnt = isAjustado ? d.FechaAnteriorAjustada : d.FechaAnterior;
             const vtaActual = d.MontoReal;
@@ -62,7 +62,7 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
                 dia: d.Dia,
                 fechaActual: d.Fecha,
                 fechaAnterior: fechaAnt,
-                diaLetraActual: d.Serie || DAY_LETTERS[d.idDia] || '',
+                diaLetraActual: DAY_LETTERS[d.idDia] || d.Serie || '',
                 diaLetraAnterior: getDayLetterFromDate(fechaAnt?.substring(0, 10) || ''),
                 vtaAnterior,
                 vtaActual,
@@ -75,6 +75,12 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
                 hasComparable: vtaAnterior > 0
             };
         });
+        // Sort numerically by day, then push future days to end
+        mapped.sort((a, b) => {
+            if (a.isFuture !== b.isFuture) return a.isFuture ? 1 : -1;
+            return a.dia - b.dia;
+        });
+        return mapped;
     }, [data, isAjustado]);
 
     const totals = useMemo(() => {

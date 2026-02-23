@@ -57,6 +57,8 @@ const { getAlcanceTableName, invalidateAlcanceTableCache } = require('./alcanceC
 const registerModeloPresupuestoEndpoints = require('./modeloPresupuesto_endpoints');
 const registerStoreAliasEndpoints = require('./storeAlias_endpoints');
 const { ensureStoreAliasTable } = require('./services/storeAliasService');
+const { ensureGruposAlmacenTables } = require('./gruposAlmacenDb');
+const registerGruposAlmacenEndpoints = require('./gruposAlmacen_endpoints');
 
 const app = express();
 const port = process.env.PORT || 80;
@@ -76,6 +78,7 @@ app.use(express.json());
     // KPI Admin tables
     try { await ensureKpiAdminTables(); } catch (e) { console.error('KPI Admin DB error:', e.message); }
     try { await ensureStoreAliasTable(); } catch (e) { console.error('StoreAlias DB error:', e.message); }
+    try { await ensureGruposAlmacenTables(); } catch (e) { console.error('GruposAlmacen DB error:', e.message); }
     try { await uberEatsCron.start(); } catch (e) { console.error('UberEats cron error:', e.message); }
     // Start budget recalculation cron job
     try { await presupuestoCron.start(); } catch (e) { console.error('Budget cron error:', e.message); }
@@ -113,6 +116,11 @@ registerModeloPresupuestoEndpoints(app, authMiddleware);
 // STORE ALIAS ENDPOINTS
 // ==========================================
 registerStoreAliasEndpoints(app, authMiddleware);
+
+// ==========================================
+// GRUPOS ALMACEN ENDPOINTS
+// ==========================================
+registerGruposAlmacenEndpoints(app, authMiddleware);
 
 // ==========================================
 // DEPLOY MANAGEMENT ENDPOINTS
@@ -321,9 +329,9 @@ app.get('/api/personal/stores', authMiddleware, async (req, res) => {
 // Personal por local: retorna todos los asignados activos con su perfil
 app.get('/api/personal/admin-por-local', authMiddleware, async (req, res) => {
     try {
-        const { local } = req.query;
+        const { local, vista } = req.query;
         if (!local) return res.json([]);
-        const personal = await personalModule.getPersonalPorLocal(local);
+        const personal = await personalModule.getPersonalPorLocal(local, vista || null);
         res.json(personal);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -348,6 +356,14 @@ app.delete('/api/personal/cargos/:id', authMiddleware, async (req, res) => {
         if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
         const { reassignTo } = req.body;
         await personalModule.deleteCargo(parseInt(req.params.id), reassignTo);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/personal/cargos/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoPersonal && !req.user.esAdmin) return res.status(403).json({ error: 'No autorizado' });
+        await personalModule.updateCargo(parseInt(req.params.id), req.body);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

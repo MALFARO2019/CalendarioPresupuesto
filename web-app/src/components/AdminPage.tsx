@@ -32,6 +32,7 @@ import { GeneralSettings } from './GeneralSettings';
 import { ModeloPresupuestoAdmin } from './presupuesto-modelo/ModeloPresupuestoAdmin';
 import LoginAuditPanel from './LoginAuditPanel';
 import { StoreAliasAdmin } from './StoreAliasAdmin';
+import { GruposAlmacenAdmin } from './GruposAlmacenAdmin';
 
 interface AdminPageProps {
     onBack: () => void;
@@ -82,7 +83,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
 
     // Auto-select tab based on permissions: admin->users, modelo->modelo-presupuesto, eventos->events
     const defaultTab = isOfflineAdmin ? 'database' : (canAccessUsers ? 'users' : (canAccessModelo ? 'modelo-presupuesto' : 'events'));
-    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit' | 'store-aliases'>(defaultTab);
+    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit' | 'store-aliases' | 'grupos-almacen'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [allStores, setAllStores] = useState<string[]>([]);
@@ -588,6 +589,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             {(canAccessUsers || canAccessModelo) && <option value="modelo-presupuesto">📈 Modelo Presupuesto</option>}
                             {canAccessUsers && <option value="kpi-admin">📊 Admin KPIs</option>}
                             {canAccessUsers && <option value="deploy">🚀 Publicación</option>}
+                            {canAccessUsers && <option value="store-aliases">🏪 Alias Locales</option>}
+                            {canAccessUsers && <option value="grupos-almacen">📦 Grupos Almacén</option>}
 
                         </select>
                     </div>
@@ -698,6 +701,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             <button onClick={() => setActiveTab('store-aliases')}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'store-aliases' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
                                 <Store className="w-4 h-4 flex-shrink-0" /> Alias Locales
+                            </button>
+                        )}
+                        {canAccessUsers && (
+                            <button onClick={() => setActiveTab('grupos-almacen')}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'grupos-almacen' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                                Grupos Almacén
                             </button>
                         )}
                     </nav>
@@ -1737,6 +1747,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             <LoginAuditPanel />
                         ) : activeTab === 'store-aliases' ? (
                             <StoreAliasAdmin />
+                        ) : activeTab === 'grupos-almacen' ? (
+                            <GruposAlmacenAdmin />
                         ) : (
                             /* T&E (Táctica y Estrategia) Tab */
                             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">

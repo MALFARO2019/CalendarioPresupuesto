@@ -337,6 +337,9 @@ BEGIN
     CREATE TABLE #BaseWeights(
         Fecha DATE NOT NULL, CodAlmacen NVARCHAR(10) NOT NULL, Canal NVARCHAR(200) NOT NULL,
         Mes INT NOT NULL, PesoVenta DECIMAL(18,12) NOT NULL, PesoTrans DECIMAL(18,12) NOT NULL,
+        NonZeroDaysV INT NOT NULL DEFAULT 0, -- count of days with non-zero sales in month
+        NonZeroDaysT INT NOT NULL DEFAULT 0, -- count of days with non-zero transactions
+        TotalDaysInMonth INT NOT NULL DEFAULT 28,
         PRIMARY KEY(Fecha,CodAlmacen,Canal)
     );
 
@@ -350,14 +353,17 @@ BEGIN
     ),
     W AS (
         SELECT *, VentaMes = SUM(VentaDia) OVER (PARTITION BY CodAlmacen,Canal,Mes),
-            TransMes = SUM(TransDia) OVER (PARTITION BY CodAlmacen,Canal,Mes)
+            TransMes = SUM(TransDia) OVER (PARTITION BY CodAlmacen,Canal,Mes),
+            NonZeroDaysV = SUM(CASE WHEN VentaDia > 0 THEN 1 ELSE 0 END) OVER (PARTITION BY CodAlmacen,Canal,Mes),
+            NonZeroDaysT = SUM(CASE WHEN TransDia > 0 THEN 1 ELSE 0 END) OVER (PARTITION BY CodAlmacen,Canal,Mes)
         FROM X
     )
-    INSERT INTO #BaseWeights(Fecha,CodAlmacen,Canal,Mes,PesoVenta,PesoTrans)
+    INSERT INTO #BaseWeights(Fecha,CodAlmacen,Canal,Mes,PesoVenta,PesoTrans,NonZeroDaysV,NonZeroDaysT,TotalDaysInMonth)
     SELECT Fecha, CodAlmacen, Canal, Mes,
         CASE WHEN VentaMes=0 THEN (1.0/NULLIF(CAST(DaysInMonth AS DECIMAL(19,6)),0)) ELSE (VentaDia/VentaMes) END,
         CASE WHEN TransMes=0 THEN (1.0/NULLIF(CAST(DaysInMonth AS DECIMAL(19,6)),0))
-             ELSE (CAST(TransDia AS DECIMAL(19,6))/NULLIF(CAST(TransMes AS DECIMAL(19,6)),0)) END
+             ELSE (CAST(TransDia AS DECIMAL(19,6))/NULLIF(CAST(TransMes AS DECIMAL(19,6)),0)) END,
+        NonZeroDaysV, NonZeroDaysT, DaysInMonth
     FROM W;
 
     -- ============================================
@@ -373,14 +379,27 @@ BEGIN
     );
 
     -- Ventas weights
+    -- KEY FIX: When the store has ADEQUATE coverage (>25% of days have non-zero sales),
+    -- use the weight as-is (including 0 for closed days).
+    -- When coverage is SPARSE (<=25%), the pattern is unreliable — use uniform distribution.
+    -- This prevents hyper-concentration when only a few days had sales in the base year.
     INSERT INTO #PesoInit(CodAlmacen,FechaTarget,MesTarget,Canal,Tipo,PesoUsado,EsEvento,TieneData)
     SELECT md.CodAlmacen, md.FechaTarget, md.MesTarget, md.Canal, N'Ventas',
-        COALESCE(NULLIF(bwO.PesoVenta,0), bwR.PesoVenta,
-            (1.0/NULLIF(CAST(DAY(EOMONTH(md.FechaTarget)) AS DECIMAL(19,6)),0))),
+        CASE
+            -- Adequate coverage (>25% days have sales): trust the daily weight including 0s
+            WHEN bwO.NonZeroDaysV > 0 AND CAST(bwO.NonZeroDaysV AS FLOAT)/bwO.TotalDaysInMonth > 0.25
+                THEN bwO.PesoVenta
+            -- Sparse coverage but has data: use uniform (old SPARSE GUARD behavior)
+            WHEN bwO.NonZeroDaysV > 0
+                THEN (1.0/NULLIF(CAST(bwO.TotalDaysInMonth AS DECIMAL(19,6)),0))
+            -- No own data: try reference store
+            WHEN bwR.PesoVenta IS NOT NULL THEN bwR.PesoVenta
+            -- No reference: uniform fallback
+            ELSE (1.0/NULLIF(CAST(DAY(EOMONTH(md.FechaTarget)) AS DECIMAL(19,6)),0))
+        END,
         md.EsEvento,
-        -- Track if this weight came from REAL data (own store had non-zero sales)
-        CASE WHEN bwO.PesoVenta IS NOT NULL AND bwO.PesoVenta > 0 THEN 1
-             WHEN bwR.PesoVenta IS NOT NULL AND bwR.PesoVenta > 0 THEN 1
+        CASE WHEN bwO.NonZeroDaysV > 0 THEN 1
+             WHEN bwR.PesoVenta IS NOT NULL THEN 1
              ELSE 0 END
     FROM #MapDates md
     LEFT JOIN #BaseWeights bwO ON bwO.Fecha=md.FechaFuente AND bwO.CodAlmacen=md.CodAlmacen AND bwO.Canal=md.Canal
@@ -392,14 +411,20 @@ BEGIN
     ) ref
     LEFT JOIN #BaseWeights bwR ON bwR.Fecha=md.FechaFuente AND bwR.CodAlmacen=ref.CodBase AND bwR.Canal=md.Canal;
 
-    -- Transacciones weights
+    -- Transacciones weights (same logic)
     INSERT INTO #PesoInit(CodAlmacen,FechaTarget,MesTarget,Canal,Tipo,PesoUsado,EsEvento,TieneData)
     SELECT md.CodAlmacen, md.FechaTarget, md.MesTarget, md.Canal, N'Transacciones',
-        COALESCE(NULLIF(bwO.PesoTrans,0), bwR.PesoTrans,
-            (1.0/NULLIF(CAST(DAY(EOMONTH(md.FechaTarget)) AS DECIMAL(19,6)),0))),
+        CASE
+            WHEN bwO.NonZeroDaysT > 0 AND CAST(bwO.NonZeroDaysT AS FLOAT)/bwO.TotalDaysInMonth > 0.25
+                THEN bwO.PesoTrans
+            WHEN bwO.NonZeroDaysT > 0
+                THEN (1.0/NULLIF(CAST(bwO.TotalDaysInMonth AS DECIMAL(19,6)),0))
+            WHEN bwR.PesoTrans IS NOT NULL THEN bwR.PesoTrans
+            ELSE (1.0/NULLIF(CAST(DAY(EOMONTH(md.FechaTarget)) AS DECIMAL(19,6)),0))
+        END,
         md.EsEvento,
-        CASE WHEN bwO.PesoTrans IS NOT NULL AND bwO.PesoTrans > 0 THEN 1
-             WHEN bwR.PesoTrans IS NOT NULL AND bwR.PesoTrans > 0 THEN 1
+        CASE WHEN bwO.NonZeroDaysT > 0 THEN 1
+             WHEN bwR.PesoTrans IS NOT NULL THEN 1
              ELSE 0 END
     FROM #MapDates md
     LEFT JOIN #BaseWeights bwO ON bwO.Fecha=md.FechaFuente AND bwO.CodAlmacen=md.CodAlmacen AND bwO.Canal=md.Canal
@@ -613,7 +638,8 @@ BEGIN
             -1.0 * (CASE WHEN Cnt>0 THEN Delta*(1.0/Cnt) ELSE 0 END)
         FROM T;
 
-        -- Event 26 (AG3): PROPORTIONAL distribution across ALL days in month
+        -- Event 26 (AG3): UNIFORM distribution across ALL days in month
+        -- The delta is split equally among all days of the month (not proportional)
         ;WITH Deltas26 AS (
             SELECT a.CodAlmacen,a.Canal,a.IDEVENTO,a.FechaX,a.FechaE,
                 Delta = ISNULL(ve.Monto,0) - ISNULL(vx.Monto,0)
@@ -622,22 +648,17 @@ BEGIN
             LEFT JOIN #VX ve ON ve.CodAlmacen=a.CodAlmacen AND ve.Canal=a.Canal AND ve.Fecha=a.FechaE
             WHERE MONTH(a.FechaE)=MONTH(a.FechaX) AND a.IDEVENTO=26 AND (ISNULL(ve.Monto,0) - ISNULL(vx.Monto,0)) <> 0
         ),
-        -- Get each target day's current Monto as weight
-        DayWeights AS (
+        DayCount AS (
             SELECT et.CodAlmacen,et.Canal,et.IDEVENTO,et.FechaX,et.FechaAdj,
-                DayMonto = ABS(ISNULL(vd.Monto,0)),
-                TotalMonto = SUM(ABS(ISNULL(vd.Monto,0))) OVER (PARTITION BY et.CodAlmacen,et.Canal,et.IDEVENTO,et.FechaX),
                 DayCnt = COUNT(*) OVER (PARTITION BY et.CodAlmacen,et.Canal,et.IDEVENTO,et.FechaX)
             FROM #EvTargets et
             JOIN Deltas26 d ON d.CodAlmacen=et.CodAlmacen AND d.Canal=et.Canal AND d.IDEVENTO=et.IDEVENTO AND d.FechaX=et.FechaX
-            LEFT JOIN #VX vd ON vd.CodAlmacen=et.CodAlmacen AND vd.Canal=et.Canal AND vd.Fecha=et.FechaAdj
         )
         INSERT INTO #DistRows(CodAlmacen,Canal,Fecha,DeltaMonto)
-        SELECT dw.CodAlmacen, dw.Canal, dw.FechaAdj,
-            d.Delta * CASE WHEN dw.TotalMonto > 0 THEN dw.DayMonto / dw.TotalMonto
-                          ELSE 1.0 / dw.DayCnt END  -- fallback to uniform if all weights=0
-        FROM DayWeights dw
-        JOIN Deltas26 d ON d.CodAlmacen=dw.CodAlmacen AND d.Canal=dw.Canal AND d.IDEVENTO=dw.IDEVENTO AND d.FechaX=dw.FechaX;
+        SELECT dc.CodAlmacen, dc.Canal, dc.FechaAdj,
+            d.Delta * (1.0 / dc.DayCnt)  -- uniform: equal share to every day
+        FROM DayCount dc
+        JOIN Deltas26 d ON d.CodAlmacen=dc.CodAlmacen AND d.Canal=dc.Canal AND d.IDEVENTO=dc.IDEVENTO AND d.FechaX=dc.FechaX;
 
         -- Add delta to source day (FechaX) — only for events 24,25 which exclude FechaX from targets
         INSERT INTO #DistRows(CodAlmacen,Canal,Fecha,DeltaMonto)

@@ -77,6 +77,20 @@ async function ensurePersonalTable() {
             END
         `);
 
+        // Migration: Add per-view visibility columns to DIM_PERSONAL_CARGOS
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_CARGOS') AND name = 'MostrarEnAlcance')
+                ALTER TABLE DIM_PERSONAL_CARGOS ADD MostrarEnAlcance BIT NOT NULL DEFAULT 1;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_CARGOS') AND name = 'MostrarEnMensual')
+                ALTER TABLE DIM_PERSONAL_CARGOS ADD MostrarEnMensual BIT NOT NULL DEFAULT 1;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_CARGOS') AND name = 'MostrarEnAnual')
+                ALTER TABLE DIM_PERSONAL_CARGOS ADD MostrarEnAnual BIT NOT NULL DEFAULT 1;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_CARGOS') AND name = 'MostrarEnTendencia')
+                ALTER TABLE DIM_PERSONAL_CARGOS ADD MostrarEnTendencia BIT NOT NULL DEFAULT 1;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_CARGOS') AND name = 'MostrarEnRangos')
+                ALTER TABLE DIM_PERSONAL_CARGOS ADD MostrarEnRangos BIT NOT NULL DEFAULT 1;
+        `);
+
         // Migrate Cedula/Telefono from DIM_PERSONAL to APP_USUARIOS if DIM_PERSONAL exists
         await pool.request().query(`
             IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'DIM_PERSONAL')
@@ -272,9 +286,60 @@ async function getLocalesSinCobertura(perfil, month, year) {
 async function getAllCargos() {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-        SELECT ID, NOMBRE, ACTIVO FROM DIM_PERSONAL_CARGOS ORDER BY NOMBRE
+        SELECT ID, NOMBRE, ACTIVO,
+               ISNULL(MostrarEnAlcance, 1) as MostrarEnAlcance,
+               ISNULL(MostrarEnMensual, 1) as MostrarEnMensual,
+               ISNULL(MostrarEnAnual, 1) as MostrarEnAnual,
+               ISNULL(MostrarEnTendencia, 1) as MostrarEnTendencia,
+               ISNULL(MostrarEnRangos, 1) as MostrarEnRangos
+        FROM DIM_PERSONAL_CARGOS ORDER BY NOMBRE
     `);
     return result.recordset;
+}
+
+async function updateCargo(id, data) {
+    const pool = await poolPromise;
+    const old = await pool.request().input('id', sql.Int, id)
+        .query('SELECT NOMBRE FROM DIM_PERSONAL_CARGOS WHERE ID = @id');
+    if (old.recordset.length === 0) throw new Error('Cargo no encontrado');
+
+    const sets = [];
+    const request = pool.request().input('id', sql.Int, id);
+
+    if (data.nombre !== undefined) {
+        sets.push('NOMBRE = @nombre');
+        request.input('nombre', sql.NVarChar, data.nombre);
+        // Also rename in assignments
+        await pool.request()
+            .input('oldPerfil', sql.NVarChar, old.recordset[0].NOMBRE)
+            .input('newPerfil', sql.NVarChar, data.nombre)
+            .query('UPDATE DIM_PERSONAL_ASIGNACIONES SET PERFIL = @newPerfil WHERE PERFIL = @oldPerfil AND ACTIVO = 1');
+    }
+    if (data.mostrarEnAlcance !== undefined) {
+        sets.push('MostrarEnAlcance = @mAlcance');
+        request.input('mAlcance', sql.Bit, data.mostrarEnAlcance ? 1 : 0);
+    }
+    if (data.mostrarEnMensual !== undefined) {
+        sets.push('MostrarEnMensual = @mMensual');
+        request.input('mMensual', sql.Bit, data.mostrarEnMensual ? 1 : 0);
+    }
+    if (data.mostrarEnAnual !== undefined) {
+        sets.push('MostrarEnAnual = @mAnual');
+        request.input('mAnual', sql.Bit, data.mostrarEnAnual ? 1 : 0);
+    }
+    if (data.mostrarEnTendencia !== undefined) {
+        sets.push('MostrarEnTendencia = @mTendencia');
+        request.input('mTendencia', sql.Bit, data.mostrarEnTendencia ? 1 : 0);
+    }
+    if (data.mostrarEnRangos !== undefined) {
+        sets.push('MostrarEnRangos = @mRangos');
+        request.input('mRangos', sql.Bit, data.mostrarEnRangos ? 1 : 0);
+    }
+
+    if (sets.length === 0) throw new Error('No hay campos para actualizar');
+
+    await request.query(`UPDATE DIM_PERSONAL_CARGOS SET ${sets.join(', ')} WHERE ID = @id`);
+    return { success: true };
 }
 
 async function createCargo(nombre) {
@@ -323,8 +388,15 @@ async function renameCargo(id, newName) {
 
 // ─── Personal por local ────────────────────────────────────────────────────
 
-async function getPersonalPorLocal(local) {
+async function getPersonalPorLocal(local, vista = null) {
     const pool = await poolPromise;
+    let vistaFilter = '';
+    if (vista === 'alcance') vistaFilter = 'AND ISNULL(c.MostrarEnAlcance, 1) = 1';
+    else if (vista === 'mensual') vistaFilter = 'AND ISNULL(c.MostrarEnMensual, 1) = 1';
+    else if (vista === 'anual') vistaFilter = 'AND ISNULL(c.MostrarEnAnual, 1) = 1';
+    else if (vista === 'tendencia') vistaFilter = 'AND ISNULL(c.MostrarEnTendencia, 1) = 1';
+    else if (vista === 'rangos') vistaFilter = 'AND ISNULL(c.MostrarEnRangos, 1) = 1';
+
     const result = await pool.request()
         .input('local', sql.NVarChar, local)
         .query(`
@@ -332,8 +404,10 @@ async function getPersonalPorLocal(local) {
                    a.LOCAL, a.PERFIL, a.FECHA_INICIO, a.FECHA_FIN
             FROM DIM_PERSONAL_ASIGNACIONES a
             INNER JOIN APP_USUARIOS u ON u.Id = a.USUARIO_ID
+            LEFT JOIN DIM_PERSONAL_CARGOS c ON c.NOMBRE = a.PERFIL AND c.ACTIVO = 1
             WHERE a.LOCAL = @local AND a.ACTIVO = 1
               AND (a.FECHA_FIN IS NULL OR a.FECHA_FIN >= CAST(GETDATE() AS DATE))
+              ${vistaFilter}
             ORDER BY a.PERFIL, u.Nombre
         `);
     return result.recordset;
@@ -354,5 +428,6 @@ module.exports = {
     createCargo,
     deleteCargo,
     renameCargo,
+    updateCargo,
     getPersonalPorLocal
 };

@@ -1,7 +1,7 @@
 ﻿import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { BudgetRecord } from '../mockData';
 import { formatCurrencyCompact, useFormatCurrency } from '../utils/formatters';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, Brush } from 'recharts';
 import { useUserPreferences } from '../context/UserPreferences';
 import { fetchTactica } from '../api';
 import type { EventosByDate } from '../api';
@@ -648,6 +648,14 @@ export const AnnualCalendar: React.FC<AnnualCalendarProps> = ({
                                     {showRealLabel && <LabelList dataKey="Real" position="top" formatter={(value: number) => formatCurrencyCompact(value, kpi)} style={{ fontSize: '10px', fill: '#10B981', fontWeight: 'bold' }} />}
                                 </Area>
                             )}
+                            {/* Interactive brush for month range selection */}
+                            <Brush
+                                dataKey="name"
+                                height={30}
+                                stroke="#6366F1"
+                                fill="#E0E7FF"
+                                travellerWidth={10}
+                            />
                         </AreaChart>
                     </ResponsiveContainer>
                 </div>

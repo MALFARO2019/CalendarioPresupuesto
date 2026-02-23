@@ -1135,9 +1135,18 @@ export async function fetchPersonalStores(): Promise<string[]> {
     return response.json();
 }
 
-// --- Cargos (Perfiles) ---
+export interface Cargo {
+    ID: number;
+    NOMBRE: string;
+    ACTIVO: boolean;
+    MostrarEnAlcance: boolean;
+    MostrarEnMensual: boolean;
+    MostrarEnAnual: boolean;
+    MostrarEnTendencia: boolean;
+    MostrarEnRangos: boolean;
+}
 
-export async function fetchCargos(): Promise<{ ID: number, NOMBRE: string, ACTIVO: boolean }[]> {
+export async function fetchCargos(): Promise<Cargo[]> {
     const response = await fetch(`${API_BASE}/personal/cargos`, {
         headers: authHeaders()
     });
@@ -1169,13 +1178,34 @@ export async function deleteCargo(id: number, reassignTo?: string): Promise<void
     }
 }
 
+export async function updateCargo(id: number, data: Partial<{
+    nombre: string;
+    mostrarEnAlcance: boolean;
+    mostrarEnMensual: boolean;
+    mostrarEnAnual: boolean;
+    mostrarEnTendencia: boolean;
+    mostrarEnRangos: boolean;
+}>): Promise<void> {
+    const response = await fetch(`${API_BASE}/personal/cargos/${id}`, {
+        method: 'PUT',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Error updating cargo');
+    }
+}
+
 // GET /api/personal/admin-por-local — Returns all active personal assigned to a local
 export interface PersonalAsignado { nombre: string; perfil: string; }
 
-export async function fetchAdminPorLocal(local: string): Promise<PersonalAsignado[]> {
+export async function fetchAdminPorLocal(local: string, vista?: string): Promise<PersonalAsignado[]> {
     try {
         if (!local || local === 'Todos' || local === 'Corporativo') return [];
-        const response = await fetch(`${API_BASE}/personal/admin-por-local?local=${encodeURIComponent(local)}`, {
+        const params = new URLSearchParams({ local });
+        if (vista) params.append('vista', vista);
+        const response = await fetch(`${API_BASE}/personal/admin-por-local?${params.toString()}`, {
             headers: authHeaders()
         });
         if (!response.ok) return [];

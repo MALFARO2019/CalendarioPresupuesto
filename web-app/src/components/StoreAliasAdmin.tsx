@@ -9,11 +9,11 @@ function getToken() {
 }
 
 async function apiFetch(path: string, options: RequestInit = {}) {
-    const res = await fetch(`${API_BASE}${path} `, {
+    const res = await fetch(`${API_BASE}${path}`, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getToken()} `,
+            'Authorization': `Bearer ${getToken()}`,
             ...(options.headers || {}),
         },
     });
@@ -82,7 +82,7 @@ export const StoreAliasAdmin: React.FC = () => {
         setError('');
         try {
             const [aliasData, storeData, fuenteData, statsData] = await Promise.all([
-                apiFetch(`/ api / admin / store - aliases ? ${filterFuente ? `fuente=${filterFuente}` : ''}${searchTerm ? `&search=${searchTerm}` : ''} `),
+                apiFetch(`/api/admin/store-aliases?${filterFuente ? `fuente=${filterFuente}` : ''}${searchTerm ? `&search=${searchTerm}` : ''}`),
                 apiFetch('/api/admin/store-aliases/stores'),
                 apiFetch('/api/admin/store-aliases/fuentes'),
                 apiFetch('/api/admin/store-aliases/stats'),
@@ -141,7 +141,7 @@ export const StoreAliasAdmin: React.FC = () => {
         try {
             const fuente = formFuente === '__custom__' ? formCustomFuente.trim().toUpperCase() : (formFuente || null);
             if (editingId) {
-                await apiFetch(`/ api / admin / store - aliases / ${editingId} `, {
+                await apiFetch(`/api/admin/store-aliases/${editingId}`, {
                     method: 'PUT',
                     body: JSON.stringify({ alias: formAlias, codAlmacen: formCod, fuente }),
                 });
@@ -165,7 +165,7 @@ export const StoreAliasAdmin: React.FC = () => {
     const handleDelete = async (id: number) => {
         if (!await showConfirm({ message: '¿Eliminar este alias?', destructive: true })) return;
         try {
-            await apiFetch(`/ api / admin / store - aliases / ${id} `, { method: 'DELETE' });
+            await apiFetch(`/api/admin/store-aliases/${id}`, { method: 'DELETE' });
             setSuccess('Alias eliminado');
             loadData();
         } catch (err: any) {
@@ -274,7 +274,7 @@ export const StoreAliasAdmin: React.FC = () => {
                         {stats.byFuente.map(f => (
                             <span
                                 key={f.Fuente}
-                                className={`px - 3 py - 1 rounded - full text - xs font - semibold cursor - pointer transition - all ${filterFuente === f.Fuente
+                                className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all ${filterFuente === f.Fuente
                                     ? 'ring-2 ring-offset-1 ring-indigo-400 ' + (FUENTE_COLORS[f.Fuente] || 'bg-gray-100 text-gray-700')
                                     : FUENTE_COLORS[f.Fuente] || 'bg-gray-100 text-gray-700'
                                     } `}
@@ -333,7 +333,7 @@ export const StoreAliasAdmin: React.FC = () => {
                     onClick={loadData}
                     className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm transition-all"
                 >
-                    <RefreshCw className={`w - 4 h - 4 ${loading ? 'animate-spin' : ''} `} />
+                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 </button>
             </div>
 
@@ -478,7 +478,7 @@ export const StoreAliasAdmin: React.FC = () => {
                                         <div key={a.Id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-gray-50/50 transition-colors group">
                                             <span className="text-sm text-gray-800 font-medium flex-1 min-w-0 truncate">{a.Alias}</span>
                                             {a.Fuente && (
-                                                <span className={`px - 2.5 py - 0.5 rounded - full text - xs font - semibold ${FUENTE_COLORS[a.Fuente] || 'bg-gray-100 text-gray-600'} `}>
+                                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${FUENTE_COLORS[a.Fuente] || 'bg-gray-100 text-gray-600'}`}>
                                                     {a.Fuente}
                                                 </span>
                                             )}
