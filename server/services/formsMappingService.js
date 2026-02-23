@@ -603,7 +603,18 @@ async function getResolvedMappings(sourceId, tableName) {
             GROUP BY [${almacenMapping.ColumnName}], _CODALMACEN
             ORDER BY [${almacenMapping.ColumnName}]
         `);
-        result.almacen = r.recordset;
+        // Enrich with store names from main database
+        try {
+            const stores = await getAllStores();
+            const storeMap = {};
+            for (const s of stores) { storeMap[s.CODALMACEN] = s.NOMBRE; }
+            result.almacen = r.recordset.map(row => ({
+                ...row,
+                resolvedNombre: row.resolvedValue ? (storeMap[row.resolvedValue] || null) : null
+            }));
+        } catch (e) {
+            result.almacen = r.recordset;
+        }
     }
 
     if (personaMapping && existingCols.has(personaMapping.ColumnName) && existingCols.has('_PERSONAL_ID')) {

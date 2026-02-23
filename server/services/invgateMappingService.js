@@ -566,6 +566,120 @@ async function mapPersonaManual(viewId, sourceValue, userId, userName) {
     return { updated: result.rowsAffected[0] || 0, sourceValue, userId, userName };
 }
 
+// ─── Get ALL resolved mappings from the data table (grouped by source value) ──
+async function getResolvedMappings(viewId) {
+    const pool = await getInvgatePool();
+    const tableName = await viewTableName(viewId);
+
+    const exists = await pool.request()
+        .query(`SELECT OBJECT_ID('${tableName}', 'U') AS tid`);
+    if (!exists.recordset[0]?.tid) {
+        return { almacen: [], persona: [] };
+    }
+
+    const mappings = await getMappings(viewId);
+    const personaMapping = mappings.find(m => m.FieldType === 'PERSONA');
+    const almacenMapping = mappings.find(m => m.FieldType === 'CODALMACEN');
+
+    // Check mapping columns exist
+    const cols = await pool.request()
+        .input('tbl', sql.NVarChar, tableName)
+        .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl AND COLUMN_NAME IN ('_CODALMACEN', '_PERSONAL_ID', '_PERSONAL_NOMBRE')`);
+    const existingCols = new Set(cols.recordset.map(r => r.COLUMN_NAME));
+
+    const result = { almacen: [], persona: [] };
+
+    // Resolved CODALMACEN mappings
+    if (almacenMapping && almacenMapping.ColumnName !== '__NO_MAP__' && existingCols.has('_CODALMACEN')) {
+        const colName = almacenMapping.ColumnName;
+        // Verify source column exists
+        const colCheck = await pool.request()
+            .input('tbl', sql.NVarChar, tableName)
+            .input('col', sql.NVarChar, colName)
+            .query(`SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl AND COLUMN_NAME = @col`);
+        if (colCheck.recordset.length > 0) {
+            const rows = await pool.request().query(`
+                SELECT [${colName}] AS sourceValue, [_CODALMACEN] AS resolvedValue, COUNT(*) AS cnt
+                FROM [${tableName}]
+                WHERE [_CODALMACEN] IS NOT NULL
+                GROUP BY [${colName}], [_CODALMACEN]
+                ORDER BY cnt DESC
+            `);
+            result.almacen = rows.recordset.map(r => ({
+                sourceValue: r.sourceValue || '',
+                resolvedValue: r.resolvedValue,
+                count: r.cnt
+            }));
+        }
+    }
+
+    // Resolved PERSONA mappings
+    if (personaMapping && personaMapping.ColumnName !== '__NO_MAP__' && existingCols.has('_PERSONAL_ID')) {
+        const colName = personaMapping.ColumnName;
+        const colCheck = await pool.request()
+            .input('tbl', sql.NVarChar, tableName)
+            .input('col', sql.NVarChar, colName)
+            .query(`SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl AND COLUMN_NAME = @col`);
+        if (colCheck.recordset.length > 0) {
+            const nameSelect = existingCols.has('_PERSONAL_NOMBRE') ? ', [_PERSONAL_NOMBRE] AS resolvedName' : '';
+            const nameGroup = existingCols.has('_PERSONAL_NOMBRE') ? ', [_PERSONAL_NOMBRE]' : '';
+            const rows = await pool.request().query(`
+                SELECT [${colName}] AS sourceValue, [_PERSONAL_ID] AS resolvedId${nameSelect}, COUNT(*) AS cnt
+                FROM [${tableName}]
+                WHERE [_PERSONAL_ID] IS NOT NULL
+                GROUP BY [${colName}], [_PERSONAL_ID]${nameGroup}
+                ORDER BY cnt DESC
+            `);
+            result.persona = rows.recordset.map(r => ({
+                sourceValue: r.sourceValue || '',
+                resolvedId: r.resolvedId,
+                resolvedName: r.resolvedName || '',
+                count: r.cnt
+            }));
+        }
+    }
+
+    return result;
+}
+
+// ─── Clear resolved mapping for a specific source value ───────────────────────
+async function clearResolvedMapping(viewId, fieldType, sourceValue) {
+    const pool = await getInvgatePool();
+    const tableName = await viewTableName(viewId);
+
+    const mappings = await getMappings(viewId);
+    const mapping = mappings.find(m => m.FieldType === fieldType);
+    if (!mapping) throw new Error(`No mapping configured for ${fieldType}`);
+
+    const colName = mapping.ColumnName;
+    if (colName === '__NO_MAP__') throw new Error('Cannot clear a __NO_MAP__ mapping');
+
+    await ensureMappingColumns(tableName);
+
+    let updated = 0;
+    if (fieldType === 'CODALMACEN') {
+        const result = await pool.request()
+            .input('src', sql.NVarChar, sourceValue.trim())
+            .query(`
+                UPDATE [${tableName}]
+                SET [_CODALMACEN] = NULL
+                WHERE RTRIM(LTRIM([${colName}])) = @src AND [_CODALMACEN] IS NOT NULL
+            `);
+        updated = result.rowsAffected[0] || 0;
+    } else if (fieldType === 'PERSONA') {
+        const result = await pool.request()
+            .input('src', sql.NVarChar, sourceValue.trim())
+            .query(`
+                UPDATE [${tableName}]
+                SET [_PERSONAL_ID] = NULL, [_PERSONAL_NOMBRE] = NULL
+                WHERE RTRIM(LTRIM([${colName}])) = @src AND [_PERSONAL_ID] IS NOT NULL
+            `);
+        updated = result.rowsAffected[0] || 0;
+    }
+
+    return { cleared: updated, fieldType, sourceValue };
+}
+
 module.exports = {
     ensureMappingTable,
     getMappings,
@@ -577,5 +691,7 @@ module.exports = {
     getMappingStats,
     resolveAfterSync,
     autoDetectMappings,
-    mapPersonaManual
+    mapPersonaManual,
+    getResolvedMappings,
+    clearResolvedMapping
 };

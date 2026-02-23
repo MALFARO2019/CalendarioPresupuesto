@@ -1203,7 +1203,7 @@ export const FormsAdmin: React.FC = () => {
                                                                         <span className="review-arrow">→</span>
                                                                         <span className={`review-resolved ${!m.resolvedValue && !m.resolvedId ? 'no-resolve' : ''}`}>
                                                                             {reviewMappingType === 'CODALMACEN'
-                                                                                ? (m.resolvedValue || '⚠️ Sin resolver')
+                                                                                ? (m.resolvedValue ? (m.resolvedNombre ? `${m.resolvedValue} — ${m.resolvedNombre}` : m.resolvedValue) : '⚠️ Sin resolver')
                                                                                 : (m.resolvedNombre ? `${m.resolvedNombre} (${m.resolvedId})` : (m.resolvedId || '⚠️ Sin resolver'))}
                                                                         </span>
                                                                         <span className="review-count">{m.cnt} reg.</span>

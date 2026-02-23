@@ -471,6 +471,34 @@ function registerInvgateEndpoints(app, authMiddleware) {
         }
     });
 
+    // Get all resolved mappings for a view (grouped by source value)
+    app.get('/api/invgate/views/:id/resolved-mappings', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const result = await invgateMappingService.getResolvedMappings(parseInt(req.params.id));
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Clear a resolved mapping for a specific source value
+    app.delete('/api/invgate/views/:id/resolved-mappings', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const { fieldType, sourceValue } = req.body;
+            if (!fieldType || sourceValue === undefined) {
+                return res.status(400).json({ error: 'fieldType y sourceValue son requeridos' });
+            }
+            const result = await invgateMappingService.clearResolvedMapping(
+                parseInt(req.params.id), fieldType, sourceValue
+            );
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     console.log('📋 InvGate endpoints registered');
 }
 
