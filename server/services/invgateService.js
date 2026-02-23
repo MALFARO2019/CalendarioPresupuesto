@@ -430,30 +430,34 @@ class InvGateService {
 
     /**
      * Get incidents by InvGate view (single page).
-     * Uses /incidents.details.by.view endpoint.
-     * Returns: { tickets: [...], totalCount, page, columns: [...] }
+     * Uses /incidents.details.by.view endpoint with cursor-based pagination.
+     * Returns: { tickets: [...], metadata: {...}, nextPageKey, totalCount, columns: [...] }
      */
-    async getIncidentsByView(viewId, page = 1) {
+    async getIncidentsByView(viewId, pageKey = null) {
         try {
-            const data = await this.makeRequest('/incidents.details.by.view', 'GET', null, {
-                view_id: viewId,
-                page: page
-            });
+            const params = { view_id: viewId };
+            if (pageKey) params.page_key = pageKey;
+
+            const data = await this.makeRequest('/incidents.details.by.view', 'GET', null, params);
             if (!data || typeof data !== 'object') {
-                return { tickets: [], totalCount: 0, page, columns: [] };
+                return { tickets: [], metadata: {}, nextPageKey: null, totalCount: 0, columns: [] };
             }
+
+            // Extract metadata (column labels, hash-to-label value maps)
+            const metadata = data.metadata || {};
+            const nextPageKey = data.next_page_key || null;
 
             // Normalize response — InvGate v1 may return object {id: ticketData} or array
             let tickets = [];
-            if (Array.isArray(data)) {
-                tickets = data;
-            } else if (data.data && Array.isArray(data.data)) {
+            if (Array.isArray(data.data)) {
                 tickets = data.data;
+            } else if (Array.isArray(data)) {
+                tickets = data;
             } else if (data.error) {
                 throw new Error(`InvGate view error: ${data.error}`);
-            } else {
+            } else if (data.data && typeof data.data === 'object') {
                 // Object format {id: {...}, id2: {...}}
-                tickets = Object.entries(data).map(([id, ticket]) => ({
+                tickets = Object.entries(data.data).map(([id, ticket]) => ({
                     ...ticket,
                     id: parseInt(id)
                 }));
@@ -471,8 +475,9 @@ class InvGateService {
 
             return {
                 tickets,
+                metadata,
+                nextPageKey,
                 totalCount: data.total || data.count || tickets.length,
-                page,
                 columns
             };
         } catch (err) {
@@ -482,16 +487,22 @@ class InvGateService {
     }
 
     /**
-     * Preview a view — returns first page of data with detected columns.
+     * Preview a view — returns first page of data with resolved columns.
      * Used in the admin UI to let the user see what a view contains before enabling sync.
      */
     async getViewPreview(viewId) {
-        const result = await this.getIncidentsByView(viewId, 1);
+        const result = await this.getIncidentsByView(viewId);
+        // Resolve tickets using metadata for human-readable column names
+        const resolvedTickets = this._resolveTickets(result.tickets, result.metadata);
         // Limit to first 10 rows for preview
-        const previewTickets = result.tickets.slice(0, 10);
+        const previewTickets = resolvedTickets.slice(0, 10);
 
         // Build column info with sample values
-        const columnInfo = result.columns.map(col => {
+        const columnSet = new Set();
+        for (const t of previewTickets) {
+            for (const k of Object.keys(t)) columnSet.add(k);
+        }
+        const columnInfo = Array.from(columnSet).map(col => {
             const samples = previewTickets
                 .map(t => {
                     const val = t[col];
@@ -514,34 +525,137 @@ class InvGateService {
     }
 
     /**
-     * Get ALL incidents from a view (paginated fetch).
-     * Used during sync to get complete data set.
+     * Resolve raw API tickets into human-readable flat objects using metadata.
+     * - Renames cf_XXX → metadata label (e.g. cf_137 → "Tipo de Queja:")
+     * - Resolves hash codes to labels for list-type custom fields
+     * - Flattens nested built-in fields (request, priority, status, etc.)
+     */
+    _resolveTickets(tickets, metadata) {
+        if (!tickets || tickets.length === 0) return [];
+        const resolved = [];
+
+        for (const ticket of tickets) {
+            const row = {};
+            for (const [key, value] of Object.entries(ticket)) {
+                const fieldMeta = metadata[key];
+
+                if (fieldMeta && key.startsWith('cf_')) {
+                    // Custom field — use metadata label and resolve hash values
+                    const colName = fieldMeta.label || key;
+                    if (fieldMeta.type === 'list' && Array.isArray(value) && fieldMeta.values) {
+                        row[colName] = value.map(hash => fieldMeta.values[hash]?.label || hash).join(', ');
+                    } else {
+                        row[colName] = value;
+                    }
+                } else if (key === 'id') {
+                    row['ID'] = value;
+                } else if (key === 'request' && typeof value === 'object' && value !== null) {
+                    // Flatten request: category, type, subject
+                    if (value.category) row['Categoría'] = value.category.label || value.category;
+                    if (value.type) row['Tipo'] = value.type.label || value.type;
+                } else if (key === 'priority') {
+                    row['Prioridad'] = (typeof value === 'object' && value?.label) ? value.label : value;
+                } else if (key === 'status') {
+                    row['Estado'] = (typeof value === 'object' && value?.label) ? value.label : value;
+                } else if (key === 'waiting_for') {
+                    row['Esperando'] = (typeof value === 'object' && value?.label) ? value.label : value;
+                } else if (key === 'last_update') {
+                    if (typeof value === 'object' && value?.formatted) {
+                        row['Fecha de creación'] = value.formatted;
+                    } else {
+                        row['Fecha de creación'] = value;
+                    }
+                } else if (key === 'customer') {
+                    // Resolve customer using metadata if available
+                    if (fieldMeta && fieldMeta.values && fieldMeta.values[String(value)]) {
+                        row['Cliente'] = fieldMeta.values[String(value)].label;
+                    } else {
+                        row['Cliente'] = value;
+                    }
+                } else if (key === 'description') {
+                    row['Descripción'] = value;
+                } else {
+                    // Any other field — pass through, flatten if object
+                    if (typeof value === 'object' && value !== null) {
+                        row[key] = value.label || value.formatted || JSON.stringify(value);
+                    } else {
+                        row[key] = value;
+                    }
+                }
+            }
+            resolved.push(row);
+        }
+        return resolved;
+    }
+
+    /**
+     * Get ALL incidents from a view (cursor-based paginated fetch).
+     * Uses next_page_key for proper pagination.
+     * Returns resolved (human-readable) ticket objects ready for DB storage.
      */
     async getAllIncidentsByView(viewId) {
         const allTickets = [];
-        let page = 1;
-        let hasMore = true;
+        const seenIds = new Set();
+        let pageKey = null;
+        let pageNum = 1;
+        let metadata = {};
+        const MAX_PAGES = 500; // safety cap
 
-        while (hasMore) {
-            console.log(`  📄 View ${viewId}: fetching page ${page}...`);
-            const result = await this.getIncidentsByView(viewId, page);
-            allTickets.push(...result.tickets);
+        while (pageNum <= MAX_PAGES) {
+            console.log(`  📄 View ${viewId}: fetching page ${pageNum}...`);
+            const result = await this.getIncidentsByView(viewId, pageKey);
 
-            // Stop if we got fewer tickets than expected or empty page
-            if (result.tickets.length === 0) {
-                hasMore = false;
-            } else {
-                // InvGate v1 typically returns 100 per page
-                hasMore = result.tickets.length >= 100;
-                page++;
+            // Merge metadata (first page usually has all of it)
+            if (result.metadata && Object.keys(result.metadata).length > 0) {
+                metadata = { ...metadata, ...result.metadata };
             }
+
+            if (result.tickets.length === 0) {
+                break;
+            }
+
+            // Deduplicate
+            let newCount = 0;
+            for (const ticket of result.tickets) {
+                const ticketId = ticket.id || ticket.ID;
+                if (ticketId && !seenIds.has(ticketId)) {
+                    seenIds.add(ticketId);
+                    allTickets.push(ticket);
+                    newCount++;
+                } else if (!ticketId) {
+                    allTickets.push(ticket); // no ID, can't deduplicate
+                    newCount++;
+                }
+            }
+
+            if (newCount === 0) {
+                console.log(`  ⚠️ View ${viewId}: page ${pageNum} returned only duplicate data, stopping`);
+                break;
+            }
+
+            console.log(`    📊 Page ${pageNum}: ${result.tickets.length} returned, ${newCount} new (${allTickets.length} total)`);
+
+            // Stop if no next page key
+            if (!result.nextPageKey) {
+                break;
+            }
+
+            pageKey = result.nextPageKey;
+            pageNum++;
 
             // Rate limit protection
             await new Promise(r => setTimeout(r, 300));
         }
 
-        console.log(`  ✅ View ${viewId}: total ${allTickets.length} incidents fetched`);
-        return allTickets;
+        if (pageNum > MAX_PAGES) {
+            console.warn(`  ⚠️ View ${viewId}: reached max page limit (${MAX_PAGES}), stopping`);
+        }
+
+        // Resolve all tickets using collected metadata
+        const resolvedTickets = this._resolveTickets(allTickets, metadata);
+
+        console.log(`  ✅ View ${viewId}: total ${resolvedTickets.length} unique incidents fetched and resolved`);
+        return resolvedTickets;
     }
 
     // ================================================================

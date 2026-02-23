@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useToast } from './components/ui/Toast';
 import { FilterBar } from './components/FilterBar';
 import { CalendarGrid } from './components/CalendarGrid';
 import { LoginPage } from './components/LoginPage';
@@ -25,14 +26,17 @@ import { SummaryCard } from './components/SummaryCard';
 import { GroupMembersCard } from './components/GroupMembersCard';
 import { RangosView } from './components/RangosView';
 import { PreferencesView } from './components/PreferencesView';
+import { InocuidadView } from './components/inocuidad/InocuidadView';
 
 type AppView = 'login' | 'dashboard' | 'admin' | 'preferencias';
-type DashboardTab = 'home' | 'mensual' | 'anual' | 'tendencia' | 'rangos';
+type DashboardTab = 'home' | 'mensual' | 'anual' | 'tendencia' | 'rangos' | 'inocuidad';
 
 function App() {
+  const { showToast } = useToast();
   const [view, setView] = useState<AppView>('login');
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('home');
+  const [inocuidadSubTab, setInocuidadSubTab] = useState<'tendencia' | 'calor'>('tendencia');
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [year, setYear] = useState(2026);
@@ -456,14 +460,14 @@ function App() {
 
       const result = await response.json();
       if (response.ok) {
-        alert('✅ Reporte enviado exitosamente a ' + emailTo);
+        showToast('Reporte enviado exitosamente a ' + emailTo, 'success');
         setShowEmailModal(false);
         setEmailTo('');
       } else {
-        alert('❌ Error: ' + (result.error || 'Error al enviar'));
+        showToast('Error: ' + (result.error || 'Error al enviar'), 'error');
       }
     } catch (error) {
-      alert('❌ Error de conexión al enviar el correo');
+      showToast('Error de conexión al enviar el correo', 'error');
       console.error(error);
     }
     setEmailSending(false);
@@ -664,8 +668,8 @@ function App() {
                 <span className="hidden lg:inline">Inicio</span>
               </button>
 
-              {/* Only show presupuesto tabs when not in home */}
-              {dashboardTab !== 'home' && (
+              {/* Show presupuesto tabs when not in home and not in inocuidad */}
+              {dashboardTab !== 'home' && dashboardTab !== 'inocuidad' && (
                 <>
                   {user?.accesoPresupuestoMensual && (
                     <button
@@ -715,6 +719,40 @@ function App() {
                       <span className="hidden lg:inline">Rangos</span>
                     </button>
                   )}
+                  {user?.accesoEvaluaciones && (
+                    <button
+                      onClick={() => setDashboardTab('inocuidad')}
+                      className="touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all text-gray-400 hover:text-gray-600"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      <span className="hidden lg:inline">Inocuidad</span>
+                    </button>
+                  )}
+                </>
+              )}
+              {/* Inocuidad sub-tabs: Tendencia and Mapa de Calor */}
+              {dashboardTab === 'inocuidad' && (
+                <>
+                  <button
+                    onClick={() => setInocuidadSubTab('tendencia')}
+                    className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${inocuidadSubTab === 'tendencia'
+                      ? 'bg-white shadow-sm text-teal-600'
+                      : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                  >
+                    <BarChart3 className="w-3.5 h-3.5" />
+                    <span className="hidden lg:inline">Tendencia</span>
+                  </button>
+                  <button
+                    onClick={() => setInocuidadSubTab('calor')}
+                    className={`touch-target flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-bold transition-all ${inocuidadSubTab === 'calor'
+                      ? 'bg-white shadow-sm text-teal-600'
+                      : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                  >
+                    <BarChart3 className="w-3.5 h-3.5" />
+                    <span className="hidden lg:inline">Mapa de Calor</span>
+                  </button>
                 </>
               )}
             </div>
@@ -744,7 +782,7 @@ function App() {
 
       <main id="dashboard-content" className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {/* Filters - Only show when in Presupuesto module (not in tendencia or rangos) */}
-        {dashboardTab !== 'home' && dashboardTab !== 'tendencia' && dashboardTab !== 'rangos' && (
+        {dashboardTab !== 'home' && dashboardTab !== 'tendencia' && dashboardTab !== 'rangos' && dashboardTab !== 'inocuidad' && (
           <FilterBar
             year={year}
             setYear={() => { }} // Year is read-only
@@ -842,6 +880,9 @@ function App() {
                   // Fallback to mensual anyway, permissions will just hide content
                   setDashboardTab('mensual');
                 }
+              }
+              if (moduleId === 'evaluaciones' || moduleId === 'inocuidad') {
+                setDashboardTab('inocuidad');
               }
               // Future modules will be handled here
             }}
@@ -1072,6 +1113,19 @@ function App() {
             eventosByYear={eventosByYear}
           />
         )}
+
+        {!loading && dashboardTab === 'inocuidad' && user?.accesoEvaluaciones && (
+          <div id="inocuidad-container">
+            <InocuidadView
+              year={year}
+              groups={groups}
+              individualStores={individualStores}
+              filterLocal={filterLocal}
+              onFilterLocalChange={setFilterLocal}
+              activeSubTab={inocuidadSubTab}
+            />
+          </div>
+        )}
       </main>
 
       {/* Mobile Bottom Navigation - only visible on small screens when in budget module */}
@@ -1086,56 +1140,97 @@ function App() {
               <span className="text-[10px] font-semibold">Inicio</span>
             </button>
 
-            {user?.accesoPresupuestoMensual && (
-              <button
-                onClick={() => setDashboardTab('mensual')}
-                className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'mensual'
-                  ? 'text-indigo-600 bg-indigo-50'
-                  : 'text-gray-400 active:bg-gray-100'
-                  }`}
-              >
-                <Calendar className="w-5 h-5" />
-                <span className="text-[10px] font-semibold">Mensual</span>
-              </button>
+            {/* Presupuesto mobile tabs - hidden when in inocuidad */}
+            {dashboardTab !== 'inocuidad' && (
+              <>
+                {user?.accesoPresupuestoMensual && (
+                  <button
+                    onClick={() => setDashboardTab('mensual')}
+                    className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'mensual'
+                      ? 'text-indigo-600 bg-indigo-50'
+                      : 'text-gray-400 active:bg-gray-100'
+                      }`}
+                  >
+                    <Calendar className="w-5 h-5" />
+                    <span className="text-[10px] font-semibold">Mensual</span>
+                  </button>
+                )}
+
+                {user?.accesoPresupuestoAnual && (
+                  <button
+                    onClick={() => setDashboardTab('anual')}
+                    className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'anual'
+                      ? 'text-indigo-600 bg-indigo-50'
+                      : 'text-gray-400 active:bg-gray-100'
+                      }`}
+                  >
+                    <BarChart3 className="w-5 h-5" />
+                    <span className="text-[10px] font-semibold">Anual</span>
+                  </button>
+                )}
+
+                {user?.accesoTendencia && (
+                  <button
+                    onClick={() => setDashboardTab('tendencia')}
+                    className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'tendencia'
+                      ? 'text-indigo-600 bg-indigo-50'
+                      : 'text-gray-400 active:bg-gray-100'
+                      }`}
+                  >
+                    <BarChart3 className="w-5 h-5" />
+                    <span className="text-[10px] font-semibold">Tendencia</span>
+                  </button>
+                )}
+
+                {user?.accesoPresupuestoRangos && (
+                  <button
+                    onClick={() => setDashboardTab('rangos')}
+                    className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'rangos'
+                      ? 'text-indigo-600 bg-indigo-50'
+                      : 'text-gray-400 active:bg-gray-100'
+                      }`}
+                  >
+                    <Calendar className="w-5 h-5" />
+                    <span className="text-[10px] font-semibold">Rangos</span>
+                  </button>
+                )}
+
+                {user?.accesoEvaluaciones && (
+                  <button
+                    onClick={() => setDashboardTab('inocuidad')}
+                    className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all text-gray-400 active:bg-gray-100"
+                  >
+                    <BarChart3 className="w-5 h-5" />
+                    <span className="text-[10px] font-semibold">Inocuidad</span>
+                  </button>
+                )}
+              </>
             )}
 
-            {user?.accesoPresupuestoAnual && (
-              <button
-                onClick={() => setDashboardTab('anual')}
-                className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'anual'
-                  ? 'text-indigo-600 bg-indigo-50'
-                  : 'text-gray-400 active:bg-gray-100'
-                  }`}
-              >
-                <BarChart3 className="w-5 h-5" />
-                <span className="text-[10px] font-semibold">Anual</span>
-              </button>
-            )}
-
-            {user?.accesoTendencia && (
-              <button
-                onClick={() => setDashboardTab('tendencia')}
-                className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'tendencia'
-                  ? 'text-indigo-600 bg-indigo-50'
-                  : 'text-gray-400 active:bg-gray-100'
-                  }`}
-              >
-                <BarChart3 className="w-5 h-5" />
-                <span className="text-[10px] font-semibold">Tendencia</span>
-              </button>
-            )}
-
-            {user?.accesoPresupuestoRangos && (
-              <button
-                onClick={() => setDashboardTab('rangos')}
-                className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${dashboardTab === 'rangos'
-                  ? 'text-indigo-600 bg-indigo-50'
-                  : 'text-gray-400 active:bg-gray-100'
-                  }`}
-              >
-                <Calendar className="w-5 h-5" />
-                <span className="text-[10px] font-semibold">Rangos</span>
-              </button>
+            {/* Inocuidad mobile sub-tabs */}
+            {dashboardTab === 'inocuidad' && (
+              <>
+                <button
+                  onClick={() => setInocuidadSubTab('tendencia')}
+                  className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${inocuidadSubTab === 'tendencia'
+                    ? 'text-teal-600 bg-teal-50'
+                    : 'text-gray-400 active:bg-gray-100'
+                    }`}
+                >
+                  <BarChart3 className="w-5 h-5" />
+                  <span className="text-[10px] font-semibold">Tendencia</span>
+                </button>
+                <button
+                  onClick={() => setInocuidadSubTab('calor')}
+                  className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl min-w-[56px] transition-all ${inocuidadSubTab === 'calor'
+                    ? 'text-teal-600 bg-teal-50'
+                    : 'text-gray-400 active:bg-gray-100'
+                    }`}
+                >
+                  <BarChart3 className="w-5 h-5" />
+                  <span className="text-[10px] font-semibold">Mapa Calor</span>
+                </button>
+              </>
             )}
           </div>
         </nav>

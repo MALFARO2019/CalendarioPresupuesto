@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../ui/Toast';
 import {
     fetchReferencias, saveReferencia, deleteReferencia, fetchStoresWithNames,
     getUser, type ReferenciaLocal, type StoreItem
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export const ReferenciasPanel: React.FC<Props> = ({ nombrePresupuesto, anoModelo }) => {
+    const { showConfirm } = useToast();
     const user = getUser();
     const isAdmin = user?.esAdmin;
 
@@ -94,7 +96,7 @@ export const ReferenciasPanel: React.FC<Props> = ({ nombrePresupuesto, anoModelo
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('¿Eliminar esta referencia?')) return;
+        if (!await showConfirm({ message: '¿Eliminar esta referencia?', destructive: true })) return;
         try {
             setMessage(null);
             await deleteReferencia(id);

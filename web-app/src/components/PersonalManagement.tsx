@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useToast } from './ui/Toast';
 import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchAsignaciones, fetchProfiles, fetchPersonal, createAsignacion, updateAsignacion, deleteAsignacion as apiDeleteAsignacion } from '../api';
 import type { Profile, PersonalItem, Asignacion } from '../api';
 import { Plus, Edit2, Trash2, MapPin, RefreshCw, X, Calendar, AlertTriangle, Shield, Search } from 'lucide-react';
@@ -7,6 +8,7 @@ import { SearchableSelect } from './SearchableSelect';
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const PersonalManagement: React.FC = () => {
+    const { showConfirm } = useToast();
     const [usuarios, setUsuarios] = useState<PersonalItem[]>([]);
     const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -135,7 +137,7 @@ export const PersonalManagement: React.FC = () => {
     };
 
     const deleteAsig = async (a: Asignacion) => {
-        if (!confirm(`¿Eliminar asignación de "${a.USUARIO_NOMBRE}" en ${a.LOCAL}?`)) return;
+        if (!await showConfirm({ message: `¿Eliminar asignación de "${a.USUARIO_NOMBRE}" en ${a.LOCAL}?`, destructive: true })) return;
         try {
             await apiDeleteAsignacion(a.ID);
             await loadAsignaciones(); await loadUsuarios();

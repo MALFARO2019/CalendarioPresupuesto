@@ -3,6 +3,7 @@
 // ============================================================
 
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { useToast } from '../../ui/Toast';
 import {
     ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer, ReferenceLine,
@@ -12,6 +13,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { CURVE_DEFS, EVENT_TOGGLE_DEFS, REDISTRIBUCION_LABELS } from './types';
 import type { CurveKey, EventToggleKey, BudgetSeriesPoint, AjustePresupuesto, RedistribucionTipo } from './types';
 import { fmt$, fmtFull, formatFechaCorta, dateKey } from './helpers';
+import { fetchCanalTotals, type CanalTotal } from '../../../api';
 
 // ── Helpers ──
 
@@ -180,14 +182,20 @@ const CustomTooltip: React.FC<{
             )}
 
             {/* Adjustment % indicator when in adjust mode */}
-            {isAdjusting && dragPct !== undefined && dragPct !== 0 && (
-                <div className={`px-3 py-1.5 border-t text-[11px] font-bold text-center ${isAffected
-                        ? (dragPct >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700')
-                        : 'bg-gray-50 border-gray-200 text-gray-400'
+            {isAdjusting && (
+                <div className={`px-3 py-1.5 border-t text-[11px] font-bold text-center ${!isAffected
+                    ? 'bg-gray-50 border-gray-200 text-gray-400'
+                    : dragPct === 0
+                        ? 'bg-blue-50 border-blue-200 text-blue-600'
+                        : dragPct >= 0
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            : 'bg-red-50 border-red-200 text-red-700'
                     }`}>
-                    {isAffected
-                        ? `${dragPct >= 0 ? '▲' : '▼'} ${dragPct >= 0 ? '+' : ''}${dragPct.toFixed(1)}% aplicado`
-                        : 'Sin ajuste (fuera del rango de distribución)'
+                    {!isAffected
+                        ? '⊘ Sin ajuste (fuera del rango de distribución)'
+                        : dragPct === 0
+                            ? '● Este día será afectado por el ajuste'
+                            : `${dragPct >= 0 ? '▲' : '▼'} ${dragPct >= 0 ? '+' : ''}${dragPct.toFixed(1)}% aplicado`
                     }
                 </div>
             )}
@@ -199,6 +207,7 @@ const CustomTooltip: React.FC<{
 // ── Main Chart Component ──
 
 export const AjusteGrafica: React.FC = () => {
+    const { showConfirm } = useToast();
     const { seriesData, ajustes, visibleCurves, visibleEvents, filtros, chartLoading, canAdjust } = useAjusteStore(
         useShallow(s => ({
             seriesData: s.seriesData,
@@ -214,6 +223,7 @@ export const AjusteGrafica: React.FC = () => {
     const toggleEvent = useAjusteStore(s => s.toggleEvent);
     const openCreateForm = useAjusteStore(s => s.openCreateForm);
     const saveAjuste = useAjusteStore(s => s.saveAjuste);
+    const setChartState = useAjusteStore(s => s.setChartState);
 
     // ── Drag state ──
     const [selectedDayIdx, setSelectedDayIdx] = useState<number | null>(null); // which day is the anchor
@@ -224,6 +234,23 @@ export const AjusteGrafica: React.FC = () => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
 
     const selectedPoint = selectedDayIdx !== null ? seriesData[selectedDayIdx] : null;
+
+    // Sync chart state to store for the read-only form card
+    useEffect(() => {
+        setChartState(dragPct, redistribucion, selectedPoint?.fecha || null);
+    }, [dragPct, redistribucion, selectedPoint, setChartState]);
+
+    // ── Per-canal totals (fetched once when entering adjust mode) ──
+    const [canalTotals, setCanalTotals] = useState<CanalTotal[]>([]);
+    useEffect(() => {
+        if (selectedDayIdx !== null) {
+            fetchCanalTotals(filtros.nombrePresupuesto, filtros.codAlmacen, filtros.mes, filtros.ano)
+                .then(data => setCanalTotals(data))
+                .catch(() => setCanalTotals([]));
+        } else {
+            setCanalTotals([]);
+        }
+    }, [selectedDayIdx, filtros.nombrePresupuesto, filtros.codAlmacen, filtros.mes, filtros.ano]);
 
     // Get events for reference lines
     const eventLines = useMemo(() => {
@@ -358,20 +385,21 @@ export const AjusteGrafica: React.FC = () => {
         const label = redistribucion === 'TodosLosDias' ? 'mes' :
             redistribucion === 'Semana' ? 'semana' : 'día de semana';
 
-        const confirmed = window.confirm(
-            `¿Aplicar ajuste de ${dragPct >= 0 ? '+' : ''}${dragPct.toFixed(1)}% ` +
-            `(${fmtCompact(affectedTotals.adjusted - affectedTotals.original)}) ` +
-            `a ${affectedTotals.count} días (${label})?`
-        );
+        const confirmed = await showConfirm({
+            message: `¿Aplicar ajuste de ${dragPct >= 0 ? '+' : ''}${dragPct.toFixed(1)}% ` +
+                `(${fmtCompact(affectedTotals.adjusted - affectedTotals.original)}) ` +
+                `a ${affectedTotals.count} días (${label})?`
+        });
 
         if (confirmed) {
+            const comentario = useAjusteStore.getState().formComentario;
             await saveAjuste({
                 fecha: dateFmt,
                 tipoAjuste: 'Porcentaje',
                 canal: filtros.canal as any,
                 valor: dragPct,
                 redistribucion,
-                comentario: `Ajuste por curva desde día ${new Date(selectedDate).getUTCDate()}`,
+                comentario: comentario || `Ajuste por curva desde día ${new Date(selectedDate).getUTCDate()}`,
             });
         }
 
@@ -482,7 +510,13 @@ export const AjusteGrafica: React.FC = () => {
             </div>
 
             {/* Chart */}
-            <div ref={chartContainerRef} className="px-2 pt-2 pb-0 relative" style={{ height: 380 }}>
+            <div
+                ref={chartContainerRef}
+                className="px-2 pt-2 pb-0 relative"
+                style={{ height: 380, cursor: isAdjusting ? (isDragging ? 'ns-resize' : 'grab') : undefined }}
+                onMouseDown={isAdjusting ? handleOverlayMouseDown : undefined}
+                onTouchStart={isAdjusting ? handleOverlayTouchStart : undefined}
+            >
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart
                         data={chartData}
@@ -579,21 +613,31 @@ export const AjusteGrafica: React.FC = () => {
                             <Line
                                 type="monotone" dataKey="ajustado" stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="8 4"
                                 dot={(props: any) => {
-                                    const { cx, cy, payload } = props;
-                                    if (!isAdjusting || !payload?.affected) return <circle key={`dot-${payload?.dia}`} cx={cx} cy={cy} r={0} />;
-                                    // Render a triangle marker on affected days
-                                    const size = 6;
+                                    const { cx, cy, payload, index } = props;
+                                    if (!isAdjusting) return <circle key={`dot-empty-${index}`} cx={cx} cy={cy} r={0} />;
+                                    if (!payload?.affected) {
+                                        // Non-affected day: show a small gray dot
+                                        return <circle key={`dot-gray-${index}`} cx={cx} cy={cy} r={3} fill="#d1d5db" stroke="#fff" strokeWidth={1} />;
+                                    }
+                                    // Affected day: render a prominent triangle marker
+                                    const size = 8;
+                                    const triangleColor = dragPct >= 0 ? '#10b981' : '#ef4444';
                                     return (
-                                        <polygon
-                                            key={`marker-${payload?.dia}`}
-                                            points={`${cx},${cy - size} ${cx - size},${cy + size * 0.6} ${cx + size},${cy + size * 0.6}`}
-                                            fill="#f59e0b"
-                                            stroke="#fff"
-                                            strokeWidth={1.5}
-                                        />
+                                        <g key={`marker-g-${index}`}>
+                                            {/* Base circle */}
+                                            <circle cx={cx} cy={cy} r={4} fill="#f59e0b" stroke="#fff" strokeWidth={2} />
+                                            {/* Triangle above the point */}
+                                            <polygon
+                                                points={`${cx},${cy - size - 6} ${cx - size},${cy - 6 + size * 0.7} ${cx + size},${cy - 6 + size * 0.7}`}
+                                                fill={triangleColor}
+                                                stroke="#fff"
+                                                strokeWidth={2}
+                                                strokeLinejoin="round"
+                                            />
+                                        </g>
                                     );
                                 }}
-                                activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }}
+                                activeDot={{ r: 6, stroke: '#f59e0b', strokeWidth: 2, fill: '#fff' }}
                                 name="Ajustado"
                             />
                         )}
@@ -602,22 +646,12 @@ export const AjusteGrafica: React.FC = () => {
                     </ComposedChart>
                 </ResponsiveContainer>
 
-                {/* Transparent drag overlay — only when adjusting */}
-                {isAdjusting && (
-                    <div
-                        className="absolute inset-0 z-10"
-                        style={{ cursor: isDragging ? 'ns-resize' : 'grab' }}
-                        onMouseDown={handleOverlayMouseDown}
-                        onTouchStart={handleOverlayTouchStart}
-                    >
-                        {/* Drag instruction */}
-                        {!isDragging && dragPct === 0 && (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="bg-blue-600/80 text-white px-5 py-2.5 rounded-2xl shadow-xl text-sm font-bold backdrop-blur-sm">
-                                    ↕ Arrastra arriba/abajo para ajustar — o usa el slider
-                                </div>
-                            </div>
-                        )}
+                {/* Drag instruction — pointer-events-none so tooltip still works */}
+                {isAdjusting && !isDragging && dragPct === 0 && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                        <div className="bg-blue-600/80 text-white px-5 py-2.5 rounded-2xl shadow-xl text-sm font-bold backdrop-blur-sm">
+                            ↕ Arrastra arriba/abajo para ajustar — o usa el slider
+                        </div>
                     </div>
                 )}
 
@@ -684,26 +718,63 @@ export const AjusteGrafica: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Per-canal breakdown */}
-                    {filtros.canal === 'Todos' && (
-                        <div className="mt-2 pt-2 border-t border-blue-200">
-                            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wide mb-1">Distribución por canal</p>
+                    {/* Per-canal breakdown — always show all canals + Todos */}
+                    <div className="mt-2 pt-2 border-t border-blue-200">
+                        <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wide mb-1">Distribución por canal</p>
+                        {canalTotals.length > 0 ? (
+                            <div className="space-y-0.5">
+                                {canalTotals.map(ct => {
+                                    const base = Number(ct.Total) || 0;
+                                    const adjusted = base * (1 + dragPct / 100);
+                                    const delta = adjusted - base;
+                                    const isActive = filtros.canal === ct.Canal;
+                                    return (
+                                        <div key={ct.Canal} className={`flex items-center justify-between text-[11px] px-1.5 py-0.5 rounded ${isActive ? 'bg-red-50 border border-red-200' : ''
+                                            }`}>
+                                            <span className={`font-medium ${isActive ? 'text-red-700 font-bold' : 'text-blue-800'}`}>
+                                                {isActive && '▸ '}{ct.Canal}
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`font-mono ${isActive ? 'text-red-500' : 'text-blue-600'}`}>{fmtCompact(base)}</span>
+                                                <span className="text-gray-400">→</span>
+                                                <span className={`font-mono font-bold ${isActive ? 'text-red-700' : 'text-blue-800'}`}>{fmtCompact(adjusted)}</span>
+                                                <span className={`font-bold font-mono min-w-[55px] text-right ${delta >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                    {delta >= 0 ? '+' : ''}{fmtCompact(delta)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {/* Todos total row */}
+                                {(() => {
+                                    const totalBase = canalTotals.reduce((s, ct) => s + (Number(ct.Total) || 0), 0);
+                                    const totalAdj = totalBase * (1 + dragPct / 100);
+                                    const totalDelta = totalAdj - totalBase;
+                                    const isTodos = filtros.canal === 'Todos';
+                                    return (
+                                        <div className={`flex items-center justify-between text-[11px] px-1.5 py-1 rounded mt-1 border-t border-blue-200 pt-1 ${isTodos ? 'bg-red-50 border border-red-200' : ''
+                                            }`}>
+                                            <span className={`font-bold ${isTodos ? 'text-red-700' : 'text-blue-900'}`}>
+                                                {isTodos && '▸ '}Todos
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`font-mono font-bold ${isTodos ? 'text-red-500' : 'text-blue-700'}`}>{fmtCompact(totalBase)}</span>
+                                                <span className="text-gray-400">→</span>
+                                                <span className={`font-mono font-bold ${isTodos ? 'text-red-700' : 'text-blue-900'}`}>{fmtCompact(totalAdj)}</span>
+                                                <span className={`font-bold font-mono min-w-[55px] text-right ${totalDelta >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                    {totalDelta >= 0 ? '+' : ''}{fmtCompact(totalDelta)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        ) : (
                             <div className="text-[11px] text-blue-800 font-medium">
-                                El ajuste de {dragPct >= 0 ? '+' : ''}{dragPct.toFixed(1)}% se aplicará proporcionalmente a todos los canales
+                                Cargando desglose por canal…
                             </div>
-                        </div>
-                    )}
-                    {filtros.canal !== 'Todos' && (
-                        <div className="mt-2 pt-2 border-t border-blue-200">
-                            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wide mb-1">Canal objetivo</p>
-                            <div className="flex items-center justify-between text-[11px]">
-                                <span className="text-blue-800 font-bold">{filtros.canal}</span>
-                                <span className={`font-bold font-mono ${dragPct >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                    {dragPct >= 0 ? '+' : ''}{dragPct.toFixed(1)}% · {fmtCompact(affectedTotals.adjusted - affectedTotals.original)}
-                                </span>
-                            </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             )}
 

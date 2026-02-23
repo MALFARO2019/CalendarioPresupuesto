@@ -61,7 +61,7 @@ export async function generateMonthlyCalendarPDF(
         pdf.save(`Calendario_${year}_${monthNames[month - 1]}_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (error) {
         console.error('Error generating PDF:', error);
-        alert('Error al generar el PDF. Por favor intente nuevamente.');
+        throw new Error('Error al generar el PDF. Por favor intente nuevamente.');
     }
 }
 
@@ -121,7 +121,7 @@ export async function generateAnnualCalendarPDF(
         pdf.save(`Calendario_Anual_${year}_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (error) {
         console.error('Error generating PDF:', error);
-        alert('Error al generar el PDF. Por favor intente nuevamente.');
+        throw new Error('Error al generar el PDF. Por favor intente nuevamente.');
     }
 }
 
@@ -184,7 +184,7 @@ export async function generateTendenciaPDF(
         pdf.save(`Tendencia_${year}_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (error) {
         console.error('Error generating PDF:', error);
-        alert('Error al generar el PDF. Por favor intente nuevamente.');
+        throw new Error('Error al generar el PDF. Por favor intente nuevamente.');
     }
 }
 

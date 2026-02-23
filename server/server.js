@@ -42,6 +42,7 @@ const invgateSyncService = require('./services/invgateSyncService');
 const invgateCron = require('./jobs/invgateCron');
 const formsCron = require('./jobs/formsCron');
 const registerFormsEndpoints = require('./forms_endpoints');
+const registerInocuidadEndpoints = require('./inocuidad_endpoints');
 const personalModule = require('./personal');
 const { ensureUberEatsTables } = require('./uberEatsDb');
 const uberEatsCron = require('./jobs/uberEatsCron');
@@ -251,6 +252,10 @@ app.get('/api/version-check', (req, res) => {
 // ==========================================
 registerFormsEndpoints(app, authMiddleware);
 
+// ==========================================
+// INOCUIDAD ENDPOINTS
+// ==========================================
+registerInocuidadEndpoints(app, authMiddleware);
 
 // ==========================================
 // PERSONAL ENDPOINTS

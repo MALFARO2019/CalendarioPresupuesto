@@ -1501,6 +1501,23 @@ export async function aplicarAjuste(data: {
     return response.json();
 }
 
+export interface CanalTotal {
+    Canal: string;
+    Total: number;
+}
+
+export async function fetchCanalTotals(
+    nombrePresupuesto: string, codAlmacen: string, mes: number, ano: number
+): Promise<CanalTotal[]> {
+    const params = new URLSearchParams({
+        nombrePresupuesto, codAlmacen,
+        mes: mes.toString(), ano: ano.toString(), tipo: 'Ventas'
+    });
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/canal-totals?${params}`, { headers: authHeaders() });
+    if (!response.ok) return [];
+    return response.json();
+}
+
 export async function previewAjuste(data: {
     nombrePresupuesto: string; codAlmacen: string; mes: number; canal: string; tipo: string;
     metodoAjuste: string; valorAjuste: number; metodoDistribucion: string;

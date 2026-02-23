@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { API_BASE, getToken } from '../../api';
+import { useToast } from '../ui/Toast';
+import { SearchableSelect } from '../SearchableSelect';
 import './InvgateAdmin.css';
 
 // ─── Interfaces ───────────────────────────────────────────────────
@@ -63,6 +65,11 @@ export const InvgateAdmin: React.FC = () => {
     const [loadingHelpdesks, setLoadingHelpdesks] = useState(false);
     const [helpdeskError, setHelpdeskError] = useState<string | null>(null);
 
+    // Helpdesk tickets data viewer
+    const [ticketsData, setTicketsData] = useState<{ data: any[]; total: number; page: number } | null>(null);
+    const [loadingTickets, setLoadingTickets] = useState(false);
+    const [ticketFilter, setTicketFilter] = useState<number | null>(null);
+
     // Views state
     const [views, setViews] = useState<ViewConfig[]>([]);
     const [newViewId, setNewViewId] = useState('');
@@ -76,6 +83,23 @@ export const InvgateAdmin: React.FC = () => {
     const [loadingViewData, setLoadingViewData] = useState(false);
     const [syncingViewId, setSyncingViewId] = useState<number | null>(null);
 
+    // Mapping state
+    const [mappingViewId, setMappingViewId] = useState<number | null>(null);
+    const [mappingData, setMappingData] = useState<{
+        mappings: { FieldType: string; ColumnName: string }[];
+        stats: { total: number; withCodAlmacen: number; withPersonalId: number; withoutCodAlmacen: number; withoutPersonalId: number } | null;
+        columns: string[];
+    } | null>(null);
+    const [unmappedData, setUnmappedData] = useState<{ records: any[]; count: number; total: number; personaCol: string | null; almacenCol: string | null } | null>(null);
+    const [loadingMapping, setLoadingMapping] = useState(false);
+    const [resolvingMapping, setResolvingMapping] = useState(false);
+    const [loadingUnmapped, setLoadingUnmapped] = useState(false);
+
+    // Reference data for mapping combos
+    const [storesList, setStoresList] = useState<{ CodAlmacen: string; Nombre: string }[]>([]);
+    const [usersList, setUsersList] = useState<{ Id: number; Nombre: string }[]>([]);
+
+    const { showToast, showConfirm } = useToast();
     const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` });
 
     // ─── Load config on mount ─────────────────────────────────────
@@ -126,8 +150,21 @@ export const InvgateAdmin: React.FC = () => {
         } catch (e: any) {
             // Rollback
             setHelpdesks(prev => prev.map(h => h.id === hd.id ? { ...h, syncEnabled: hd.syncEnabled } : h));
-            alert('Error: ' + (e.response?.data?.error || e.message));
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
         }
+    };
+
+    // ─── Load helpdesk tickets from DB ────────────────────────────
+    const loadTickets = async (page = 1, helpdeskId: number | null = ticketFilter) => {
+        setLoadingTickets(true);
+        try {
+            const params = new URLSearchParams({ page: String(page), limit: '50' });
+            if (helpdeskId) params.set('helpdeskId', String(helpdeskId));
+            const r = await axios.get(`${API_BASE}/invgate/tickets?${params}`, { headers: authHeaders() });
+            setTicketsData(r.data);
+        } catch (e: any) {
+            setHelpdeskError('Error cargando tiquetes: ' + (e.response?.data?.error || e.message));
+        } finally { setLoadingTickets(false); }
     };
 
     // ─── Load views ────────────────────────────────────────────────
@@ -191,7 +228,7 @@ export const InvgateAdmin: React.FC = () => {
 
     // ─── Delete a view ────────────────────────────────────────────
     const deleteView = async (viewId: number) => {
-        if (!confirm('¿Eliminar esta vista de la configuración?')) return;
+        if (!(await showConfirm({ message: '¿Eliminar esta vista de la configuración?', destructive: true }))) return;
         try {
             await axios.delete(`${API_BASE}/invgate/views/${viewId}`, { headers: authHeaders() });
             await loadViews();
@@ -230,17 +267,161 @@ export const InvgateAdmin: React.FC = () => {
         }
     };
 
+    // ─── Mapping functions ────────────────────────────────────────
+    const loadReferenceData = async () => {
+        if (storesList.length > 0 && usersList.length > 0) return;
+        try {
+            const [storesRes, usersRes] = await Promise.all([
+                axios.get(`${API_BASE}/admin/store-aliases/stores`, { headers: authHeaders() }),
+                axios.get(`${API_BASE}/personal`, { headers: authHeaders() }),
+            ]);
+            setStoresList(storesRes.data || []);
+            setUsersList((usersRes.data || []).map((u: any) => ({ Id: u.ID || u.Id || u.id, Nombre: u.NOMBRE || u.Nombre || u.nombre })));
+        } catch (e: any) {
+            console.warn('Error loading reference data:', e.message);
+        }
+    };
+
+    const openMappingPanel = async (viewId: number) => {
+        if (mappingViewId === viewId) { setMappingViewId(null); setMappingData(null); setUnmappedData(null); return; }
+        setMappingViewId(viewId);
+        setLoadingMapping(true);
+        setUnmappedData(null);
+        try {
+            const [mappingsRes, statsRes] = await Promise.all([
+                axios.get(`${API_BASE}/invgate/views/${viewId}/mappings`, { headers: authHeaders() }),
+                axios.get(`${API_BASE}/invgate/views/${viewId}/mapping-stats`, { headers: authHeaders() }),
+            ]);
+            await loadReferenceData();
+            const view = views.find(v => v.viewId === viewId);
+            setMappingData({
+                mappings: mappingsRes.data,
+                stats: statsRes.data.hasMappingColumns ? statsRes.data.stats : null,
+                columns: view?.columns || [],
+            });
+        } catch (e: any) {
+            setViewError('Error cargando mapeos: ' + (e.response?.data?.error || e.message));
+        } finally { setLoadingMapping(false); }
+    };
+
+    const saveMapping = async (viewId: number, fieldType: string, columnName: string) => {
+        try {
+            if (columnName) {
+                await axios.post(`${API_BASE}/invgate/views/${viewId}/mappings`, { fieldType, columnName }, { headers: authHeaders() });
+            } else {
+                await axios.delete(`${API_BASE}/invgate/views/${viewId}/mappings/${fieldType}`, { headers: authHeaders() });
+            }
+            setUnmappedData(null);
+            await openMappingPanel(viewId);
+        } catch (e: any) {
+            setViewError('Error guardando mapeo: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
+    const resolveMappings = async (viewId: number) => {
+        setResolvingMapping(true);
+        try {
+            const r = await axios.post(`${API_BASE}/invgate/views/${viewId}/resolve-mappings`, {}, { headers: authHeaders() });
+            showToast(r.data.message || `Resueltos: ${r.data.resolved}`, 'success');
+            setUnmappedData(null);
+            await openMappingPanel(viewId);
+        } catch (e: any) {
+            setViewError('Error resolviendo mapeos: ' + (e.response?.data?.error || e.message));
+        } finally { setResolvingMapping(false); }
+    };
+
+    const loadUnmapped = async (viewId: number) => {
+        if (unmappedData) { setUnmappedData(null); return; }
+        setLoadingUnmapped(true);
+        try {
+            const r = await axios.get(`${API_BASE}/invgate/views/${viewId}/unmapped`, { headers: authHeaders() });
+            setUnmappedData({
+                records: r.data.unmapped,
+                count: r.data.unmappedCount,
+                total: r.data.totalCount,
+                personaCol: r.data.personaColumn,
+                almacenCol: r.data.almacenColumn,
+            });
+        } catch (e: any) {
+            setViewError('Error cargando no mapeados: ' + (e.response?.data?.error || e.message));
+        } finally { setLoadingUnmapped(false); }
+    };
+
+    // Save a manual alias (store name → CodAlmacen) and re-resolve
+    const saveStoreAlias = async (alias: string, codAlmacen: string, viewId: number) => {
+        try {
+            await axios.post(`${API_BASE}/admin/store-aliases`, { alias, codAlmacen, fuente: 'InvGate' }, { headers: authHeaders() });
+            showToast(`Alias guardado: ${alias} → ${codAlmacen}`, 'success');
+            await resolveMappings(viewId);
+        } catch (e: any) {
+            if (e.response?.status === 409) showToast('Alias ya existe', 'warning');
+            else setViewError('Error guardando alias: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
+    // Save a manual persona mapping and refresh
+    const savePersonaMapping = async (sourceValue: string, userId: string, viewId: number) => {
+        const user = usersList.find(u => String(u.Id) === userId);
+        if (!user) return;
+        try {
+            const r = await axios.post(`${API_BASE}/invgate/views/${viewId}/map-persona`,
+                { sourceValue, userId: user.Id, userName: user.Nombre },
+                { headers: authHeaders() }
+            );
+            showToast(`Persona mapeada: "${sourceValue}" → ${user.Nombre} (${r.data.updated} registros)`, 'success');
+            setUnmappedData(null);
+            await openMappingPanel(viewId);
+        } catch (e: any) {
+            setViewError('Error mapeando persona: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
+    // Computed: unique unmapped values grouped by type
+    const unmappedUniqueValues = useMemo(() => {
+        if (!unmappedData || unmappedData.records.length === 0) return { almacen: [], persona: [] };
+        const almacenVals = new Map<string, number>();
+        const personaVals = new Map<string, number>();
+        for (const row of unmappedData.records) {
+            if (unmappedData.almacenCol && !row._CODALMACEN) {
+                const v = (row[unmappedData.almacenCol] || '').trim();
+                if (v) almacenVals.set(v, (almacenVals.get(v) || 0) + 1);
+            }
+            if (unmappedData.personaCol && !row._PERSONAL_ID) {
+                const v = (row[unmappedData.personaCol] || '').trim();
+                if (v) personaVals.set(v, (personaVals.get(v) || 0) + 1);
+            }
+        }
+        return {
+            almacen: Array.from(almacenVals.entries()).sort((a, b) => b[1] - a[1]),
+            persona: Array.from(personaVals.entries()).sort((a, b) => b[1] - a[1]),
+        };
+    }, [unmappedData]);
+
+    // Computed: options for SearchableSelect
+    const storeOptions = useMemo(() =>
+        storesList.map(s => ({ value: s.CodAlmacen, label: `${s.CodAlmacen} - ${s.Nombre}` })),
+        [storesList]
+    );
+    const userOptions = useMemo(() =>
+        usersList.map(u => ({ value: String(u.Id), label: u.Nombre })),
+        [usersList]
+    );
+    const columnOptions = useMemo(() => {
+        if (!mappingData) return [];
+        return mappingData.columns.filter(c => !c.startsWith('_')).map(c => ({ value: c, label: c }));
+    }, [mappingData]);
+
     // ─── Save OAuth config ────────────────────────────────────────
     const saveConfig = async () => {
-        if (!clientId || !tokenUrl) { alert('Por favor complete Client ID y Token URL'); return; }
+        if (!clientId || !tokenUrl) { showToast('Por favor complete Client ID y Token URL', 'warning'); return; }
         setSavingConfig(true);
         try {
             await axios.post(`${API_BASE}/invgate/config`,
                 { clientId, clientSecret, tokenUrl, apiBaseUrl, syncIntervalHours: parseInt(syncInterval), syncEnabled, oauthScopes: oauthScopes || undefined },
                 { headers: authHeaders() });
-            alert('✅ Configuración guardada');
+            showToast('Configuración guardada', 'success');
         } catch (e: any) {
-            alert('Error: ' + (e.response?.data?.error || e.message));
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
         } finally { setSavingConfig(false); }
     };
 
@@ -255,14 +436,14 @@ export const InvgateAdmin: React.FC = () => {
     };
 
     const triggerSync = async (syncType: 'incremental' | 'full') => {
-        if (!confirm(`¿Iniciar sincronización ${syncType === 'full' ? 'COMPLETA' : 'INCREMENTAL'}?`)) return;
+        if (!(await showConfirm({ message: `¿Iniciar sincronización ${syncType === 'full' ? 'COMPLETA' : 'INCREMENTAL'}?` }))) return;
         setSyncing(true);
         try {
             await axios.post(`${API_BASE}/invgate/sync`, { syncType }, { headers: authHeaders() });
-            alert('✅ Sincronización iniciada. Revise el estado en unos momentos.');
+            showToast('Sincronización iniciada. Revise el estado en unos momentos.', 'success');
             setTimeout(() => { loadSyncStatus(); loadSyncLogs(); }, 2000);
         } catch (e: any) {
-            alert('Error: ' + (e.response?.data?.error || e.message));
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
         } finally { setSyncing(false); }
     };
 
@@ -423,6 +604,106 @@ export const InvgateAdmin: React.FC = () => {
                             </div>
                         ))}
                     </div>
+
+                    {/* ── Tickets data viewer ── */}
+                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '20px', marginTop: '20px' }}>
+                        <div className="section-header-row">
+                            <h3>📊 Tiquetes Sincronizados</h3>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <select
+                                    value={ticketFilter ?? ''}
+                                    onChange={e => setTicketFilter(e.target.value ? parseInt(e.target.value) : null)}
+                                    className="config-select"
+                                    style={{ minWidth: '180px', fontSize: '13px' }}
+                                >
+                                    <option value="">Todas las solicitudes</option>
+                                    {helpdesks.map(hd => (
+                                        <option key={hd.id} value={hd.id}>{hd.name}</option>
+                                    ))}
+                                </select>
+                                <button onClick={() => loadTickets(1, ticketFilter)} disabled={loadingTickets} className="btn-secondary btn-sm">
+                                    {loadingTickets ? '⏳ Cargando...' : '📊 Ver tiquetes'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {!ticketsData && !loadingTickets && (
+                            <p style={{ color: '#9ca3af', fontSize: '13px' }}>
+                                Presiona "Ver tiquetes" para ver los datos sincronizados de la tabla InvgateTickets.
+                            </p>
+                        )}
+
+                        {ticketsData && (
+                            <div style={{ marginTop: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <span style={{ fontSize: '13px', color: '#475569', fontWeight: 600 }}>
+                                        {ticketsData.total} tiquetes en total — Página {ticketsData.page}
+                                    </span>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <button
+                                            onClick={() => loadTickets(ticketsData.page - 1)}
+                                            disabled={ticketsData.page <= 1 || loadingTickets}
+                                            className="btn-secondary btn-sm"
+                                        >← Anterior</button>
+                                        <button
+                                            onClick={() => loadTickets(ticketsData.page + 1)}
+                                            disabled={ticketsData.data.length < 50 || loadingTickets}
+                                            className="btn-secondary btn-sm"
+                                        >Siguiente →</button>
+                                        <button onClick={() => setTicketsData(null)} className="btn-secondary btn-sm"
+                                            style={{ color: '#64748b' }}>✕ Cerrar</button>
+                                    </div>
+                                </div>
+                                <div style={{ overflowX: 'auto', maxHeight: '500px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                                    <table className="custom-fields-table" style={{ fontSize: '12px' }}>
+                                        <thead>
+                                            <tr>
+                                                <th style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#f1f5f9' }}>ID</th>
+                                                <th style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#f1f5f9' }}>Título</th>
+                                                <th style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#f1f5f9' }}>Estado</th>
+                                                <th style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#f1f5f9' }}>Prioridad</th>
+                                                <th style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#f1f5f9' }}>Categoría</th>
+                                                <th style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#f1f5f9' }}>Solicitado por</th>
+                                                <th style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#f1f5f9' }}>Asignado a</th>
+                                                <th style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#f1f5f9' }}>Helpdesk</th>
+                                                <th style={{ whiteSpace: 'nowrap', padding: '6px 10px', position: 'sticky', top: 0, background: '#f1f5f9' }}>Fecha Creación</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {ticketsData.data.map((t, i) => (
+                                                <tr key={t.TicketID || i}>
+                                                    <td style={{ padding: '4px 10px', fontFamily: 'monospace' }}>{t.TicketID}</td>
+                                                    <td style={{ padding: '4px 10px', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                        title={t.Titulo || ''}>{t.Titulo || '—'}</td>
+                                                    <td style={{ padding: '4px 10px' }}>
+                                                        <span style={{
+                                                            padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600,
+                                                            background: t.Estado?.toLowerCase().includes('close') || t.Estado === '3' || t.Estado === '4' ? '#dcfce7' : '#fef3c7',
+                                                            color: t.Estado?.toLowerCase().includes('close') || t.Estado === '3' || t.Estado === '4' ? '#166534' : '#92400e',
+                                                        }}>{t.Estado || '—'}</span>
+                                                    </td>
+                                                    <td style={{ padding: '4px 10px' }}>{t.Prioridad || '—'}</td>
+                                                    <td style={{ padding: '4px 10px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                        title={t.Categoria || ''}>{t.Categoria || '—'}</td>
+                                                    <td style={{ padding: '4px 10px' }}>{t.SolicitadoPor || '—'}</td>
+                                                    <td style={{ padding: '4px 10px' }}>{t.AsignadoA || '—'}</td>
+                                                    <td style={{ padding: '4px 10px', fontSize: '11px', color: '#64748b' }}>{t.HelpdeskNombre || t.HelpdeskID || '—'}</td>
+                                                    <td style={{ padding: '4px 10px', whiteSpace: 'nowrap', fontSize: '11px' }}>
+                                                        {t.FechaCreacion ? new Date(t.FechaCreacion).toLocaleString('es-CR') : '—'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {ticketsData.data.length === 0 && (
+                                                <tr><td colSpan={9} style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
+                                                    No hay tiquetes sincronizados. Ejecuta una sincronización desde la pestaña "Sincronización".
+                                                </td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -524,54 +805,213 @@ export const InvgateAdmin: React.FC = () => {
                             </thead>
                             <tbody>
                                 {views.map(v => (
-                                    <tr key={v.viewId}>
-                                        <td><span className="field-id">#{v.viewId}</span></td>
-                                        <td><strong>{v.nombre}</strong>
-                                            {v.columns.length > 0 && (
-                                                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                                                    {v.columns.slice(0, 5).join(', ')}{v.columns.length > 5 ? ` +${v.columns.length - 5}` : ''}
+                                    <React.Fragment key={v.viewId}>
+                                        <tr>
+                                            <td><span className="field-id">#{v.viewId}</span></td>
+                                            <td><strong>{v.nombre}</strong>
+                                                {v.columns.length > 0 && (
+                                                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                                                        {v.columns.slice(0, 5).join(', ')}{v.columns.length > 5 ? ` +${v.columns.length - 5}` : ''}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td>{v.totalTickets}</td>
+                                            <td style={{ fontSize: '12px' }}>
+                                                {v.ultimaSync ? new Date(v.ultimaSync).toLocaleString('es-CR') : '—'}
+                                            </td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <label className="toggle-switch">
+                                                    <input type="checkbox" checked={v.syncEnabled}
+                                                        onChange={() => toggleViewSync(v)} />
+                                                    <span className="toggle-slider"></span>
+                                                </label>
+                                            </td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button onClick={() => syncView(v.viewId, 'incremental')}
+                                                        disabled={syncingViewId !== null}
+                                                        style={{ background: 'none', border: '1px solid #22c55e', color: '#22c55e', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap', opacity: syncingViewId === v.viewId ? 0.5 : 1 }}
+                                                        title="Sincronización incremental">
+                                                        {syncingViewId === v.viewId ? '⏳' : '🔄'}
+                                                    </button>
+                                                    <button onClick={() => syncView(v.viewId, 'full')}
+                                                        disabled={syncingViewId !== null}
+                                                        style={{ background: 'none', border: '1px solid #f59e0b', color: '#f59e0b', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap', opacity: syncingViewId === v.viewId ? 0.5 : 1 }}
+                                                        title="Sincronización completa">
+                                                        {syncingViewId === v.viewId ? '⏳' : '⚡'}
+                                                    </button>
+                                                    <button onClick={() => loadViewData(v.viewId)}
+                                                        disabled={loadingViewData}
+                                                        style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 8px' }}
+                                                        title="Ver datos sincronizados">
+                                                        {loadingViewData && viewData?.viewId !== v.viewId ? '⏳' : viewData?.viewId === v.viewId ? '🔼 Ocultar' : '📊 Datos'}
+                                                    </button>
+                                                    <button onClick={() => openMappingPanel(v.viewId)}
+                                                        disabled={loadingMapping && mappingViewId === v.viewId}
+                                                        style={{ background: 'none', border: '1px solid #f59e0b', color: '#f59e0b', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 8px' }}
+                                                        title="Configurar mapeos de Persona y CodAlmacen">
+                                                        {mappingViewId === v.viewId ? '🔼 Cerrar' : '🔗 Mapeos'}
+                                                    </button>
                                                 </div>
-                                            )}
-                                        </td>
-                                        <td>{v.totalTickets}</td>
-                                        <td style={{ fontSize: '12px' }}>
-                                            {v.ultimaSync ? new Date(v.ultimaSync).toLocaleString('es-CR') : '—'}
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <label className="toggle-switch">
-                                                <input type="checkbox" checked={v.syncEnabled}
-                                                    onChange={() => toggleViewSync(v)} />
-                                                <span className="toggle-slider"></span>
-                                            </label>
-                                        </td>
-                                        <td>
-                                            <div style={{ display: 'flex', gap: '4px' }}>
-                                                <button onClick={() => syncView(v.viewId, 'incremental')}
-                                                    disabled={syncingViewId !== null}
-                                                    style={{ background: 'none', border: '1px solid #22c55e', color: '#22c55e', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap', opacity: syncingViewId === v.viewId ? 0.5 : 1 }}
-                                                    title="Sincronización incremental">
-                                                    {syncingViewId === v.viewId ? '⏳' : '🔄'}
-                                                </button>
-                                                <button onClick={() => syncView(v.viewId, 'full')}
-                                                    disabled={syncingViewId !== null}
-                                                    style={{ background: 'none', border: '1px solid #f59e0b', color: '#f59e0b', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap', opacity: syncingViewId === v.viewId ? 0.5 : 1 }}
-                                                    title="Sincronización completa">
-                                                    {syncingViewId === v.viewId ? '⏳' : '⚡'}
-                                                </button>
-                                                <button onClick={() => loadViewData(v.viewId)}
-                                                    disabled={loadingViewData}
-                                                    style={{ background: 'none', border: '1px solid #3b82f6', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', borderRadius: '4px', padding: '2px 8px' }}
-                                                    title="Ver datos sincronizados">
-                                                    {loadingViewData && viewData?.viewId !== v.viewId ? '⏳' : viewData?.viewId === v.viewId ? '🔼 Ocultar' : '📊 Datos'}
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <button onClick={() => deleteView(v.viewId)}
-                                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}
-                                                title="Eliminar vista">🗑️</button>
-                                        </td>
-                                    </tr>
+                                            </td>
+                                            <td>
+                                                <button onClick={() => deleteView(v.viewId)}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}
+                                                    title="Eliminar vista">🗑️</button>
+                                            </td>
+                                        </tr>
+
+                                        {/* ── Inline mapping panel ── */}
+                                        {mappingViewId === v.viewId && (
+                                            <tr>
+                                                <td colSpan={7} style={{ padding: 0 }}>
+                                                    <div style={{ background: '#fefce8', border: '1px solid #fde68a', padding: '16px' }}>
+                                                        {loadingMapping ? (
+                                                            <p style={{ color: '#92400e' }}>Cargando mapeos...</p>
+                                                        ) : mappingData ? (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                                                <h4 style={{ margin: 0, fontSize: '14px', color: '#92400e' }}>🔗 Mapeos — {v.nombre}</h4>
+
+                                                                {/* Column selection with SearchableSelect */}
+                                                                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                                                                    <div style={{ flex: 1, minWidth: '220px' }}>
+                                                                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
+                                                                            👤 Campo Persona / Usuario
+                                                                        </label>
+                                                                        <SearchableSelect
+                                                                            options={columnOptions}
+                                                                            value={mappingData.mappings.find(m => m.FieldType === 'PERSONA')?.ColumnName || ''}
+                                                                            onChange={val => saveMapping(v.viewId, 'PERSONA', val)}
+                                                                            placeholder="— Sin mapear —"
+                                                                        />
+                                                                    </div>
+                                                                    <div style={{ flex: 1, minWidth: '220px' }}>
+                                                                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
+                                                                            🏪 Campo Local / CodAlmacen
+                                                                        </label>
+                                                                        <SearchableSelect
+                                                                            options={columnOptions}
+                                                                            value={mappingData.mappings.find(m => m.FieldType === 'CODALMACEN')?.ColumnName || ''}
+                                                                            onChange={val => saveMapping(v.viewId, 'CODALMACEN', val)}
+                                                                            placeholder="— Sin mapear —"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Stats + actions row */}
+                                                                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                                    {mappingData.stats && (
+                                                                        <div style={{ display: 'flex', gap: '10px', fontSize: '12px' }}>
+                                                                            <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                                                                                🏪 {mappingData.stats.withCodAlmacen}/{mappingData.stats.total}
+                                                                            </span>
+                                                                            <span style={{ background: '#dbeafe', color: '#1e40af', padding: '3px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                                                                                👤 {mappingData.stats.withPersonalId}/{mappingData.stats.total}
+                                                                            </span>
+                                                                            {(mappingData.stats.withoutCodAlmacen > 0 || mappingData.stats.withoutPersonalId > 0) && (
+                                                                                <span style={{ background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                                                                                    ⚠ {Math.max(mappingData.stats.withoutCodAlmacen, mappingData.stats.withoutPersonalId)} sin resolver
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+                                                                        <button onClick={() => resolveMappings(v.viewId)}
+                                                                            disabled={resolvingMapping}
+                                                                            className="btn-secondary btn-sm"
+                                                                            style={{ fontSize: '12px' }}>
+                                                                            {resolvingMapping ? '⏳ Resolviendo...' : '🔄 Resolver mapeos'}
+                                                                        </button>
+                                                                        <button onClick={() => loadUnmapped(v.viewId)}
+                                                                            disabled={loadingUnmapped}
+                                                                            className="btn-secondary btn-sm"
+                                                                            style={{ fontSize: '12px' }}>
+                                                                            {loadingUnmapped ? '⏳...' : unmappedData ? '🔼 Ocultar' : '🔍 No mapeados'}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Unmapped values with manual mapping */}
+                                                                {unmappedData && (
+                                                                    <div style={{ borderTop: '1px solid #fde68a', paddingTop: '12px' }}>
+                                                                        {unmappedData.records.length === 0 ? (
+                                                                            <p style={{ color: '#16a34a', fontSize: '13px', fontWeight: 600 }}>✅ Todos los registros están mapeados</p>
+                                                                        ) : (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                                                                <h5 style={{ margin: 0, fontSize: '13px', color: '#92400e' }}>
+                                                                                    🔍 Valores No Mapeados ({unmappedData.count} registros de {unmappedData.total})
+                                                                                </h5>
+
+                                                                                {/* Unmapped almacen values */}
+                                                                                {unmappedUniqueValues.almacen.length > 0 && (
+                                                                                    <div>
+                                                                                        <h6 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#166534', fontWeight: 600 }}>
+                                                                                            🏪 Local / CodAlmacen — {unmappedUniqueValues.almacen.length} valores únicos sin mapear
+                                                                                        </h6>
+                                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                                            {unmappedUniqueValues.almacen.map(([val, count]) => (
+                                                                                                <div key={val} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 12px', flexWrap: 'wrap' }}>
+                                                                                                    <span style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b', minWidth: '150px', flex: '0 0 auto' }} title={val}>
+                                                                                                        "{val}"
+                                                                                                    </span>
+                                                                                                    <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                                                                                                        ({count} reg.)
+                                                                                                    </span>
+                                                                                                    <span style={{ fontSize: '12px', color: '#64748b' }}>→</span>
+                                                                                                    <div style={{ flex: 1, minWidth: '220px' }}>
+                                                                                                        <SearchableSelect
+                                                                                                            options={storeOptions}
+                                                                                                            value=""
+                                                                                                            onChange={codAlmacen => { if (codAlmacen) saveStoreAlias(val, codAlmacen, v.viewId); }}
+                                                                                                            placeholder="Buscar almacén..."
+                                                                                                        />
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {/* Unmapped persona values */}
+                                                                                {unmappedUniqueValues.persona.length > 0 && (
+                                                                                    <div>
+                                                                                        <h6 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#1e40af', fontWeight: 600 }}>
+                                                                                            👤 Persona / Usuario — {unmappedUniqueValues.persona.length} valores únicos sin mapear
+                                                                                        </h6>
+                                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                                            {unmappedUniqueValues.persona.map(([val, count]) => (
+                                                                                                <div key={val} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 12px', flexWrap: 'wrap' }}>
+                                                                                                    <span style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b', minWidth: '150px', flex: '0 0 auto' }} title={val}>
+                                                                                                        "{val}"
+                                                                                                    </span>
+                                                                                                    <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                                                                                                        ({count} reg.)
+                                                                                                    </span>
+                                                                                                    <span style={{ fontSize: '12px', color: '#64748b' }}>→</span>
+                                                                                                    <div style={{ flex: 1, minWidth: '220px' }}>
+                                                                                                        <SearchableSelect
+                                                                                                            options={userOptions}
+                                                                                                            value=""
+                                                                                                            onChange={userId => { if (userId) savePersonaMapping(val, userId, v.viewId); }}
+                                                                                                            placeholder="Buscar usuario..."
+                                                                                                        />
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 ))}
                             </tbody>
                         </table>

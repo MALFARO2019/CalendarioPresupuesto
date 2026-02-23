@@ -14,8 +14,27 @@ const { getInvgatePool, sql } = require('../invgateDb');
 const { sql: mainSql, poolPromise } = require('../db');
 
 // ─── Table name helper ────────────────────────────────────────────
-function viewTableName(viewId) {
-    return `InvgateView_${parseInt(viewId)}`;
+// Must match _viewTableName() in invgateSyncService.js exactly.
+function _slugifyViewName(name) {
+    if (!name) return '';
+    return name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // remove accents
+        .replace(/[^a-zA-Z0-9\s]/g, '')                    // keep alphanumeric + spaces
+        .trim()
+        .split(/\s+/)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))  // PascalCase
+        .join('')
+        .substring(0, 50);                                  // max 50 chars
+}
+
+async function viewTableName(viewId) {
+    const pool = await getInvgatePool();
+    const result = await pool.request()
+        .input('vid', sql.Int, parseInt(viewId))
+        .query('SELECT Nombre FROM InvgateViews WHERE ViewID = @vid');
+    const nombre = result.recordset[0]?.Nombre || '';
+    const slug = _slugifyViewName(nombre);
+    return slug ? `InvgateView_${parseInt(viewId)}_${slug}` : `InvgateView_${parseInt(viewId)}`;
 }
 
 // ─── Ensure mapping config table exists ───────────────────────────
@@ -182,7 +201,7 @@ async function resolvePersonalId(personaValue) {
 
 async function resolveAllMappings(viewId) {
     const pool = await getInvgatePool();
-    const tableName = viewTableName(viewId);
+    const tableName = await viewTableName(viewId);
 
     // Check table exists
     const exists = await pool.request()
@@ -275,7 +294,7 @@ async function resolveAllMappings(viewId) {
 
 async function getUnmappedRecords(viewId) {
     const pool = await getInvgatePool();
-    const tableName = viewTableName(viewId);
+    const tableName = await viewTableName(viewId);
 
     const exists = await pool.request()
         .query(`SELECT OBJECT_ID('${tableName}', 'U') AS tid`);
@@ -334,7 +353,7 @@ async function getUnmappedRecords(viewId) {
 
 async function getMappingStats(viewId) {
     const pool = await getInvgatePool();
-    const tableName = viewTableName(viewId);
+    const tableName = await viewTableName(viewId);
 
     const exists = await pool.request()
         .input('tbl', sql.NVarChar, tableName)
@@ -376,18 +395,165 @@ async function getMappingStats(viewId) {
 
 async function resolveAfterSync(viewId) {
     try {
-        const mappings = await getMappings(viewId);
+        // Auto-detect mappings if none are configured yet
+        let mappings = await getMappings(viewId);
+        if (mappings.length === 0) {
+            const detected = await autoDetectMappings(viewId);
+            if (detected > 0) {
+                mappings = await getMappings(viewId);
+            }
+        }
+
         if (mappings.length === 0) return;
 
-        const tableName = viewTableName(viewId);
+        const tableName = await viewTableName(viewId);
         await ensureMappingColumns(tableName);
+
+        // Seed any new store names into APP_STORE_ALIAS before resolution
+        const almacenMapping = mappings.find(m => m.FieldType === 'CODALMACEN');
+        if (almacenMapping) {
+            await seedStoreAliasesFromView(viewId, almacenMapping.ColumnName);
+        }
+
         const result = await resolveAllMappings(viewId);
-        if (result.resolved > 0) {
-            console.log(`  📎 Mapping resolved: ${result.resolved}/${result.total} for ${tableName}`);
+        if (result.resolved > 0 || result.failed > 0) {
+            console.log(`  📎 Mapping resolved: ${result.resolved}/${result.total} for ${tableName} (${result.failed} sin resolver)`);
         }
     } catch (e) {
         console.warn(`  ! Post-sync mapping error: ${e.message.substring(0, 100)}`);
     }
+}
+
+// ─── Auto-detect store/persona columns by name heuristics ─────────
+
+const STORE_COLUMN_PATTERNS = [
+    'restaurante', 'local', 'sucursal', 'almacen', 'almacén',
+    'tienda', 'store', 'punto_de_venta', 'pdv'
+];
+const PERSONA_COLUMN_PATTERNS = [
+    'cliente', 'agente', 'creador', 'usuario', 'persona',
+    'responsable', 'asignado', 'operador', 'customer'
+];
+
+async function autoDetectMappings(viewId) {
+    const pool = await getInvgatePool();
+    const tableName = await viewTableName(viewId);
+
+    // Get columns of the view table
+    const colResult = await pool.request()
+        .input('tbl', sql.NVarChar, tableName)
+        .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl`);
+    const columns = colResult.recordset.map(r => r.COLUMN_NAME);
+
+    let detected = 0;
+
+    // Auto-detect CODALMACEN column
+    const storeCol = columns.find(col => {
+        const lower = col.toLowerCase().replace(/[_:]/g, '');
+        return STORE_COLUMN_PATTERNS.some(p => lower.includes(p));
+    });
+    if (storeCol) {
+        console.log(`  🔍 Auto-detected store column: [${storeCol}] for view ${viewId}`);
+        await setMapping(viewId, 'CODALMACEN', storeCol, 'AUTO_DETECT');
+        detected++;
+    }
+
+    // Auto-detect PERSONA column
+    const personaCol = columns.find(col => {
+        const lower = col.toLowerCase().replace(/[_:]/g, '');
+        return PERSONA_COLUMN_PATTERNS.some(p => lower.includes(p));
+    });
+    if (personaCol) {
+        console.log(`  🔍 Auto-detected persona column: [${personaCol}] for view ${viewId}`);
+        await setMapping(viewId, 'PERSONA', personaCol, 'AUTO_DETECT');
+        detected++;
+    }
+
+    return detected;
+}
+
+// ─── Seed store aliases from InvGate view data into APP_STORE_ALIAS ──
+
+async function seedStoreAliasesFromView(viewId, storeColumnName) {
+    try {
+        const pool = await getInvgatePool();
+        const mainPool = await poolPromise;
+        const tableName = await viewTableName(viewId);
+
+        // Get distinct store names from the view table
+        const storeNames = await pool.request().query(`
+            SELECT DISTINCT [${storeColumnName}] AS StoreName
+            FROM [${tableName}]
+            WHERE [${storeColumnName}] IS NOT NULL AND RTRIM(LTRIM([${storeColumnName}])) != ''
+        `);
+
+        let seeded = 0;
+        for (const row of storeNames.recordset) {
+            const alias = row.StoreName.trim();
+            if (!alias) continue;
+
+            // Check if alias already exists in APP_STORE_ALIAS
+            const existing = await mainPool.request()
+                .input('alias', mainSql.NVarChar, alias)
+                .query(`SELECT TOP 1 CodAlmacen FROM APP_STORE_ALIAS WHERE LOWER(Alias) = LOWER(@alias)`);
+
+            if (existing.recordset.length === 0) {
+                // Try fuzzy match against DIM_NOMBRES_ALMACEN
+                const fuzzy = await mainPool.request()
+                    .input('alias', mainSql.NVarChar, `%${alias}%`)
+                    .query(`
+                        SELECT TOP 1 CODALMACEN FROM DIM_NOMBRES_ALMACEN
+                        WHERE NOMBRE_QUEJAS LIKE @alias
+                           OR NOMBRE_GENERAL LIKE @alias
+                           OR NOMBRE_OPERACIONES LIKE @alias
+                           OR NOMBRE_MERCADEO LIKE @alias
+                    `);
+
+                if (fuzzy.recordset.length > 0) {
+                    const cod = fuzzy.recordset[0].CODALMACEN.trim();
+                    await mainPool.request()
+                        .input('alias', mainSql.NVarChar, alias)
+                        .input('cod', mainSql.NVarChar, cod)
+                        .input('fuente', mainSql.NVarChar, 'INVGATE')
+                        .query(`
+                            IF NOT EXISTS (SELECT 1 FROM APP_STORE_ALIAS WHERE Alias = @alias AND Fuente = @fuente)
+                            INSERT INTO APP_STORE_ALIAS (Alias, CodAlmacen, Fuente) VALUES (@alias, @cod, @fuente)
+                        `);
+                    seeded++;
+                }
+            }
+        }
+
+        if (seeded > 0) {
+            console.log(`  🏪 Seeded ${seeded} new store aliases from InvGate view ${viewId}`);
+        }
+    } catch (e) {
+        console.warn(`  ! Error seeding store aliases: ${e.message.substring(0, 100)}`);
+    }
+}
+
+// ─── Manually map a persona source value → user ID in a view table ────
+async function mapPersonaManual(viewId, sourceValue, userId, userName) {
+    const pool = await getInvgatePool();
+    const tableName = await viewTableName(viewId);
+
+    const mappings = await getMappings(viewId);
+    const personaMapping = mappings.find(m => m.FieldType === 'PERSONA');
+    if (!personaMapping) throw new Error('No persona mapping configured for this view');
+
+    await ensureMappingColumns(tableName);
+
+    const colName = personaMapping.ColumnName;
+    const result = await pool.request()
+        .input('src', sql.NVarChar, sourceValue.trim())
+        .input('pid', sql.Int, userId)
+        .input('pname', sql.NVarChar, userName)
+        .query(`
+            UPDATE [${tableName}]
+            SET [_PERSONAL_ID] = @pid, [_PERSONAL_NOMBRE] = @pname
+            WHERE RTRIM(LTRIM([${colName}])) = @src AND [_PERSONAL_ID] IS NULL
+        `);
+    return { updated: result.rowsAffected[0] || 0, sourceValue, userId, userName };
 }
 
 module.exports = {
@@ -399,5 +565,7 @@ module.exports = {
     resolveAllMappings,
     getUnmappedRecords,
     getMappingStats,
-    resolveAfterSync
+    resolveAfterSync,
+    autoDetectMappings,
+    mapPersonaManual
 };

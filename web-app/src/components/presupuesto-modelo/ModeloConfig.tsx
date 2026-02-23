@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useToast } from '../ui/Toast';
 import {
     fetchModeloConfig, saveModeloConfig, deleteModeloConfig,
     ejecutarRecalculo, fetchValidacion,
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId }) => {
+    const { showConfirm } = useToast();
     const user = getUser();
     const isAdmin = user?.esAdmin;
     const canRecalc = isAdmin || (user as any)?.ejecutarRecalculo;
@@ -100,7 +102,7 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
     };
 
     const handleDelete = async (id: number, nombre: string) => {
-        if (!confirm(`¿Eliminar la configuración "${nombre}"?`)) return;
+        if (!await showConfirm({ message: `¿Eliminar la configuración "${nombre}"?`, destructive: true })) return;
         try {
             setMessage(null);
             await deleteModeloConfig(id);

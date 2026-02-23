@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useToast } from '../ui/Toast';
 import {
     fetchAjustes, aplicarAjuste, desactivarAjuste, fetchModeloConfig,
     fetchStoresWithNames, fetchDatosAjuste, fetchEventosPorMes, fetchEventosAjuste,
@@ -47,6 +48,7 @@ function catmullRomArea(pts: { x: number; y: number }[], bottomY: number): strin
 }
 
 export const AjusteChart: React.FC<Props> = ({ anoModelo: initAno, nombrePresupuesto: initConfig }) => {
+    const { showConfirm } = useToast();
     const user = getUser();
     const canAdjust = user?.esAdmin || (user as any)?.ajustarCurva;
 
@@ -291,7 +293,7 @@ export const AjusteChart: React.FC<Props> = ({ anoModelo: initAno, nombrePresupu
     const applyDrag = async () => {
         const diff = adjTotal - origTotal;
         const pct = origTotal ? parseFloat(((diff / origTotal) * 100).toFixed(2)) : 0;
-        if (!confirm(`¿Aplicar ajuste de ${pct >= 0 ? '+' : ''}${pct}% (${fmtFull(diff)}) a ${MESES[mes]}?`)) return;
+        if (!await showConfirm({ message: `¿Aplicar ajuste de ${pct >= 0 ? '+' : ''}${pct}% (${fmtFull(diff)}) a ${MESES[mes]}?` })) return;
         await applyAdjustment(adjMotivo || 'Ajuste por curva', 'Porcentaje', pct);
     };
 
@@ -302,7 +304,7 @@ export const AjusteChart: React.FC<Props> = ({ anoModelo: initAno, nombrePresupu
     };
 
     const deleteAjuste = async (id: number) => {
-        if (!confirm('¿Desactivar este ajuste?')) return;
+        if (!await showConfirm({ message: '¿Desactivar este ajuste?', destructive: true })) return;
         try {
             await desactivarAjuste(id);
             setMsg({ ok: true, text: 'Ajuste desactivado' });

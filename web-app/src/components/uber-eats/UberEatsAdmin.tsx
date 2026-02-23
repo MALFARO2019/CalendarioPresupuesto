@@ -4,6 +4,7 @@
  * Pattern mirrors InvgateAdmin.tsx
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useToast } from '../ui/Toast';
 import {
     Settings, Store, RefreshCw, Activity, CheckCircle,
     XCircle, Loader2, Plus, Trash2, Eye, EyeOff, AlertTriangle,
@@ -52,7 +53,8 @@ const ALL_REPORT_TYPES: { id: string; label: string; desc: string }[] = [
     { id: 'FEEDBACK_REPORT', label: 'Calificaciones', desc: 'Reseñas y puntuaciones de clientes' },
     { id: 'MENU_ITEM_INSIGHTS', label: 'Insights de Menú', desc: 'Ventas y rendimiento por ítem' },
 ];
-export const UberEatsAdmin: React.FC = () => {
+export function UberEatsAdmin() {
+    const { showConfirm } = useToast();
     const [tab, setTab] = useState<'config' | 'stores' | 'sync' | 'dashboard'>('config');
 
     // Config tab
@@ -188,7 +190,7 @@ export const UberEatsAdmin: React.FC = () => {
     };
 
     const deleteStore = async (id: number) => {
-        if (!confirm('¿Eliminar este store?')) return;
+        if (!await showConfirm({ message: '¿Eliminar este store?', destructive: true })) return;
         try {
             await fetch(`${API_BASE}/api/uber-eats/stores/${id}`, { method: 'DELETE', headers });
             loadStores();
@@ -221,7 +223,7 @@ export const UberEatsAdmin: React.FC = () => {
     }, []);
 
     const triggerSync = async () => {
-        if (!confirm('¿Iniciar sincronización manual ahora?')) return;
+        if (!await showConfirm({ message: '¿Iniciar sincronización manual ahora?' })) return;
         setSyncing(true);
         try {
             await fetch(`${API_BASE}/api/uber-eats/sync`, { method: 'POST', headers, body: '{}' });

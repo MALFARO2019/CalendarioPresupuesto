@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useToast } from '../ui/Toast';
 import {
     fetchDeployLog,
     addDeployLogEntry,
@@ -58,6 +59,7 @@ function saveServers(servers: ServerConfig[]) {
 // ==========================================
 
 export function DeployManagement() {
+    const { showToast, showConfirm } = useToast();
     const [activeSection, setActiveSection] = useState<'publish' | 'setup' | 'changelog'>('publish');
 
     // Multi-server state
@@ -290,9 +292,9 @@ export function DeployManagement() {
         setNewServer({ ip: '', user: 'Administrador', password: '', appDir: 'C:\\Deploy\\CalendarioPresupuesto', label: '' });
     };
 
-    const removeServer = (id: string) => {
+    const removeServer = async (id: string) => {
         if (servers.length <= 1) {
-            if (!confirm('¿Eliminar el último servidor? Se restaurará la configuración por defecto.')) return;
+            if (!await showConfirm({ message: '¿Eliminar el último servidor? Se restaurará la configuración por defecto.', destructive: true })) return;
             setServers(DEFAULT_SERVERS);
             saveServers(DEFAULT_SERVERS);
             setSelectedServerId(DEFAULT_SERVERS[0].id);
@@ -322,7 +324,7 @@ export function DeployManagement() {
             setNewVersion('');
             setNewNotes('');
             loadChangelog();
-        } catch (e: any) { alert('Error: ' + e.message); }
+        } catch (e: any) { showToast('Error: ' + e.message, 'error'); }
     };
 
     const copyToClipboard = (text: string, id: string) => {

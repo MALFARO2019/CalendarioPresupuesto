@@ -1,5 +1,6 @@
 const invgateService = require('./invgateService');
 const { getInvgatePool, sql } = require('../invgateDb');
+const { resolveAfterSync } = require('./invgateMappingService');
 
 /**
  * InvGate Sync Service (V1 API)
@@ -362,6 +363,9 @@ class InvGateSyncService {
 
         await this.updateViewSyncMeta(view.viewId, insertedCount);
         console.log(`    ✅ View "${view.nombre}": ${insertedCount} rows inserted into [${tableName}]`);
+
+        // Auto-resolve CODALMACEN / PersonaID mappings
+        await resolveAfterSync(view.viewId);
 
         return { totalProcessed, totalNew, totalUpdated };
     }

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useToast } from './ui/Toast';
 import { Shield, Plus, Users, Trash2, Edit2, RefreshCw, X, Check, Search } from 'lucide-react';
 import type { Profile, User } from '../api';
 import { fetchProfiles, createProfile, updateProfile, deleteProfile, assignProfileToUsers, syncProfilePermissions } from '../api';
@@ -9,6 +10,7 @@ interface ProfilesManagementProps {
 }
 
 export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementProps) {
+    const { showToast, showConfirm } = useToast();
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -151,12 +153,12 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('¿Está seguro de eliminar este perfil?')) return;
+        if (!await showConfirm({ message: '¿Está seguro de eliminar este perfil?', destructive: true })) return;
         try {
             await deleteProfile(id);
             loadProfiles();
         } catch (err: any) {
-            alert(err.message);
+            showToast(err.message, 'error');
         }
     };
 
@@ -175,13 +177,13 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
     };
 
     const handleSync = async (profileId: number) => {
-        if (!confirm('¿Sincronizar permisos del perfil a todos los usuarios asignados?')) return;
+        if (!await showConfirm({ message: '¿Sincronizar permisos del perfil a todos los usuarios asignados?' })) return;
         try {
             const result = await syncProfilePermissions(profileId);
-            alert(`${result.updatedCount} usuario(s) actualizados`);
+            showToast(`${result.updatedCount} usuario(s) actualizados`, 'success');
             onUserUpdate();
         } catch (err: any) {
-            alert(err.message);
+            showToast(err.message, 'error');
         }
     };
 

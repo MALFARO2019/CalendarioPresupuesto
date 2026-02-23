@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from './ui/Toast';
 import {
     fetchAdminUsers,
     createAdminUser,
@@ -38,6 +39,7 @@ interface AdminPageProps {
 }
 
 export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => {
+    const { showToast, showConfirm } = useToast();
     // Security check: require admin OR eventos access OR modelo permissions
     const isOfflineAdmin = currentUser?.offlineAdmin === true;
     const canAccessEvents = currentUser?.accesoEventos || currentUser?.esAdmin;
@@ -491,12 +493,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     };
 
     const handleDeleteUser = async (userId: number, email: string) => {
-        if (!confirm(`¿Eliminar usuario ${email}?`)) return;
+        if (!await showConfirm({ message: `¿Eliminar usuario ${email}?`, destructive: true })) return;
         try {
             await deleteAdminUser(userId);
             loadData();
         } catch (err: any) {
-            alert('Error: ' + err.message);
+            showToast('Error: ' + err.message, 'error');
         }
     };
 

@@ -63,6 +63,12 @@ interface AjusteStoreState {
     activeModal: ModalType;
     pendingChanges: boolean;
 
+    // Chart adjustment state (shared with form card)
+    chartDragPct: number;
+    chartRedistribucion: import('./types').RedistribucionTipo;
+    chartSelectedDate: string | null;
+    formComentario: string;
+
     // Actions
     init: () => Promise<void>;
     setFiltro: <K extends keyof FiltrosState>(key: K, value: FiltrosState[K]) => void;
@@ -76,6 +82,8 @@ interface AjusteStoreState {
     openCreateForm: (fecha?: string) => void;
     openEditForm: (ajuste: AjustePresupuesto) => void;
     closeForm: () => void;
+    setChartState: (dragPct: number, redistribucion: import('./types').RedistribucionTipo, selectedDate: string | null) => void;
+    setFormComentario: (c: string) => void;
     saveAjuste: (data: AjusteFormData) => Promise<void>;
     deleteAjuste: (id: number) => Promise<void>;
     disassociateAjuste: (id: number) => Promise<void>;
@@ -121,6 +129,10 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
     formDate: null,
     activeModal: null,
     pendingChanges: false,
+    chartDragPct: 0,
+    chartRedistribucion: 'TodosLosDias' as import('./types').RedistribucionTipo,
+    chartSelectedDate: null,
+    formComentario: '',
 
     // ── Init ──
     init: async () => {
@@ -299,7 +311,18 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
         formMode: null,
         formData: null,
         formDate: null,
+        chartDragPct: 0,
+        chartSelectedDate: null,
+        formComentario: '',
     }),
+
+    setChartState: (dragPct, redistribucion, selectedDate) => set({
+        chartDragPct: dragPct,
+        chartRedistribucion: redistribucion,
+        chartSelectedDate: selectedDate,
+    }),
+
+    setFormComentario: (c) => set({ formComentario: c }),
 
     // ── CRUD ──
     saveAjuste: async (data) => {

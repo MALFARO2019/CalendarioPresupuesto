@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from './ui/Toast';
 import {
     fetchEventos,
     createEvento,
@@ -24,6 +25,7 @@ interface EventsManagementProps {
 }
 
 export const EventsManagement: React.FC<EventsManagementProps> = () => {
+    const { showConfirm } = useToast();
     const [eventos, setEventos] = useState<Evento[]>([]);
     const [selectedEvento, setSelectedEvento] = useState<number | null>(null);
     const [eventoFechas, setEventoFechas] = useState<EventoFecha[]>([]);
@@ -113,7 +115,7 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
     };
 
     const handleDeleteEvento = async (id: number, nombre: string) => {
-        if (!confirm(`¿Eliminar el evento "${nombre}" y todas sus fechas asociadas?`)) return;
+        if (!await showConfirm({ message: `¿Eliminar el evento "${nombre}" y todas sus fechas asociadas?`, destructive: true })) return;
         try {
             setError('');
             await deleteEvento(id);
@@ -183,7 +185,7 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
     };
 
     const handleDeleteFecha = async (idEvento: number, fecha: string) => {
-        if (!confirm(`¿Eliminar esta fecha del evento?`)) return;
+        if (!await showConfirm({ message: `¿Eliminar esta fecha del evento?`, destructive: true })) return;
         try {
             setError('');
             await deleteEventoFecha(idEvento, fecha);

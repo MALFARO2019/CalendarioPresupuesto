@@ -7,6 +7,7 @@ const { getInvgatePool, sql } = require('./invgateDb');
 const invgateService = require('./services/invgateService');
 const invgateSyncService = require('./services/invgateSyncService');
 const invgateCron = require('./jobs/invgateCron');
+const invgateMappingService = require('./services/invgateMappingService');
 const crypto = require('crypto');
 
 function getEncKey() {
@@ -325,8 +326,10 @@ function registerInvgateEndpoints(app, authMiddleware) {
                 OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
             `);
 
-            const countResult = await pool.request()
-                .query(`SELECT COUNT(*) AS Total FROM InvgateTickets WHERE ${where.replace(/@hdId|@status/g, '0')}`);
+            const countReq = pool.request();
+            if (helpdeskId) countReq.input('hdId', sql.Int, parseInt(helpdeskId));
+            if (status) countReq.input('status', sql.NVarChar, status);
+            const countResult = await countReq.query(`SELECT COUNT(*) AS Total FROM InvgateTickets WHERE ${where}`);
 
             res.json({
                 data: result.recordset,
@@ -364,6 +367,105 @@ function registerInvgateEndpoints(app, authMiddleware) {
                 FROM InvgateTickets WHERE ${where}
             `);
             res.json(result.recordset[0]);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ══════════════════════════════════════════
+    // MAPPINGS — Field mapping config & resolution
+    // ══════════════════════════════════════════
+
+    // Ensure mapping config table exists on startup
+    invgateMappingService.ensureMappingTable().catch(e =>
+        console.warn('⚠️ Could not ensure InvgateViewMappings table:', e.message)
+    );
+
+    // Get mappings for a view
+    app.get('/api/invgate/views/:id/mappings', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const mappings = await invgateMappingService.getMappings(parseInt(req.params.id));
+            res.json(mappings);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Set a mapping (fieldType: 'PERSONA' | 'CODALMACEN')
+    app.post('/api/invgate/views/:id/mappings', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const { fieldType, columnName } = req.body;
+            if (!fieldType || !columnName) {
+                return res.status(400).json({ error: 'fieldType y columnName son requeridos' });
+            }
+            await invgateMappingService.setMapping(
+                parseInt(req.params.id), fieldType, columnName,
+                req.user?.nombre || req.user?.email || 'ADMIN'
+            );
+            res.json({ success: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Delete a mapping
+    app.delete('/api/invgate/views/:id/mappings/:fieldType', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            await invgateMappingService.deleteMapping(parseInt(req.params.id), req.params.fieldType);
+            res.json({ success: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Resolve all mappings for a view
+    app.post('/api/invgate/views/:id/resolve-mappings', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const result = await invgateMappingService.resolveAllMappings(parseInt(req.params.id));
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Get unmapped records for a view
+    app.get('/api/invgate/views/:id/unmapped', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const result = await invgateMappingService.getUnmappedRecords(parseInt(req.params.id));
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Get mapping stats for a view
+    app.get('/api/invgate/views/:id/mapping-stats', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const result = await invgateMappingService.getMappingStats(parseInt(req.params.id));
+            res.json(result);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Manual persona mapping: directly map a source value → user ID
+    app.post('/api/invgate/views/:id/map-persona', authMiddleware, async (req, res) => {
+        if (!requireAdmin(req, res)) return;
+        try {
+            const { sourceValue, userId, userName } = req.body;
+            if (!sourceValue || !userId || !userName) {
+                return res.status(400).json({ error: 'sourceValue, userId, and userName are required' });
+            }
+            const result = await invgateMappingService.mapPersonaManual(
+                parseInt(req.params.id), sourceValue, parseInt(userId), userName
+            );
+            res.json(result);
         } catch (err) {
             res.status(500).json({ error: err.message });
         }

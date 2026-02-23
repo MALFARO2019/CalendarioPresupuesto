@@ -38,6 +38,16 @@ export const MODULES: ModuleConfig[] = [
         permissionKey: 'evaluaciones'
     },
     {
+        id: 'inocuidad',
+        name: 'Inocuidad',
+        description: 'Tendencia, Mapa de Calor',
+        icon: '🛡️',
+        color: '#0D9488',
+        gradient: 'linear-gradient(135deg, #0D9488 0%, #14B8A6 100%)',
+        route: '/inocuidad',
+        permissionKey: 'evaluaciones'
+    },
+    {
         id: 'inventarios',
         name: 'Control de Inventarios',
         description: 'Inventarios, Mermas, Fabricación',

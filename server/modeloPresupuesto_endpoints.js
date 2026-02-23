@@ -227,6 +227,24 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
         }
     });
 
+    // GET /api/modelo-presupuesto/canal-totals — per-canal monthly presupuesto totals
+    app.get('/api/modelo-presupuesto/canal-totals', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            const { nombrePresupuesto, codAlmacen, mes, tipo, ano } = req.query;
+            const result = await modeloPresupuesto.getCanalTotals(
+                nombrePresupuesto, codAlmacen,
+                mes ? parseInt(mes) : null,
+                tipo || 'Ventas',
+                ano ? parseInt(ano) : null
+            );
+            res.json(result);
+        } catch (err) {
+            console.error('Error GET /api/modelo-presupuesto/canal-totals:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // POST /api/modelo-presupuesto/ajustes/preview
     app.post('/api/modelo-presupuesto/ajustes/preview', authMiddleware, async (req, res) => {
         try {

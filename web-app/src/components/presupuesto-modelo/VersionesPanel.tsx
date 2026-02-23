@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../ui/Toast';
 import {
     fetchVersiones, restaurarVersion,
     getUser, type VersionPresupuesto
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export const VersionesPanel: React.FC<Props> = ({ nombrePresupuesto }) => {
+    const { showConfirm } = useToast();
     const user = getUser();
     const canRestore = user?.esAdmin || (user as any)?.restaurarVersiones;
 
@@ -33,7 +35,7 @@ export const VersionesPanel: React.FC<Props> = ({ nombrePresupuesto }) => {
     };
 
     const handleRestore = async (version: VersionPresupuesto) => {
-        if (!confirm(`¿Restaurar a la versión ${version.numeroVersion}?\n\nEsto reemplazará los datos actuales del presupuesto "${nombrePresupuesto}" con los datos del snapshot.\n\nUsuario que creó: ${version.usuario}\nFecha: ${new Date(version.fechaCreacion).toLocaleString('es-CR')}`)) return;
+        if (!await showConfirm({ message: `¿Restaurar a la versión ${version.numeroVersion}?\n\nEsto reemplazará los datos actuales del presupuesto "${nombrePresupuesto}" con los datos del snapshot.\n\nUsuario que creó: ${version.usuario}\nFecha: ${new Date(version.fechaCreacion).toLocaleString('es-CR')}`, destructive: true })) return;
 
         try {
             setRestoring(version.id);

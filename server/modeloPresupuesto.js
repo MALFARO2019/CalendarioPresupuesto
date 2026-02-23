@@ -974,6 +974,60 @@ async function getStoresWithNames() {
     return result.recordset;
 }
 
+/**
+ * Get per-canal presupuesto totals for a given month
+ * Used by the adjustment blue panel to show real-time per-canal breakdown
+ */
+async function getCanalTotals(nombrePresupuesto, codAlmacen, mes, tipo, ano) {
+    const pool = await poolPromise;
+
+    // Look up the correct table for this presupuesto config
+    const cfgResult = await pool.request()
+        .input('nombre', sql.NVarChar(100), nombrePresupuesto)
+        .query(`SELECT TOP 1 TablaDestino FROM MODELO_PRESUPUESTO_CONFIG WHERE NombrePresupuesto = @nombre`);
+    const tablaDestino = cfgResult.recordset[0]?.TablaDestino;
+    if (!tablaDestino) {
+        // Fallback to active config
+        const config = await getConfig();
+        if (!config) return [];
+        return getCanalTotalsFromTable(pool, config.tablaDestino, nombrePresupuesto, codAlmacen, mes, tipo, ano);
+    }
+    return getCanalTotalsFromTable(pool, tablaDestino, nombrePresupuesto, codAlmacen, mes, tipo, ano);
+}
+
+async function getCanalTotalsFromTable(pool, tablaDestino, nombrePresupuesto, codAlmacen, mes, tipo, ano) {
+    const request = pool.request()
+        .input('nombrePresupuesto', sql.NVarChar(100), nombrePresupuesto)
+        .input('codAlmacen', sql.NVarChar(10), codAlmacen)
+        .input('tipo', sql.NVarChar(100), tipo || 'Ventas');
+
+    let mesFilter = '';
+    if (mes) {
+        request.input('mes', sql.Int, mes);
+        mesFilter = 'AND Mes = @mes';
+    }
+    let anoFilter = '';
+    if (ano) {
+        request.input('ano', sql.Int, ano);
+        anoFilter = 'AND YEAR(Fecha) = @ano';
+    }
+
+    const queryStr = `
+        SELECT Canal, SUM(ISNULL(Monto, 0)) AS Total
+        FROM [${tablaDestino}]
+        WHERE NombrePresupuesto = @nombrePresupuesto
+          AND CodAlmacen = @codAlmacen
+          ${mesFilter}
+          ${anoFilter}
+          AND Tipo = @tipo
+        GROUP BY Canal
+        ORDER BY Canal
+    `;
+
+    const result = await request.query(queryStr);
+    return result.recordset;
+}
+
 module.exports = {
     // Config
     getConfig,
@@ -1006,5 +1060,7 @@ module.exports = {
     // Stores
     getStoresWithNames,
     // Resumen mensual (from budget table)
-    getResumenMensualPresupuesto
+    getResumenMensualPresupuesto,
+    // Per-canal totals
+    getCanalTotals
 };

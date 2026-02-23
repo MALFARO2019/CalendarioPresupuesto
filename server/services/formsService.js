@@ -248,9 +248,10 @@ class FormsService {
      *   https://xxx-my.sharepoint.com/personal/user/_layouts/15/AccessDenied.aspx?Source=...sourcedoc%3D%257BGUID%257D
      *   https://xxx-my.sharepoint.com/:x:/r/personal/user/...
      * 
-     * Uses two resolution strategies:
-     *   1. User drive + item GUID lookup
-     *   2. Shares API fallback (works even if email is wrong)
+     * Uses three resolution strategies:
+     *   1. User drive + item GUID lookup (tries UPN from URL, then ownerEmail)
+     *   2. Shares API fallback (works with sharing URLs)
+     *   3. Personal site drive lookup (extracts personal folder from URL)
      */
     async resolveExcelFromUrl(excelUrl, ownerEmail) {
         const token = await this.getAccessToken();
@@ -277,46 +278,106 @@ class FormsService {
             throw new Error('No se pudo extraer el ID del archivo de la URL. Asegúrese de usar la URL del Excel en SharePoint/OneDrive.');
         }
 
-        // ── Strategy 1: User drive + item GUID ──────────────────────────────────
-        try {
-            // Get user ID for owner
-            const userR = await axios.get(
-                `https://graph.microsoft.com/v1.0/users/${ownerEmail}?$select=id`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            const userId = userR.data.id;
-
-            // Get file info using the GUID as item ID
-            const fileR = await axios.get(
-                `https://graph.microsoft.com/v1.0/users/${userId}/drive/items/${itemGuid}?$select=id,name,parentReference`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-
-            const driveId = fileR.data.parentReference?.driveId;
-            const itemId = fileR.data.id;
-
-            // Get first sheet name
-            let sheetName = 'Sheet1';
-            try {
-                const sheetsR = await axios.get(
-                    `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/worksheets`,
-                    { headers: { Authorization: `Bearer ${token}` } }
-                );
-                sheetName = sheetsR.data.value?.[0]?.name || 'Sheet1';
-            } catch (e) { /* keep default */ }
-
-            return { driveId, itemId, sheetName, fileName: fileR.data.name };
-        } catch (directErr) {
-            console.warn(`⚠️ Direct resolve failed (${directErr.response?.status || directErr.message}), trying Shares API...`);
+        // Extract personal site folder from URL (e.g. /personal/jjalonso_rosti_cr/)
+        // This helps us derive the UPN even if ownerEmail doesn't match Azure AD
+        let personalFolder = null;
+        let derivedUpn = null;
+        const personalMatch = excelUrl.match(/\/personal\/([^/]+)/i);
+        if (personalMatch) {
+            personalFolder = personalMatch[1];
+            // Convert "jjalonso_rosti_cr" → "jjalonso@rosti.cr"
+            // SharePoint replaces @ with _ and . with _ in the folder name
+            // Pattern: user_domain_tld → user@domain.tld
+            const parts = personalFolder.split('_');
+            if (parts.length >= 3) {
+                // Last part is TLD, second-to-last is domain, rest is username
+                const tld = parts[parts.length - 1];
+                const domain = parts[parts.length - 2];
+                const user = parts.slice(0, parts.length - 2).join('_');
+                derivedUpn = `${user}@${domain}.${tld}`;
+            }
         }
 
-        // ── Strategy 2: Shares API fallback (works with any URL) ────────────────
+        // Extract SharePoint hostname for later use
+        let spHostname = null;
         try {
-            // Try multiple URL variants for the Shares API
-            const urlVariants = [
-                excelUrl,  // Original full URL
-                excelUrl.split('&')[0],  // URL up to first &
-            ];
+            spHostname = new URL(excelUrl).hostname;
+        } catch (e) { /* ignore */ }
+
+        // Build list of emails to try (deduplicated)
+        const emailsToTry = [];
+        if (derivedUpn) emailsToTry.push(derivedUpn);
+        if (ownerEmail && !emailsToTry.includes(ownerEmail.toLowerCase())) emailsToTry.push(ownerEmail.toLowerCase());
+
+        // ── Strategy 1: User drive + item GUID ──────────────────────────────────
+        let strategy1Err = null;
+        for (const email of emailsToTry) {
+            try {
+                console.log(`🔍 Strategy 1: Trying user "${email}" for GUID ${itemGuid}...`);
+                const userR = await axios.get(
+                    `https://graph.microsoft.com/v1.0/users/${email}?$select=id,userPrincipalName`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+                const userId = userR.data.id;
+
+                const fileR = await axios.get(
+                    `https://graph.microsoft.com/v1.0/users/${userId}/drive/items/${itemGuid}?$select=id,name,parentReference`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+
+                const driveId = fileR.data.parentReference?.driveId;
+                const itemId = fileR.data.id;
+
+                let sheetName = 'Sheet1';
+                try {
+                    const sheetsR = await axios.get(
+                        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/worksheets`,
+                        { headers: { Authorization: `Bearer ${token}` } }
+                    );
+                    sheetName = sheetsR.data.value?.[0]?.name || 'Sheet1';
+                } catch (e) { /* keep default */ }
+
+                console.log(`✅ Resolved via user "${email}": DriveId=${driveId?.substring(0, 20)}...`);
+                return { driveId, itemId, sheetName, fileName: fileR.data.name };
+            } catch (err) {
+                strategy1Err = err;
+                console.warn(`⚠️ Strategy 1 failed for "${email}": ${err.response?.status || err.message}`);
+            }
+        }
+
+        // ── Strategy 2: Shares API fallback ─────────────────────────────────────
+        let strategy2Err = null;
+        try {
+            // Build multiple URL variants for the Shares API
+            const urlVariants = new Set();
+            urlVariants.add(excelUrl);                    // Original full URL
+            urlVariants.add(excelUrl.split('&')[0]);      // URL up to first &
+
+            // If it's a _layouts/15 URL, try constructing a direct file URL
+            if (spHostname && personalFolder) {
+                // Try: https://hostname/personal/folder/Documents/... format
+                const basePersonalUrl = `https://${spHostname}/personal/${personalFolder}`;
+                urlVariants.add(basePersonalUrl);
+
+                // If the URL contains a file path after /Documents/
+                const docPathMatch = excelUrl.match(/\/Documents\/([^?&]+)/i);
+                if (docPathMatch) {
+                    urlVariants.add(`${basePersonalUrl}/Documents/${docPathMatch[1]}`);
+                }
+            }
+
+            // If URL is an AccessDenied redirect, extract the actual Doc.aspx URL from Source param
+            if (excelUrl.includes('AccessDenied')) {
+                try {
+                    const url = new URL(excelUrl);
+                    const source = url.searchParams.get('Source');
+                    if (source) {
+                        const decodedSource = decodeURIComponent(source);
+                        urlVariants.add(decodedSource);
+                        urlVariants.add(decodedSource.split('&')[0]);
+                    }
+                } catch (e) { /* ignore */ }
+            }
 
             let lastErr = null;
             for (const urlVariant of urlVariants) {
@@ -334,7 +395,6 @@ class FormsService {
 
                     if (!driveId || !itemId) continue;
 
-                    // Get first sheet name
                     let sheetName = 'Sheet1';
                     try {
                         const sheetsR = await axios.get(
@@ -344,16 +404,77 @@ class FormsService {
                         sheetName = sheetsR.data.value?.[0]?.name || 'Sheet1';
                     } catch (e) { /* keep default */ }
 
+                    console.log(`✅ Resolved via Shares API: DriveId=${driveId?.substring(0, 20)}...`);
                     return { driveId, itemId, sheetName, fileName: shareR.data.name };
                 } catch (e) {
                     lastErr = e;
                 }
             }
 
-            throw lastErr || new Error('Shares API: todas las variantes fallaron');
+            strategy2Err = lastErr;
         } catch (sharesErr) {
-            throw new Error(`No se pudo resolver el archivo Excel. Error directo: usuario no encontrado. Error Shares API: ${sharesErr.response?.data?.error?.message || sharesErr.message}`);
+            strategy2Err = sharesErr;
         }
+
+        // ── Strategy 3: Personal site drive lookup ──────────────────────────────
+        // Use the SharePoint site URL to find the drive directly
+        if (spHostname && personalFolder) {
+            try {
+                console.log(`🔍 Strategy 3: Looking up personal site drive for "${personalFolder}"...`);
+                // Get site by path
+                const myHost = spHostname; // e.g. rostipollocr-my.sharepoint.com
+                const siteR = await axios.get(
+                    `https://graph.microsoft.com/v1.0/sites/${myHost}:/personal/${personalFolder}?$select=id`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+                const siteId = siteR.data.id;
+
+                // Get the default drive for this site
+                const drivesR = await axios.get(
+                    `https://graph.microsoft.com/v1.0/sites/${siteId}/drives?$select=id,name&$top=5`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+
+                // Search for the item by GUID in each drive
+                for (const drive of drivesR.data.value || []) {
+                    try {
+                        const fileR = await axios.get(
+                            `https://graph.microsoft.com/v1.0/drives/${drive.id}/items/${itemGuid}?$select=id,name,parentReference`,
+                            { headers: { Authorization: `Bearer ${token}` } }
+                        );
+                        const driveId = fileR.data.parentReference?.driveId || drive.id;
+                        const itemId = fileR.data.id;
+
+                        let sheetName = 'Sheet1';
+                        try {
+                            const sheetsR = await axios.get(
+                                `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/worksheets`,
+                                { headers: { Authorization: `Bearer ${token}` } }
+                            );
+                            sheetName = sheetsR.data.value?.[0]?.name || 'Sheet1';
+                        } catch (e) { /* keep default */ }
+
+                        console.log(`✅ Resolved via personal site drive: DriveId=${driveId?.substring(0, 20)}...`);
+                        return { driveId, itemId, sheetName, fileName: fileR.data.name };
+                    } catch (e) {
+                        // Item not in this drive, try next
+                    }
+                }
+            } catch (siteErr) {
+                console.warn(`⚠️ Strategy 3 failed: ${siteErr.response?.status || siteErr.message}`);
+            }
+        }
+
+        // ── All strategies failed ───────────────────────────────────────────────
+        const s1msg = strategy1Err?.response?.data?.error?.message || strategy1Err?.message || 'desconocido';
+        const s2msg = strategy2Err?.response?.data?.error?.message || strategy2Err?.message || 'desconocido';
+        throw new Error(
+            `No se pudo resolver el archivo Excel (GUID: ${itemGuid}).\n` +
+            `• Estrategia 1 (usuario): ${s1msg}\n` +
+            `• Estrategia 2 (Shares API): ${s2msg}\n` +
+            `• Estrategia 3 (sitio personal): ${personalFolder ? 'falló' : 'no aplicable'}\n` +
+            `Verifique que el correo del propietario sea correcto y que la URL del Excel sea válida.`
+        );
     }
 
     /**

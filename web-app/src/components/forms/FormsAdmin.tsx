@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { API_BASE, getToken } from '../../api';
+import { useToast } from '../ui/Toast';
 import './FormsAdmin.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -122,7 +123,20 @@ export const FormsAdmin: React.FC = () => {
     const [mappingUnmappedCount, setMappingUnmappedCount] = useState(0);
     const [showUnmapped, setShowUnmapped] = useState(false);
 
+    // Manual mapping state
+    const [unmappedTab, setUnmappedTab] = useState<'byValue' | 'byRecord'>('byValue');
+    const [distinctUnmapped, setDistinctUnmapped] = useState<{ almacen: any[]; persona: any[]; errors: string[] }>({ almacen: [], persona: [], errors: [] });
+    const [storeOptions, setStoreOptions] = useState<{ CODALMACEN: string; NOMBRE: string }[]>([]);
+    const [personalSearchResults, setPersonalSearchResults] = useState<{ ID: number; NOMBRE: string; CORREO: string }[]>([]);
+    const [personalSearchTimer, setPersonalSearchTimer] = useState<any>(null);
+    const [savingValueMapping, setSavingValueMapping] = useState<string | null>(null);
+    const [selectedMappings, setSelectedMappings] = useState<Record<string, { value: string; label: string }>>({});
+    const [personalSearchInput, setPersonalSearchInput] = useState<Record<string, string>>({});
+    const [loadingDistinct, setLoadingDistinct] = useState(false);
+    const [valueMappings, setValueMappings] = useState<any[]>([]);
+
     const headers = () => ({ Authorization: `Bearer ${getToken()}` });
+    const { showToast, showConfirm } = useToast();
 
     // ─── Load ─────────────────────────────────────────────────────────────────
 
@@ -231,7 +245,7 @@ export const FormsAdmin: React.FC = () => {
 
             const r = await axios.get(`${API_BASE}/forms/responses`, { headers: headers(), params });
             const rows: FormResponse[] = r.data.responses || [];
-            if (rows.length === 0) { alert('No hay datos para exportar'); return; }
+            if (rows.length === 0) { showToast('No hay datos para exportar', 'warning'); return; }
 
             // Collect all unique answer keys across all rows
             const allKeys = new Set<string>();
@@ -279,7 +293,7 @@ export const FormsAdmin: React.FC = () => {
             a.click();
             URL.revokeObjectURL(url);
         } catch (e: any) {
-            alert('Error al exportar: ' + e.message);
+            showToast('Error al exportar: ' + e.message, 'error');
         } finally {
             setExportingCsv(false);
         }
@@ -288,7 +302,7 @@ export const FormsAdmin: React.FC = () => {
     // ─── Azure Config ─────────────────────────────────────────────────────────
 
     const saveConfig = async () => {
-        if (!tenantId || !clientId) { alert('Tenant ID y Client ID son requeridos'); return; }
+        if (!tenantId || !clientId) { showToast('Tenant ID y Client ID son requeridos', 'warning'); return; }
         setSavingConfig(true);
         try {
             // Only send secret if user actually modified it
@@ -299,10 +313,10 @@ export const FormsAdmin: React.FC = () => {
                 serviceAccount: serviceAccount || '',
                 syncEnabled, syncInterval: parseInt(syncInterval)
             }, { headers: headers() });
-            alert('\u2705 Configuraci\u00f3n guardada');
+            showToast('Configuración guardada', 'success');
             await loadConfig();
         } catch (e: any) {
-            alert('Error: ' + (e.response?.data?.error || e.message));
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
         } finally { setSavingConfig(false); }
     };
 
@@ -319,14 +333,47 @@ export const FormsAdmin: React.FC = () => {
     // ─── Sources ──────────────────────────────────────────────────────────────
 
     const addSource = async () => {
-        if (!newAlias || !newExcelUrl || !newOwnerEmail) { alert('Todos los campos son requeridos'); return; }
+        if (!newAlias || !newExcelUrl || !newOwnerEmail) { showToast('Todos los campos son requeridos', 'warning'); return; }
         setAddingSource(true);
+        const alias = newAlias;
         try {
-            await axios.post(`${API_BASE}/forms/sources`, { alias: newAlias, excelUrl: newExcelUrl, ownerEmail: newOwnerEmail }, { headers: headers() });
+            showToast(`⏳ Creando formulario "${alias}"...`, 'info');
+            const r = await axios.post(`${API_BASE}/forms/sources`, { alias: newAlias, excelUrl: newExcelUrl, ownerEmail: newOwnerEmail }, { headers: headers() });
             setNewAlias(''); setNewExcelUrl(''); setNewOwnerEmail('');
             setShowAddForm(false);
             await loadSources();
-        } catch (e: any) { alert('Error: ' + (e.response?.data?.error || e.message)); }
+
+            // Auto-resolve + auto-sync so the Frm_* table gets created and data loads immediately
+            const newSourceId = r.data?.sourceId || r.data?.SourceID;
+            if (newSourceId) {
+                // Step 1: Resolve DriveId/ItemId
+                try {
+                    showToast(`🔍 Resolviendo "${alias}"...`, 'info');
+                    await axios.post(`${API_BASE}/forms/sources/${newSourceId}/resolve`, {}, { headers: headers() });
+                    await loadSources();
+
+                    // Step 2: Auto-sync to create the Frm_* table and load data
+                    try {
+                        showToast(`🔄 Sincronizando "${alias}"...`, 'info');
+                        setSyncingId(newSourceId);
+                        const syncResult = await axios.post(`${API_BASE}/forms/sources/${newSourceId}/sync`, {}, { headers: headers() });
+                        await loadSources();
+                        await loadLogs();
+                        showToast(`✅ "${alias}" listo: ${syncResult.data.registrosNuevos || 0} registros cargados`, 'success');
+                    } catch (syncErr: any) {
+                        console.warn('Auto-sync failed for new source:', syncErr.message);
+                        showToast(`⚠️ "${alias}" creado y resuelto, pero falló el sync: ${syncErr.response?.data?.error || syncErr.message}`, 'warning');
+                    } finally {
+                        setSyncingId(null);
+                    }
+                } catch (resolveErr: any) {
+                    console.warn('Auto-resolve failed for new source:', resolveErr.message);
+                    showToast(`⚠️ "${alias}" creado, pero no se pudo resolver. Presione 🔍 para resolver manualmente.`, 'warning');
+                }
+            } else {
+                showToast(`✅ Formulario creado. Presione Sync para cargar datos.`, 'success');
+            }
+        } catch (e: any) { showToast('Error: ' + (e.response?.data?.error || e.message), 'error'); }
         finally { setAddingSource(false); }
     };
 
@@ -341,7 +388,7 @@ export const FormsAdmin: React.FC = () => {
             await axios.put(`${API_BASE}/forms/sources/${editSource.SourceID}`, { alias: editAlias, excelUrl: editExcelUrl, ownerEmail: editOwnerEmail }, { headers: headers() });
             setEditSource(null);
             await loadSources();
-        } catch (e: any) { alert('Error: ' + (e.response?.data?.error || e.message)); }
+        } catch (e: any) { showToast('Error: ' + (e.response?.data?.error || e.message), 'error'); }
         finally { setSavingEdit(false); }
     };
 
@@ -349,11 +396,11 @@ export const FormsAdmin: React.FC = () => {
         try {
             await axios.put(`${API_BASE}/forms/sources/${src.SourceID}`, { activo: !src.Activo }, { headers: headers() });
             await loadSources();
-        } catch (e: any) { alert('Error: ' + (e.response?.data?.error || e.message)); }
+        } catch (e: any) { showToast('Error: ' + (e.response?.data?.error || e.message), 'error'); }
     };
 
     const deleteSource = async (src: FormSource) => {
-        if (!confirm(`¿Eliminar permanentemente "${src.Alias}"?\n\nEsto también eliminará todas sus respuestas sincronizadas.`)) return;
+        if (!(await showConfirm({ message: `¿Eliminar permanentemente "${src.Alias}"?\n\nEsto también eliminará todas sus respuestas sincronizadas.`, destructive: true }))) return;
         // Optimistic: remove from list immediately
         setSources(prev => prev.filter(s => s.SourceID !== src.SourceID));
         try {
@@ -361,7 +408,7 @@ export const FormsAdmin: React.FC = () => {
         } catch (e: any) {
             // Revert on error
             await loadSources();
-            alert('Error al eliminar: ' + (e.response?.data?.error || e.message));
+            showToast('Error al eliminar: ' + (e.response?.data?.error || e.message), 'error');
         }
     };
 
@@ -370,8 +417,8 @@ export const FormsAdmin: React.FC = () => {
         setResolvingId(src.SourceID);
         try {
             const r = await axios.post(`${API_BASE}/forms/sources/${src.SourceID}/resolve`, {}, { headers: headers() });
-            if (r.data.success) { alert(`✅ Resuelto: ${r.data.sheetName || 'Sheet1'}`); await loadSources(); }
-        } catch (e: any) { alert('❌ Error al resolver: ' + (e.response?.data?.error || e.message)); }
+            if (r.data.success) { showToast(`Resuelto: ${r.data.sheetName || 'Sheet1'}`, 'success'); await loadSources(); }
+        } catch (e: any) { showToast('Error al resolver: ' + (e.response?.data?.error || e.message), 'error'); }
         finally { setResolvingId(null); }
     };
 
@@ -379,20 +426,20 @@ export const FormsAdmin: React.FC = () => {
         setSyncingId(src.SourceID);
         try {
             const r = await axios.post(`${API_BASE}/forms/sources/${src.SourceID}/sync`, {}, { headers: headers() });
-            alert(`✅ Sync: ${r.data.registrosNuevos} nuevos, ${r.data.registrosActualizados} actualizados`);
+            showToast(`Sync: ${r.data.registrosNuevos} nuevos, ${r.data.registrosActualizados} actualizados`, 'success');
             await loadSources(); await loadLogs();
-        } catch (e: any) { alert('❌ Error: ' + (e.response?.data?.error || e.message)); }
+        } catch (e: any) { showToast('Error: ' + (e.response?.data?.error || e.message), 'error'); }
         finally { setSyncingId(null); }
     };
 
     const syncAll = async (type: 'FULL' | 'INCREMENTAL') => {
-        if (!confirm(`¿Iniciar sync ${type === 'FULL' ? 'COMPLETO' : 'INCREMENTAL'}?`)) return;
+        if (!(await showConfirm({ message: `¿Iniciar sync ${type === 'FULL' ? 'COMPLETO' : 'INCREMENTAL'}?` }))) return;
         setGlobalSyncing(true);
         try {
             const r = await axios.post(`${API_BASE}/forms/sync`, { type }, { headers: headers() });
-            alert(`✅ Sync ${type}: ${r.data.registrosNuevos || 0} nuevos`);
+            showToast(`Sync ${type}: ${r.data.registrosNuevos || 0} nuevos`, 'success');
             await loadSources(); await loadLogs();
-        } catch (e: any) { alert('❌ Error: ' + (e.response?.data?.error || e.message)); }
+        } catch (e: any) { showToast('Error: ' + (e.response?.data?.error || e.message), 'error'); }
         finally { setGlobalSyncing(false); }
     };
 
@@ -426,12 +473,12 @@ export const FormsAdmin: React.FC = () => {
                 personaColumn: mappingPersona || null,
                 almacenColumn: mappingAlmacen || null
             }, { headers: headers() });
-            alert('✅ Mapeos guardados');
+            showToast('Mapeos guardados', 'success');
             // Reload stats
             const r = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, { headers: headers() });
             setMappingStats(r.data.stats);
         } catch (e: any) {
-            alert('Error: ' + (e.response?.data?.error || e.message));
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
         } finally {
             setMappingSaving(false);
         }
@@ -442,12 +489,12 @@ export const FormsAdmin: React.FC = () => {
         setMappingResolving(true);
         try {
             const r = await axios.post(`${API_BASE}/forms/sources/${mappingSource.SourceID}/resolve-mappings`, {}, { headers: headers() });
-            alert(`✅ ${r.data.message}`);
+            showToast(r.data.message, 'success');
             // Reload stats
             const stats = await axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/mappings`, { headers: headers() });
             setMappingStats(stats.data.stats);
         } catch (e: any) {
-            alert('Error: ' + (e.response?.data?.error || e.message));
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
         } finally {
             setMappingResolving(false);
         }
@@ -461,7 +508,60 @@ export const FormsAdmin: React.FC = () => {
             setMappingUnmappedCount(r.data.unmappedCount || 0);
             setShowUnmapped(true);
         } catch (e: any) {
-            alert('Error: ' + (e.response?.data?.error || e.message));
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
+        }
+    };
+
+    const loadDistinctUnmapped = async () => {
+        if (!mappingSource) return;
+        setLoadingDistinct(true);
+        try {
+            const [distinct, stores, vMappings] = await Promise.all([
+                axios.get(`${API_BASE}/forms/sources/${mappingSource.SourceID}/distinct-unmapped`, { headers: headers() }),
+                storeOptions.length === 0 ? axios.get(`${API_BASE}/forms/lookup/stores`, { headers: headers() }) : Promise.resolve(null),
+                axios.get(`${API_BASE}/forms/value-mappings`, { headers: headers() })
+            ]);
+            setDistinctUnmapped(distinct.data);
+            if (stores) setStoreOptions(stores.data || []);
+            setValueMappings(vMappings.data || []);
+        } catch (e: any) {
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
+        } finally {
+            setLoadingDistinct(false);
+        }
+    };
+
+    const searchPersonal = (search: string) => {
+        if (personalSearchTimer) clearTimeout(personalSearchTimer);
+        if (search.length < 2) { setPersonalSearchResults([]); return; }
+        const timer = setTimeout(async () => {
+            try {
+                const r = await axios.get(`${API_BASE}/forms/lookup/personal`, { headers: headers(), params: { search } });
+                setPersonalSearchResults(r.data || []);
+            } catch { setPersonalSearchResults([]); }
+        }, 300);
+        setPersonalSearchTimer(timer);
+    };
+
+    const saveValueMapping = async (sourceValue: string, mappingType: 'CODALMACEN' | 'PERSONA', resolvedValue: string, resolvedLabel: string) => {
+        const key = `${mappingType}:${sourceValue}`;
+        setSavingValueMapping(key);
+        try {
+            await axios.post(`${API_BASE}/forms/value-mappings`, {
+                sourceValue, mappingType, resolvedValue, resolvedLabel
+            }, { headers: headers() });
+            showToast(`✅ ${sourceValue} → ${resolvedLabel || resolvedValue}`, 'success');
+            // Remove from distinct list
+            setDistinctUnmapped(prev => ({
+                ...prev,
+                almacen: mappingType === 'CODALMACEN' ? prev.almacen.filter(a => a.sourceValue !== sourceValue) : prev.almacen,
+                persona: mappingType === 'PERSONA' ? prev.persona.filter(p => p.sourceValue !== sourceValue) : prev.persona
+            }));
+            setSelectedMappings(prev => { const n = { ...prev }; delete n[key]; return n; });
+        } catch (e: any) {
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
+        } finally {
+            setSavingValueMapping(null);
         }
     };
 
@@ -1011,7 +1111,7 @@ export const FormsAdmin: React.FC = () => {
                                             <button className="btn-resolve-mapping" onClick={resolveMappings} disabled={mappingResolving}>
                                                 {mappingResolving ? '⏳ Resolviendo...' : '🔄 Resolver Pendientes'}
                                             </button>
-                                            <button className="btn-unmapped" onClick={loadUnmapped}>
+                                            <button className="btn-unmapped" onClick={() => { loadUnmapped(); loadDistinctUnmapped(); setShowUnmapped(true); setUnmappedTab('byValue'); }}>
                                                 🔍 Ver Sin Mapear
                                             </button>
                                         </div>
@@ -1050,37 +1150,185 @@ export const FormsAdmin: React.FC = () => {
                                 {/* Unmapped records */}
                                 {showUnmapped && (
                                     <div className="unmapped-section">
-                                        <h4>⚠️ Registros Sin Mapear ({mappingUnmappedCount})</h4>
-                                        {mappingUnmapped.length === 0 ? (
-                                            <p style={{ color: '#059669', fontSize: 13 }}>✅ Todos los registros están mapeados correctamente</p>
-                                        ) : (
-                                            <div className="unmapped-table-wrap">
-                                                <table className="unmapped-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>ID</th>
-                                                            <th>Correo</th>
-                                                            <th>Fecha</th>
-                                                            {mappingAlmacen && <th>Valor Local</th>}
-                                                            {mappingPersona && <th>Valor Persona</th>}
-                                                            <th>CodAlmacen</th>
-                                                            <th>PersonalID</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {mappingUnmapped.slice(0, 50).map((row: any) => (
-                                                            <tr key={row.ID}>
-                                                                <td>{row.ID}</td>
-                                                                <td>{row.RespondentEmail || '—'}</td>
-                                                                <td>{row.SubmittedAt ? new Date(row.SubmittedAt).toLocaleDateString('es-CR') : '—'}</td>
-                                                                {mappingAlmacen && <td className="unmapped-value">{row._SourceLocal || '—'}</td>}
-                                                                {mappingPersona && <td className="unmapped-value">{row._SourcePersona || '—'}</td>}
-                                                                <td>{row._CODALMACEN || <span className="no-map">❌</span>}</td>
-                                                                <td>{row._PERSONAL_ID ? `✅ ${row._PERSONAL_NOMBRE || row._PERSONAL_ID}` : <span className="no-map">❌</span>}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
+                                        <div className="unmapped-tabs">
+                                            <button className={`unmapped-tab ${unmappedTab === 'byValue' ? 'active' : ''}`} onClick={() => { setUnmappedTab('byValue'); if (distinctUnmapped.almacen.length === 0 && distinctUnmapped.persona.length === 0) loadDistinctUnmapped(); }}>📋 Por Valor</button>
+                                            <button className={`unmapped-tab ${unmappedTab === 'byRecord' ? 'active' : ''}`} onClick={() => setUnmappedTab('byRecord')}>📄 Por Registro ({mappingUnmappedCount})</button>
+                                        </div>
+
+                                        {/* ── Tab: Por Valor (manual assignment) ── */}
+                                        {unmappedTab === 'byValue' && (
+                                            <div className="by-value-section">
+                                                {loadingDistinct ? (
+                                                    <div className="forms-loading">Cargando valores distintos...</div>
+                                                ) : (distinctUnmapped.almacen.length === 0 && distinctUnmapped.persona.length === 0) ? (
+                                                    <div style={{ padding: '16px 0' }}>
+                                                        <p style={{ color: '#059669', fontSize: 13 }}>✅ No hay valores pendientes de mapear</p>
+                                                        {distinctUnmapped.errors.length > 0 && (
+                                                            <div style={{ marginTop: 8 }}>
+                                                                {distinctUnmapped.errors.map((e, i) => <p key={i} style={{ color: '#dc2626', fontSize: 12 }}>⚠️ {e}</p>)}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        {/* Almacen mappings */}
+                                                        {distinctUnmapped.almacen.length > 0 && (
+                                                            <div className="mapping-group">
+                                                                <h5>🏪 Locales sin mapear ({distinctUnmapped.almacen.length})</h5>
+                                                                <div className="mapping-value-list">
+                                                                    {distinctUnmapped.almacen.map(item => {
+                                                                        const key = `CODALMACEN:${item.sourceValue}`;
+                                                                        const sel = selectedMappings[key];
+                                                                        return (
+                                                                            <div className="mapping-value-row" key={item.sourceValue}>
+                                                                                <div className="mv-source">
+                                                                                    <span className="mv-value" title={item.sourceValue}>{item.sourceValue}</span>
+                                                                                    <span className="mv-count">{item.cnt} reg.</span>
+                                                                                </div>
+                                                                                <div className="mv-arrow">→</div>
+                                                                                <div className="mv-target">
+                                                                                    <select
+                                                                                        className="mv-select"
+                                                                                        value={sel?.value || ''}
+                                                                                        onChange={e => {
+                                                                                            const opt = storeOptions.find(s => s.CODALMACEN === e.target.value);
+                                                                                            setSelectedMappings(p => ({ ...p, [key]: { value: e.target.value, label: opt?.NOMBRE || e.target.value } }));
+                                                                                        }}
+                                                                                    >
+                                                                                        <option value="">Seleccionar local...</option>
+                                                                                        {storeOptions.map(s => (
+                                                                                            <option key={s.CODALMACEN} value={s.CODALMACEN}>{s.NOMBRE} ({s.CODALMACEN})</option>
+                                                                                        ))}
+                                                                                    </select>
+                                                                                </div>
+                                                                                <button
+                                                                                    className="mv-save-btn"
+                                                                                    disabled={!sel?.value || savingValueMapping === key}
+                                                                                    onClick={() => sel && saveValueMapping(item.sourceValue, 'CODALMACEN', sel.value, sel.label)}
+                                                                                >{savingValueMapping === key ? '⏳' : '💾'}</button>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Persona mappings */}
+                                                        {distinctUnmapped.persona.length > 0 && (
+                                                            <div className="mapping-group">
+                                                                <h5>👤 Personas sin mapear ({distinctUnmapped.persona.length})</h5>
+                                                                <div className="mapping-value-list">
+                                                                    {distinctUnmapped.persona.map(item => {
+                                                                        const key = `PERSONA:${item.sourceValue}`;
+                                                                        const sel = selectedMappings[key];
+                                                                        const searchVal = personalSearchInput[item.sourceValue] || '';
+                                                                        return (
+                                                                            <div className="mapping-value-row" key={item.sourceValue}>
+                                                                                <div className="mv-source">
+                                                                                    <span className="mv-value" title={item.sourceValue}>{item.sourceValue}</span>
+                                                                                    <span className="mv-count">{item.cnt} reg.</span>
+                                                                                </div>
+                                                                                <div className="mv-arrow">→</div>
+                                                                                <div className="mv-target mv-target-persona">
+                                                                                    {sel ? (
+                                                                                        <div className="mv-selected-persona">
+                                                                                            <span>{sel.label}</span>
+                                                                                            <button className="mv-clear" onClick={() => { setSelectedMappings(p => { const n = { ...p }; delete n[key]; return n; }); }}>✕</button>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="mv-persona-search">
+                                                                                            <input
+                                                                                                type="text"
+                                                                                                className="mv-search-input"
+                                                                                                placeholder="Buscar persona..."
+                                                                                                value={searchVal}
+                                                                                                onChange={e => {
+                                                                                                    const v = e.target.value;
+                                                                                                    setPersonalSearchInput(p => ({ ...p, [item.sourceValue]: v }));
+                                                                                                    searchPersonal(v);
+                                                                                                }}
+                                                                                            />
+                                                                                            {searchVal.length >= 2 && personalSearchResults.length > 0 && (
+                                                                                                <div className="mv-search-results">
+                                                                                                    {personalSearchResults.map(p => (
+                                                                                                        <div
+                                                                                                            key={p.ID}
+                                                                                                            className="mv-search-item"
+                                                                                                            onClick={() => {
+                                                                                                                setSelectedMappings(prev => ({ ...prev, [key]: { value: p.ID.toString(), label: p.NOMBRE } }));
+                                                                                                                setPersonalSearchInput(prev => { const n = { ...prev }; delete n[item.sourceValue]; return n; });
+                                                                                                                setPersonalSearchResults([]);
+                                                                                                            }}
+                                                                                                        >
+                                                                                                            <span className="mv-search-name">{p.NOMBRE}</span>
+                                                                                                            <span className="mv-search-email">{p.CORREO}</span>
+                                                                                                        </div>
+                                                                                                    ))}
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                <button
+                                                                                    className="mv-save-btn"
+                                                                                    disabled={!sel?.value || savingValueMapping === key}
+                                                                                    onClick={() => sel && saveValueMapping(item.sourceValue, 'PERSONA', sel.value, sel.label)}
+                                                                                >{savingValueMapping === key ? '⏳' : '💾'}</button>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="mapping-value-actions">
+                                                            <button className="btn-resolve-mapping" onClick={async () => { await resolveMappings(); await loadDistinctUnmapped(); await loadUnmapped(); }} disabled={mappingResolving}>
+                                                                {mappingResolving ? '⏳ Resolviendo...' : '🔄 Re-resolver Todo'}
+                                                            </button>
+                                                            <button className="btn-unmapped" onClick={loadDistinctUnmapped} disabled={loadingDistinct}>
+                                                                {loadingDistinct ? '⏳' : '🔄'} Recargar
+                                                            </button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* ── Tab: Por Registro (existing row-by-row view) ── */}
+                                        {unmappedTab === 'byRecord' && (
+                                            <div className="by-record-section">
+                                                {mappingUnmapped.length === 0 ? (
+                                                    <p style={{ color: '#059669', fontSize: 13, padding: '16px 0' }}>✅ Todos los registros están mapeados correctamente</p>
+                                                ) : (
+                                                    <div className="unmapped-table-wrap">
+                                                        <table className="unmapped-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>ID</th>
+                                                                    <th>Correo</th>
+                                                                    <th>Fecha</th>
+                                                                    {mappingAlmacen && <th>Valor Local</th>}
+                                                                    {mappingPersona && <th>Valor Persona</th>}
+                                                                    <th>CodAlmacen</th>
+                                                                    <th>PersonalID</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {mappingUnmapped.slice(0, 50).map((row: any) => (
+                                                                    <tr key={row.ID}>
+                                                                        <td>{row.ID}</td>
+                                                                        <td>{row.RespondentEmail || '—'}</td>
+                                                                        <td>{row.SubmittedAt ? new Date(row.SubmittedAt).toLocaleDateString('es-CR') : '—'}</td>
+                                                                        {mappingAlmacen && <td className="unmapped-value">{row._SourceLocal || '—'}</td>}
+                                                                        {mappingPersona && <td className="unmapped-value">{row._SourcePersona || '—'}</td>}
+                                                                        <td>{row._CODALMACEN || <span className="no-map">❌</span>}</td>
+                                                                        <td>{row._PERSONAL_ID ? `✅ ${row._PERSONAL_NOMBRE || row._PERSONAL_ID}` : <span className="no-map">❌</span>}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
