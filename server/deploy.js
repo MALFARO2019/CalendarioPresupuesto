@@ -240,18 +240,30 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
     try {
         const restartResult = await runPowerShell(
             `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+            `$output = @(); ` +
             `$svc = Get-Service 'CalendarioPresupuesto-API' -ErrorAction SilentlyContinue; ` +
             `if ($svc) { ` +
             `Stop-Service 'CalendarioPresupuesto-API' -Force -ErrorAction SilentlyContinue; ` +
-            `Start-Sleep -Seconds 3; ` +
+            `Start-Sleep -Seconds 2; ` +
+            `} ` +
             `taskkill /F /IM node.exe 2>$null; ` +
             `Start-Sleep -Seconds 2; ` +
-            `Start-Service 'CalendarioPresupuesto-API'; ` +
-            `Write-Output 'Servicio NSSM reiniciado' ` +
-            `} else { ` +
-            `taskkill /F /IM node.exe 2>$null; Start-Sleep -Seconds 2; ` +
+            `$iisPool = & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' list apppool /name:DefaultAppPool 2>$null; ` +
+            `if ($iisPool) { ` +
+            `& 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' stop apppool DefaultAppPool 2>$null; ` +
+            `Start-Sleep -Seconds 2; ` +
+            `& 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' start apppool DefaultAppPool 2>$null; ` +
+            `$output += 'IIS AppPool reciclado'; ` +
+            `} ` +
+            `if ($svc) { ` +
+            `Start-Service 'CalendarioPresupuesto-API' -ErrorAction SilentlyContinue; ` +
+            `$output += 'Servicio NSSM reiniciado'; ` +
+            `} ` +
+            `if ($output.Count -eq 0) { ` +
             `Start-Process cmd -ArgumentList '/c cd /d ${appDir}\\\\server && node server.js' -WindowStyle Hidden; ` +
-            `Write-Output 'Node.js reiniciado manualmente' } }`
+            `$output += 'Node.js reiniciado manualmente'; ` +
+            `} ` +
+            `Write-Output ($output -join '. ') }`
         );
         steps[steps.length - 1] = { step: 'Reiniciando servicio', status: 'success', detail: restartResult.trim() };
     } catch (e) {
@@ -267,15 +279,16 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
         try {
             const diag = await runPowerShell(
                 `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
-                `$nssmPath = (nssm get CalendarioPresupuesto-API AppDirectory 2>$null); ` +
-                `$logPath = Join-Path $nssmPath 'deploy-log.json'; ` +
-                `$logExists = Test-Path $logPath; ` +
-                `$logContent = if ($logExists) { (Get-Content $logPath -Raw | ConvertFrom-Json).entries[-1].version } else { 'NO_FILE' }; ` +
-                `Write-Output "NSSM_DIR=$nssmPath|LOG_VER=$logContent|DEPLOY_DIR=${appDir}" }`
+                `$reg = Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\CalendarioPresupuesto-API\\Parameters' -ErrorAction SilentlyContinue; ` +
+                `$nssmDir = if ($reg) { $reg.AppDirectory } else { 'NO_NSSM' }; ` +
+                `$logPath = Join-Path '${appDir}' 'server\\deploy-log.json'; ` +
+                `$logVer = if (Test-Path $logPath) { ((Get-Content $logPath -Raw | ConvertFrom-Json).entries | Select-Object -Last 1).version } else { 'NO_FILE' }; ` +
+                `$iisSite = & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' list vdir /app.name:CalendarioPresupuesto/ 2>$null; ` +
+                `Write-Output "NSSM=$nssmDir|LOG=$logVer|IIS=$iisSite|DEPLOY=${appDir}" }`
             );
             diagInfo = diag.trim();
         } catch (de) {
-            diagInfo = `DIAG_ERROR: ${de.message.substring(0, 100)}`;
+            diagInfo = `DIAG_ERR: ${de.message.substring(0, 100)}`;
         }
 
         // Retry health check up to 3 times with increasing wait

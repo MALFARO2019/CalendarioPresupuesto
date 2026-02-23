@@ -351,6 +351,198 @@
           "detail": "API responde \"v1.0\" pero se esperaba \"v1.1\". Puede haber un proceso node viejo ocupando el puerto."
         }
       ]
+    },
+    {
+      "id": 1771824577355,
+      "version": "v1.1",
+      "date": "2026-02-23T05:29:37.355Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at b13d3d9 feat: invgate unmapped fix, forms mapping, inocuidad improvements, uber eats updates, deploy log"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.1 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Correcto: se termin� el proceso \"node.exe\" con PID 101084.\r\nServicio NSSM reiniciado"
+        },
+        {
+          "step": "Verificando API",
+          "status": "warning",
+          "detail": "API responde \"v1.0\" pero se esperaba \"v1.1\". Puede haber un proceso node viejo ocupando el puerto."
+        }
+      ]
+    },
+    {
+      "id": 1771825249680,
+      "version": "v1.1",
+      "date": "2026-02-23T05:40:49.680Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at b13d3d9 feat: invgate unmapped fix, forms mapping, inocuidad improvements, uber eats updates, deploy log"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.1 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        },
+        {
+          "step": "Verificando API",
+          "status": "warning",
+          "detail": "API responde \"v1.0\" pero se esperaba \"v1.1\". Puede haber un proceso node viejo ocupando el puerto."
+        }
+      ]
+    },
+    {
+      "id": 1771825361789,
+      "version": "v1.1",
+      "date": "2026-02-23T05:42:41.789Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at b13d3d9 feat: invgate unmapped fix, forms mapping, inocuidad improvements, uber eats updates, deploy log"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.1 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        },
+        {
+          "step": "Verificando API",
+          "status": "warning",
+          "detail": "API responde \"v1.0\" pero se esperaba \"v1.1\". Puede haber un proceso node viejo ocupando el puerto."
+        }
+      ]
+    },
+    {
+      "id": 1771826250987,
+      "version": "v1.1",
+      "date": "2026-02-23T05:57:30.987Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 4b0e68b diag: add NSSM dir check and retries to deploy health check"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.1 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "Servicio NSSM reiniciado"
+        },
+        {
+          "step": "Verificando API",
+          "status": "warning",
+          "detail": "API responde \"v1.0\" pero se esperaba \"v1.1\". Diag: DIAG_ERROR: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Ma"
+        }
+      ]
     }
   ]
 }
