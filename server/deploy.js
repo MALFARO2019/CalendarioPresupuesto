@@ -86,7 +86,10 @@ function getAllServerVersions() {
 function readDeployLog() {
     try {
         if (fs.existsSync(DEPLOY_LOG_PATH)) {
-            return JSON.parse(fs.readFileSync(DEPLOY_LOG_PATH, 'utf8'));
+            let raw = fs.readFileSync(DEPLOY_LOG_PATH, 'utf8');
+            // Strip UTF-8 BOM if present (PowerShell 5 Set-Content adds it)
+            if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+            return JSON.parse(raw);
         }
     } catch (e) {
         console.error('Error reading deploy log:', e.message);
@@ -202,7 +205,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
             }]
         }).replace(/'/g, "''");
         await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { Set-Content -Path '${appDir}\\\\server\\\\deploy-log.json' -Value '${versionEntry}' -Encoding UTF8 }`
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { [System.IO.File]::WriteAllText('${appDir}\\\\server\\\\deploy-log.json', '${versionEntry}') }`
         );
         steps[steps.length - 1] = { step: 'Registrando versión', status: 'success', detail: `Versión ${deployVersion || 'v1.0'} registrada` };
     } catch (e) {
