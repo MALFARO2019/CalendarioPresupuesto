@@ -86,7 +86,7 @@ export const InvgateAdmin: React.FC = () => {
     // Mapping state
     const [mappingViewId, setMappingViewId] = useState<number | null>(null);
     const [mappingData, setMappingData] = useState<{
-        mappings: { FieldType: string; ColumnName: string }[];
+        mappings: { FieldType: string; ColumnName: string; UpdatedBy?: string }[];
         stats: { total: number; withCodAlmacen: number; withPersonalId: number; withoutCodAlmacen: number; withoutPersonalId: number } | null;
         columns: string[];
     } | null>(null);
@@ -307,6 +307,7 @@ export const InvgateAdmin: React.FC = () => {
     const saveMapping = async (viewId: number, fieldType: string, columnName: string) => {
         try {
             if (columnName) {
+                // __NO_MAP__ is a special value meaning "this field doesn't apply to this view"
                 await axios.post(`${API_BASE}/invgate/views/${viewId}/mappings`, { fieldType, columnName }, { headers: authHeaders() });
             } else {
                 await axios.delete(`${API_BASE}/invgate/views/${viewId}/mappings/${fieldType}`, { headers: authHeaders() });
@@ -408,7 +409,8 @@ export const InvgateAdmin: React.FC = () => {
     );
     const columnOptions = useMemo(() => {
         if (!mappingData) return [];
-        return mappingData.columns.filter(c => !c.startsWith('_')).map(c => ({ value: c, label: c }));
+        const cols = mappingData.columns.filter(c => !c.startsWith('_')).map(c => ({ value: c, label: c }));
+        return [{ value: '__NO_MAP__', label: '— No mapea —' }, ...cols];
     }, [mappingData]);
 
     // ─── Save OAuth config ────────────────────────────────────────
@@ -884,6 +886,11 @@ export const InvgateAdmin: React.FC = () => {
                                                                             onChange={val => saveMapping(v.viewId, 'PERSONA', val)}
                                                                             placeholder="— Sin mapear —"
                                                                         />
+                                                                        {mappingData.mappings.find(m => m.FieldType === 'PERSONA')?.UpdatedBy && (
+                                                                            <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'block' }}>
+                                                                                {mappingData.mappings.find(m => m.FieldType === 'PERSONA')?.UpdatedBy === 'AUTO_DETECT' ? '🤖 Auto' : '👤 Manual'}
+                                                                            </span>
+                                                                        )}
                                                                     </div>
                                                                     <div style={{ flex: 1, minWidth: '220px' }}>
                                                                         <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
@@ -895,6 +902,11 @@ export const InvgateAdmin: React.FC = () => {
                                                                             onChange={val => saveMapping(v.viewId, 'CODALMACEN', val)}
                                                                             placeholder="— Sin mapear —"
                                                                         />
+                                                                        {mappingData.mappings.find(m => m.FieldType === 'CODALMACEN')?.UpdatedBy && (
+                                                                            <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'block' }}>
+                                                                                {mappingData.mappings.find(m => m.FieldType === 'CODALMACEN')?.UpdatedBy === 'AUTO_DETECT' ? '🤖 Auto' : '👤 Manual'}
+                                                                            </span>
+                                                                        )}
                                                                     </div>
                                                                 </div>
 

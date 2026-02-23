@@ -134,6 +134,8 @@ export const FormsAdmin: React.FC = () => {
     const [personalSearchInput, setPersonalSearchInput] = useState<Record<string, string>>({});
     const [loadingDistinct, setLoadingDistinct] = useState(false);
     const [valueMappings, setValueMappings] = useState<any[]>([]);
+    const [reviewMappingType, setReviewMappingType] = useState<'CODALMACEN' | 'PERSONA' | null>(null);
+    const [deletingMappingId, setDeletingMappingId] = useState<number | null>(null);
 
     const headers = () => ({ Authorization: `Bearer ${getToken()}` });
     const { showToast, showConfirm } = useToast();
@@ -562,6 +564,28 @@ export const FormsAdmin: React.FC = () => {
             showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
         } finally {
             setSavingValueMapping(null);
+        }
+    };
+
+    const loadValueMappings = async (type?: string) => {
+        try {
+            const r = await axios.get(`${API_BASE}/forms/value-mappings`, { headers: headers(), params: type ? { type } : {} });
+            setValueMappings(r.data || []);
+        } catch (e: any) {
+            showToast('Error cargando mapeos: ' + (e.response?.data?.error || e.message), 'error');
+        }
+    };
+
+    const deleteValueMappingById = async (id: number) => {
+        setDeletingMappingId(id);
+        try {
+            await axios.delete(`${API_BASE}/forms/value-mappings/${id}`, { headers: headers() });
+            setValueMappings(prev => prev.filter(m => m.ID !== id));
+            showToast('Mapeo eliminado', 'success');
+        } catch (e: any) {
+            showToast('Error: ' + (e.response?.data?.error || e.message), 'error');
+        } finally {
+            setDeletingMappingId(null);
         }
     };
 
@@ -1114,7 +1138,41 @@ export const FormsAdmin: React.FC = () => {
                                             <button className="btn-unmapped" onClick={() => { loadUnmapped(); loadDistinctUnmapped(); setShowUnmapped(true); setUnmappedTab('byValue'); }}>
                                                 🔍 Ver Sin Mapear
                                             </button>
+                                            <button className="btn-review-mapping" onClick={() => { if (reviewMappingType === 'CODALMACEN') { setReviewMappingType(null); } else { setReviewMappingType('CODALMACEN'); loadValueMappings('CODALMACEN'); } }}>
+                                                {reviewMappingType === 'CODALMACEN' ? '✕ Cerrar' : '🏪 Revisar Locales'}
+                                            </button>
+                                            <button className="btn-review-mapping" onClick={() => { if (reviewMappingType === 'PERSONA') { setReviewMappingType(null); } else { setReviewMappingType('PERSONA'); loadValueMappings('PERSONA'); } }}>
+                                                {reviewMappingType === 'PERSONA' ? '✕ Cerrar' : '👤 Revisar Personas'}
+                                            </button>
                                         </div>
+
+                                        {/* Review existing mappings panel */}
+                                        {reviewMappingType && (
+                                            <div className="review-mappings-panel">
+                                                <h4>{reviewMappingType === 'CODALMACEN' ? '🏪 Mapeos de Locales' : '👤 Mapeos de Personas'}</h4>
+                                                {valueMappings.filter(m => m.MappingType === reviewMappingType).length === 0 ? (
+                                                    <p style={{ color: '#6b7280', fontSize: 13 }}>No hay mapeos manuales guardados para este tipo.</p>
+                                                ) : (
+                                                    <div className="review-mapping-list">
+                                                        {valueMappings.filter(m => m.MappingType === reviewMappingType).map(m => (
+                                                            <div className="review-mapping-row" key={m.ID}>
+                                                                <span className="review-source">{m.SourceValue}</span>
+                                                                <span className="review-arrow">→</span>
+                                                                <span className="review-resolved">
+                                                                    {m.ResolvedLabel ? `${m.ResolvedLabel} (${m.ResolvedValue})` : m.ResolvedValue}
+                                                                </span>
+                                                                <button
+                                                                    className="review-delete-btn"
+                                                                    disabled={deletingMappingId === m.ID}
+                                                                    onClick={() => deleteValueMappingById(m.ID)}
+                                                                    title="Eliminar mapeo"
+                                                                >{deletingMappingId === m.ID ? '⏳' : '🗑️'}</button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </>
                                 )}
 

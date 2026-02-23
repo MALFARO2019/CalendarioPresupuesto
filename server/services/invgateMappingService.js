@@ -224,8 +224,8 @@ async function resolveAllMappings(viewId) {
     let failed = 0;
     let total = 0;
 
-    // Resolve CODALMACEN
-    if (almacenMapping) {
+    // Resolve CODALMACEN (skip if __NO_MAP__)
+    if (almacenMapping && almacenMapping.ColumnName !== '__NO_MAP__') {
         const colName = almacenMapping.ColumnName;
         const colCheck = await pool.request()
             .input('tbl', sql.NVarChar, tableName)
@@ -255,8 +255,8 @@ async function resolveAllMappings(viewId) {
         }
     }
 
-    // Resolve PERSONAL
-    if (personaMapping) {
+    // Resolve PERSONAL (skip if __NO_MAP__)
+    if (personaMapping && personaMapping.ColumnName !== '__NO_MAP__') {
         const colName = personaMapping.ColumnName;
         const colCheck = await pool.request()
             .input('tbl', sql.NVarChar, tableName)
@@ -411,7 +411,7 @@ async function resolveAfterSync(viewId) {
 
         // Seed any new store names into APP_STORE_ALIAS before resolution
         const almacenMapping = mappings.find(m => m.FieldType === 'CODALMACEN');
-        if (almacenMapping) {
+        if (almacenMapping && almacenMapping.ColumnName !== '__NO_MAP__') {
             await seedStoreAliasesFromView(viewId, almacenMapping.ColumnName);
         }
 
@@ -439,6 +439,12 @@ async function autoDetectMappings(viewId) {
     const pool = await getInvgatePool();
     const tableName = await viewTableName(viewId);
 
+    // Check if any existing mappings (including __NO_MAP__) already set
+    const existing = await getMappings(viewId);
+    const hasPersona = existing.some(m => m.FieldType === 'PERSONA');
+    const hasAlmacen = existing.some(m => m.FieldType === 'CODALMACEN');
+    if (hasPersona && hasAlmacen) return 0; // Both already configured
+
     // Get columns of the view table
     const colResult = await pool.request()
         .input('tbl', sql.NVarChar, tableName)
@@ -447,26 +453,30 @@ async function autoDetectMappings(viewId) {
 
     let detected = 0;
 
-    // Auto-detect CODALMACEN column
-    const storeCol = columns.find(col => {
-        const lower = col.toLowerCase().replace(/[_:]/g, '');
-        return STORE_COLUMN_PATTERNS.some(p => lower.includes(p));
-    });
-    if (storeCol) {
-        console.log(`  🔍 Auto-detected store column: [${storeCol}] for view ${viewId}`);
-        await setMapping(viewId, 'CODALMACEN', storeCol, 'AUTO_DETECT');
-        detected++;
+    // Auto-detect CODALMACEN column (only if not already mapped)
+    if (!hasAlmacen) {
+        const storeCol = columns.find(col => {
+            const lower = col.toLowerCase().replace(/[_:]/g, '');
+            return STORE_COLUMN_PATTERNS.some(p => lower.includes(p));
+        });
+        if (storeCol) {
+            console.log(`  🔍 Auto-detected store column: [${storeCol}] for view ${viewId}`);
+            await setMapping(viewId, 'CODALMACEN', storeCol, 'AUTO_DETECT');
+            detected++;
+        }
     }
 
-    // Auto-detect PERSONA column
-    const personaCol = columns.find(col => {
-        const lower = col.toLowerCase().replace(/[_:]/g, '');
-        return PERSONA_COLUMN_PATTERNS.some(p => lower.includes(p));
-    });
-    if (personaCol) {
-        console.log(`  🔍 Auto-detected persona column: [${personaCol}] for view ${viewId}`);
-        await setMapping(viewId, 'PERSONA', personaCol, 'AUTO_DETECT');
-        detected++;
+    // Auto-detect PERSONA column (only if not already mapped)
+    if (!hasPersona) {
+        const personaCol = columns.find(col => {
+            const lower = col.toLowerCase().replace(/[_:]/g, '');
+            return PERSONA_COLUMN_PATTERNS.some(p => lower.includes(p));
+        });
+        if (personaCol) {
+            console.log(`  🔍 Auto-detected persona column: [${personaCol}] for view ${viewId}`);
+            await setMapping(viewId, 'PERSONA', personaCol, 'AUTO_DETECT');
+            detected++;
+        }
     }
 
     return detected;

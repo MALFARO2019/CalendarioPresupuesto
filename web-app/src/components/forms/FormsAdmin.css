@@ -1600,3 +1600,114 @@
 .by-record-section {
     animation: fadeIn 0.15s ease;
 }
+
+/* ── Review Mappings Button & Panel ── */
+.btn-review-mapping {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.15s;
+}
+
+.btn-review-mapping:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
+}
+
+.review-mappings-panel {
+    background: #f8faff;
+    border: 1px solid #e0e7ff;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    animation: fadeIn 0.15s ease;
+}
+
+.review-mappings-panel h4 {
+    margin: 0 0 12px;
+    font-size: 0.92rem;
+    color: #1a1a2e;
+}
+
+.review-mapping-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.review-mapping-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    transition: background 0.1s;
+}
+
+.review-mapping-row:hover {
+    background: #fafafa;
+}
+
+.review-source {
+    font-weight: 600;
+    color: #7c3aed;
+    flex: 0 0 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.review-arrow {
+    color: #9ca3af;
+    flex-shrink: 0;
+}
+
+.review-resolved {
+    flex: 1;
+    color: #166534;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.review-delete-btn {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid #fecaca;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 0.82rem;
+    transition: all 0.15s;
+}
+
+.review-delete-btn:hover:not(:disabled) {
+    background: #fee2e2;
+}
+
+.review-delete-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+    .review-mapping-row {
+        flex-wrap: wrap;
+    }
+
+    .review-source {
+        flex: unset;
+        width: 100%;
+    }
+}
