@@ -285,6 +285,9 @@ if (-not (Test-Path $envFile)) {
     $jwtSecret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
     
     @"
+# Node.js port (IIS proxies to this port)
+PORT=3000
+
 # Conexion a Base de Datos
 DB_USER=sa
 DB_PASSWORD=masterkey

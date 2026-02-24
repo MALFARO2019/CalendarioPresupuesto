@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { fetchLoginAudit, fetchAdminUsers, type LoginAuditEntry, type User } from '../api';
-import { Calendar, CheckCircle, XCircle, Loader2, RefreshCw, Shield, Users, AlertTriangle, X } from 'lucide-react';
+import { Calendar, CheckCircle, XCircle, Loader2, RefreshCw, Shield, Users, AlertTriangle, X, BarChart3 } from 'lucide-react';
+
+type ReportType = 'detalle' | 'diaSemana' | 'mes';
+
+const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 const LoginAuditPanel: React.FC = () => {
     const [entries, setEntries] = useState<LoginAuditEntry[]>([]);
@@ -18,6 +23,7 @@ const LoginAuditPanel: React.FC = () => {
     const [emailFilter, setEmailFilter] = useState('');
     const [userSearch, setUserSearch] = useState('');
     const [showUserDropdown, setShowUserDropdown] = useState(false);
+    const [reportType, setReportType] = useState<ReportType>('detalle');
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const loadData = async () => {
@@ -66,6 +72,41 @@ const LoginAuditPanel: React.FC = () => {
         const fallidos = total - exitosos;
         const uniqueUsers = new Set(entries.filter(e => e.exito).map(e => e.email)).size;
         return { total, exitosos, fallidos, uniqueUsers };
+    }, [entries]);
+
+    // Grouped data for reports
+    const groupedByDiaSemana = useMemo(() => {
+        const exitosos = entries.filter(e => e.exito);
+        const userMap = new Map<string, { nombre: string; counts: number[] }>();
+        exitosos.forEach(e => {
+            const key = e.email;
+            if (!userMap.has(key)) {
+                userMap.set(key, { nombre: e.nombre || e.email, counts: new Array(7).fill(0) });
+            }
+            const dayIdx = new Date(e.fecha).getDay();
+            userMap.get(key)!.counts[dayIdx]++;
+        });
+        const rows = Array.from(userMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+        const totals = new Array(7).fill(0);
+        rows.forEach(r => r.counts.forEach((c, i) => totals[i] += c));
+        return { rows, totals };
+    }, [entries]);
+
+    const groupedByMes = useMemo(() => {
+        const exitosos = entries.filter(e => e.exito);
+        const userMap = new Map<string, { nombre: string; counts: number[] }>();
+        exitosos.forEach(e => {
+            const key = e.email;
+            if (!userMap.has(key)) {
+                userMap.set(key, { nombre: e.nombre || e.email, counts: new Array(12).fill(0) });
+            }
+            const monthIdx = new Date(e.fecha).getMonth();
+            userMap.get(key)!.counts[monthIdx]++;
+        });
+        const rows = Array.from(userMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+        const totals = new Array(12).fill(0);
+        rows.forEach(r => r.counts.forEach((c, i) => totals[i] += c));
+        return { rows, totals };
     }, [entries]);
 
     const formatDate = (dateStr: string) => {
@@ -213,6 +254,32 @@ const LoginAuditPanel: React.FC = () => {
                 </div>
             </div>
 
+            {/* Report Type Selector */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                    <BarChart3 className="w-4 h-4 text-gray-500" />
+                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Tipo de Reporte</span>
+                </div>
+                <div className="flex rounded-xl bg-gray-100 p-1 gap-1">
+                    {[
+                        { key: 'detalle' as ReportType, label: 'Detalle' },
+                        { key: 'diaSemana' as ReportType, label: 'Día de Semana' },
+                        { key: 'mes' as ReportType, label: 'Mes' },
+                    ].map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setReportType(tab.key)}
+                            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${reportType === tab.key
+                                    ? 'bg-white text-amber-700 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             {/* Error */}
             {error && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
@@ -221,7 +288,7 @@ const LoginAuditPanel: React.FC = () => {
                 </div>
             )}
 
-            {/* Table (desktop) */}
+            {/* Table / Report Content */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
                 {loading ? (
                     <div className="flex items-center justify-center py-16">
@@ -232,7 +299,7 @@ const LoginAuditPanel: React.FC = () => {
                         <Shield className="w-12 h-12 mx-auto mb-3 opacity-30" />
                         <p className="font-medium">No hay registros en este período</p>
                     </div>
-                ) : (
+                ) : reportType === 'detalle' ? (
                     <>
                         {/* Desktop table */}
                         <div className="hidden md:block overflow-x-auto">
@@ -312,6 +379,62 @@ const LoginAuditPanel: React.FC = () => {
                             ))}
                         </div>
                     </>
+                ) : (
+                    /* Grouped Report Table (Día de Semana / Mes) */
+                    (() => {
+                        const isDia = reportType === 'diaSemana';
+                        const headers = isDia ? DIAS_SEMANA : MESES;
+                        const data = isDia ? groupedByDiaSemana : groupedByMes;
+                        const grandTotal = data.totals.reduce((a, b) => a + b, 0);
+                        return (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="bg-gray-50 border-b border-gray-100">
+                                            <th className="text-left px-4 py-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[160px]">Usuario</th>
+                                            {headers.map(h => (
+                                                <th key={h} className="text-center px-3 py-3 font-semibold text-gray-600 min-w-[60px]">{h}</th>
+                                            ))}
+                                            <th className="text-center px-4 py-3 font-bold text-gray-800 bg-amber-50 min-w-[70px]">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {data.rows.map((row, idx) => {
+                                            const rowTotal = row.counts.reduce((a, b) => a + b, 0);
+                                            return (
+                                                <tr key={idx} className="border-b border-gray-50 hover:bg-amber-50/30 transition-colors">
+                                                    <td className="px-4 py-3 font-medium text-gray-900 sticky left-0 bg-white z-10">{row.nombre}</td>
+                                                    {row.counts.map((c, ci) => (
+                                                        <td key={ci} className={`text-center px-3 py-3 tabular-nums ${c === 0 ? 'text-gray-300' : 'text-gray-700 font-medium'}`}>
+                                                            {c || '—'}
+                                                        </td>
+                                                    ))}
+                                                    <td className="text-center px-4 py-3 font-bold text-amber-700 bg-amber-50/50 tabular-nums">{rowTotal}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="bg-gray-100 border-t-2 border-gray-200">
+                                            <td className="px-4 py-3 font-bold text-gray-800 sticky left-0 bg-gray-100 z-10">Total</td>
+                                            {data.totals.map((t, ti) => (
+                                                <td key={ti} className={`text-center px-3 py-3 font-bold tabular-nums ${t === 0 ? 'text-gray-400' : 'text-gray-800'}`}>
+                                                    {t || '—'}
+                                                </td>
+                                            ))}
+                                            <td className="text-center px-4 py-3 font-extrabold text-amber-800 bg-amber-100 tabular-nums">{grandTotal}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                                {data.rows.length === 0 && (
+                                    <div className="text-center py-12 text-gray-400">
+                                        <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                                        <p className="text-sm">No hay conexiones exitosas en este período</p>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()
                 )}
             </div>
         </div>

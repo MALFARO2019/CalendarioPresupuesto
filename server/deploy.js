@@ -387,26 +387,6 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         steps[steps.length - 1] = { step: 'Registrando versión', status: 'warning', detail: e.message.substring(0, 200) };
     }
 
-    // Step 2c: Update package.json version on remote server (primary source for version-check)
-    if (deployVersion) {
-        try {
-            const semverVersion = deployVersion.replace(/^v/, '');
-            const parts = semverVersion.split('.');
-            const fullVersion = parts.length === 2 ? `${semverVersion}.0` : semverVersion;
-            await runPowerShell(
-                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
-                `$pkgPath = Join-Path '${appDir}' 'server\\package.json'; ` +
-                `if (Test-Path $pkgPath) { ` +
-                `$pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json; ` +
-                `$pkg.version = '${fullVersion}'; ` +
-                `$pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -Encoding UTF8; ` +
-                `Write-Output 'OK' } else { Write-Output 'NO_FILE' } }`
-            );
-        } catch (e) {
-            // Non-fatal, deploy-log.json serves as fallback
-        }
-    }
-
 
     // Step 2c: Update package.json version on remote server (primary source for version-check)
     if (deployVersion) {
@@ -454,8 +434,47 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         return { success: false, steps, timing: buildTiming(startTime) };
     }
 
+    // Step 4a: Copy web.config to dist (build wipes dist/, IIS needs web.config for URL Rewrite proxy)
+    try {
+        await runPowerShell(
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+            `$wcSrc = Join-Path '${appDir}' 'web-app\\web.config'; ` +
+            `$wcDst = Join-Path '${appDir}' 'web-app\\dist\\web.config'; ` +
+            `if (Test-Path $wcSrc) { Copy-Item $wcSrc $wcDst -Force; 'OK' } else { 'NO_SRC' } }`
+        );
+    } catch (e) {
+        // Non-fatal but important — infra step below also attempts this
+    }
 
-    // Step 4b: Validate and auto-fix server infrastructure (NSSM paths + IIS VDir + web.config)
+    // Step 4b: Ensure PORT=3000 in server .env (critical: IIS proxies to port 3000)
+    steps.push({ step: 'Garantizando PORT=3000', status: 'running' });
+    try {
+        const portResult = await runPowerShell(
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock {` +
+            ` $envPath = Join-Path '${appDir}' 'server\\.env';` +
+            ` if (Test-Path $envPath) {` +
+            `   $content = Get-Content $envPath -Raw;` +
+            `   if ($content -match '(?m)^PORT=') {` +
+            `     if ($content -notmatch '(?m)^PORT=3000') {` +
+            `       $content = $content -replace '(?m)^PORT=.*', 'PORT=3000';` +
+            `       [System.IO.File]::WriteAllText($envPath, $content);` +
+            `       Write-Output 'PORT corregido a 3000';` +
+            `     } else { Write-Output 'PORT=3000 ya configurado' }` +
+            `   } else {` +
+            `     Add-Content -Path $envPath -Value 'PORT=3000';` +
+            `     Write-Output 'PORT=3000 agregado al .env';` +
+            `   }` +
+            ` } else {` +
+            `   [System.IO.File]::WriteAllText($envPath, 'PORT=3000');` +
+            `   Write-Output '.env creado con PORT=3000';` +
+            ` } }`
+        );
+        steps[steps.length - 1] = { step: 'Garantizando PORT=3000', status: 'success', detail: portResult.trim() };
+    } catch (e) {
+        steps[steps.length - 1] = { step: 'Garantizando PORT=3000', status: 'warning', detail: `Error: ${e.message.substring(0, 200)}` };
+    }
+
+    // Step 4c: Validate and auto-fix server infrastructure (NSSM paths + IIS VDir + web.config)
     steps.push({ step: 'Configurando infraestructura', status: 'running' });
     try {
         const infraResult = await runPowerShell(
@@ -582,6 +601,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         }
 
         // Retry health check up to 3 times with increasing wait
+        // Try both IIS (port 80) and direct Node (port 3000) for better diagnostics
         let remoteVersion = '';
         const retryDelays = [5, 8, 12];
         for (let attempt = 0; attempt < retryDelays.length; attempt++) {
@@ -589,8 +609,11 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
                 const healthResult = await runPowerShell(
                     `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
                     `Start-Sleep -Seconds ${retryDelays[attempt]}; ` +
-                    `try { $r = Invoke-RestMethod -Uri 'http://localhost/api/version-check' -TimeoutSec 10; $r.version } ` +
-                    `catch { Write-Output ('ERROR: ' + $_.Exception.Message) } }`
+                    `try { $r = Invoke-RestMethod -Uri 'http://localhost:3000/api/version-check' -TimeoutSec 10; $r.version } ` +
+                    `catch { ` +
+                    `  try { $r2 = Invoke-RestMethod -Uri 'http://localhost/api/version-check' -TimeoutSec 10; $r2.version } ` +
+                    `  catch { Write-Output ('ERROR: port3000=' + $_.Exception.Message) } ` +
+                    `} }`
                 );
                 remoteVersion = healthResult.trim();
                 if (deployVersion && normalizeVersion(remoteVersion) === normalizeVersion(deployVersion)) break;
