@@ -227,7 +227,7 @@ app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
             steps: result.steps
         });
 
-        res.json({ success: result.success, steps: result.steps, entryId: entry.id });
+        res.json({ success: result.success, steps: result.steps, entryId: entry.id, timing: result.timing || null });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
