@@ -2911,11 +2911,22 @@ app.post('/api/eventos-ajuste/send-email', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Se requieren destinatario, desde y hasta' });
         }
 
+        // Day-of-week letters: D=Dom, L=Lun, K=Mar, M=Mié, J=Jue, V=Vie, S=Sáb
+        const dayLetters = ['D', 'L', 'K', 'M', 'J', 'V', 'S'];
+        const formatDateWithDay = (dateStr) => {
+            if (!dateStr || dateStr === '—') return '—';
+            try {
+                const d = new Date(dateStr + 'T12:00:00');
+                const letter = dayLetters[d.getDay()];
+                return `${dateStr} (${letter})`;
+            } catch { return dateStr; }
+        };
+
         // Build email HTML
         const tableRows = (items || []).map(item => {
-            const fecha = item.FECHA || '';
+            const fecha = formatDateWithDay(item.FECHA || '');
             const evento = item.EVENTO || '';
-            const ref = item.FECHA_EFECTIVA || '—';
+            const ref = formatDateWithDay(item.FECHA_EFECTIVA || '');
             const diff = item.diff !== undefined ? item.diff : 0;
             const diffColor = diff === 0 ? '#64748b' : diff > 0 ? '#16a34a' : '#dc2626';
             const diffText = diff === 0 ? '0d' : `${diff > 0 ? '+' : ''}${diff}d`;

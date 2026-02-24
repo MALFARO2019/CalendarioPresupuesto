@@ -287,7 +287,7 @@ export const EventosPeriodView: React.FC = () => {
                     {/* Email Modal */}
                     {showEmailModal && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowEmailModal(false)}>
-                            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+                            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
                                 <h3 className="text-base font-bold text-gray-800 mb-1 flex items-center gap-2">
                                     <Mail className="w-5 h-5 text-emerald-600" />
                                     Enviar Reporte por Correo
@@ -295,12 +295,11 @@ export const EventosPeriodView: React.FC = () => {
                                 <p className="text-xs text-gray-500 mb-4">Incluye el gráfico, rango ({desde} → {hasta}) y listado de {data.length} ajuste(s)</p>
                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Destinatario(s)</label>
                                 <input
-                                    type="email"
+                                    type="text"
                                     value={emailTo}
                                     onChange={e => setEmailTo(e.target.value)}
                                     placeholder="correo@ejemplo.com, otro@ejemplo.com"
                                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 text-sm mb-4"
-                                    autoFocus
                                 />
                                 <div className="flex gap-2">
                                     <button
