@@ -454,6 +454,77 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         return { success: false, steps, timing: buildTiming(startTime) };
     }
 
+
+    // Step 4b: Validate and auto-fix server infrastructure (NSSM paths + IIS VDir + web.config)
+    steps.push({ step: 'Configurando infraestructura', status: 'running' });
+    try {
+        const infraResult = await runPowerShell(
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock {` +
+            ` $fixes = @();` +
+            ` $appDir = '${appDir}';` +
+            ` $serverDir = Join-Path $appDir 'server';` +
+            ` $distDir = Join-Path $appDir 'web-app\\dist';` +
+
+            // --- NSSM AppDirectory ---
+            ` $regPath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\CalendarioPresupuesto-API\\Parameters';` +
+            ` $reg = Get-ItemProperty $regPath -ErrorAction SilentlyContinue;` +
+            ` if ($reg) {` +
+            `   if ($reg.AppDirectory -ne $serverDir) {` +
+            `     Set-ItemProperty $regPath -Name 'AppDirectory' -Value $serverDir;` +
+            `     $fixes += "NSSM AppDirectory: $($reg.AppDirectory) -> $serverDir";` +
+            `   }` +
+
+            // --- NSSM AppParameters ---
+            `   $expectedParams = Join-Path $serverDir 'server.js';` +
+            `   if ($reg.AppParameters -and $reg.AppParameters -ne $expectedParams) {` +
+            `     Set-ItemProperty $regPath -Name 'AppParameters' -Value $expectedParams;` +
+            `     $fixes += "NSSM AppParams: $($reg.AppParameters) -> $expectedParams";` +
+            `   }` +
+            ` } else { $fixes += 'NSSM: no service found (OK if not using NSSM)' };` +
+
+            // --- IIS VDir ---
+            ` $vdir = & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' list vdir 'CalendarioPresupuesto/' /text:physicalPath 2>$null;` +
+            ` if ($vdir -and $vdir.Trim() -ne $distDir) {` +
+            `   & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' set vdir 'CalendarioPresupuesto/' /physicalPath:$distDir 2>$null;` +
+            `   $fixes += "IIS VDir: $($vdir.Trim()) -> $distDir";` +
+            ` };` +
+
+            // --- web.config in dist ---
+            ` $wcSrc = Join-Path $appDir 'web-app\\web.config';` +
+            ` $wcDst = Join-Path $distDir 'web.config';` +
+            ` if ((Test-Path $wcSrc) -and -not (Test-Path $wcDst)) {` +
+            `   Copy-Item $wcSrc $wcDst -Force;` +
+            `   $fixes += 'web.config copiado a dist';` +
+            ` } elseif ((Test-Path $wcSrc) -and (Test-Path $wcDst)) {` +
+            `   $srcHash = (Get-FileHash $wcSrc).Hash;` +
+            `   $dstHash = (Get-FileHash $wcDst).Hash;` +
+            `   if ($srcHash -ne $dstHash) {` +
+            `     Copy-Item $wcSrc $wcDst -Force;` +
+            `     $fixes += 'web.config actualizado en dist';` +
+            `   }` +
+            ` };` +
+
+            // --- Output ---
+            ` if ($fixes.Count -eq 0) { Write-Output 'Sin cambios necesarios' }` +
+            ` else { Write-Output ($fixes -join '; ') }` +
+            ` }`
+        );
+        const detail = infraResult.trim();
+        const hasChanges = detail !== 'Sin cambios necesarios';
+        steps[steps.length - 1] = {
+            step: 'Configurando infraestructura',
+            status: hasChanges ? 'success' : 'success',
+            detail: hasChanges ? `✅ ${detail}` : '✓ Rutas NSSM, IIS y web.config correctas'
+        };
+    } catch (e) {
+        steps[steps.length - 1] = {
+            step: 'Configurando infraestructura',
+            status: 'warning',
+            detail: `No se pudo validar infraestructura: ${e.message.substring(0, 200)}`
+        };
+        // Non-fatal — continue with deploy
+    }
+
     // Step 5: Restart service
     steps.push({ step: 'Reiniciando servicio', status: 'running' });
     try {
