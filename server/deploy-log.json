@@ -1283,6 +1283,64 @@
           "detail": "API no responde: ERROR: Error en el servidor remoto: (404) No se encontr�.. Diag: DIAG_ERR: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Ma"
         }
       ]
+    },
+    {
+      "id": 1771975799075,
+      "version": "v1.3",
+      "date": "2026-02-24T23:29:59.075Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at c0c8aa8 feat: add live timer, progress bar, percentage and ETA to deploy publish section"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.3 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Garantizando PORT=3000",
+          "status": "success",
+          "detail": "PORT corregido a 3000"
+        },
+        {
+          "step": "Configurando infraestructura",
+          "status": "warning",
+          "detail": "No se pudo validar infraestructura: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Management.Automation.PSCredential('Administrador', (ConvertTo-SecureString 'R0st1p017' -AsPlainText -"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "\"DefaultAppPool\" se detuvo correctamente\r\n\"DefaultAppPool\" se inici� correctamente.\r\nIIS AppPool reciclado. Servicio NSSM reiniciado"
+        },
+        {
+          "step": "Verificando API",
+          "status": "success",
+          "detail": "API responde v1.3 ✓"
+        }
+      ]
     }
   ]
 }
