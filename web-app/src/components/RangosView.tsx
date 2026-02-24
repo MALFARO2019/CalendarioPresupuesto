@@ -3,8 +3,9 @@ import { DateRangePicker } from './DateRangePicker';
 import { GroupingSelector, type GroupByType } from './GroupingSelector';
 import { DynamicGrid } from './DynamicGrid';
 import { InteractiveBrushChart } from './InteractiveBrushChart';
+import { EventosPeriodView } from './EventosPeriodView';
 import { getToken, API_BASE, type EventosByDate } from '../api';
-import { Loader2, TrendingUp, TrendingDown } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, X } from 'lucide-react';
 import { useFormatCurrency } from '../utils/formatters';
 
 interface RangosViewProps {
@@ -16,6 +17,12 @@ interface RangosViewProps {
     verEventos?: boolean;
     onVerEventosChange?: (v: boolean) => void;
     eventosByYear?: EventosByDate;
+    verEventosAjuste?: boolean;
+    onVerEventosAjusteChange?: (v: boolean) => void;
+    eventosAjusteByDate?: EventosByDate;
+    verEventosAA?: boolean;
+    onVerEventosAAChange?: (v: boolean) => void;
+    eventosAAByDate?: EventosByDate;
 }
 
 interface PeriodData {
@@ -84,7 +91,7 @@ interface CanalResponse {
     totals: CanalData;
 }
 
-export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType, verEventos = false, onVerEventosChange, eventosByYear = {} }: RangosViewProps) {
+export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType, verEventos = false, onVerEventosChange, eventosByYear = {}, verEventosAjuste = false, onVerEventosAjusteChange, eventosAjusteByDate = {}, verEventosAA = false, onVerEventosAAChange, eventosAAByDate = {} }: RangosViewProps) {
     const formatCurrency = useFormatCurrency();
 
     // Initialize with current month as default
@@ -101,6 +108,7 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'evaluacion' | 'canal' | 'top5'>('evaluacion');
+    const [showEventosAjuste, setShowEventosAjuste] = useState(false);
 
     const fetchData = async () => {
         if (!filterLocal) {
@@ -187,10 +195,16 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
 
     const handleBrushChange = (startIndex: number, endIndex: number) => {
         if (data && data.periods.length > 0) {
-            const selectedStart = data.periods[startIndex].periodoInicio;
-            const selectedEnd = data.periods[endIndex].periodoFin;
-            setStartDate(selectedStart);
-            setEndDate(selectedEnd);
+            const rawStart = data.periods[startIndex].periodoInicio;
+            const rawEnd = data.periods[endIndex].periodoFin;
+            // Normalize to YYYY-MM-DD to prevent re-fetch loops
+            const newStart = rawStart.split('T')[0];
+            const newEnd = rawEnd.split('T')[0];
+            // Only update if dates actually changed
+            if (newStart !== startDate || newEnd !== endDate) {
+                setStartDate(newStart);
+                setEndDate(newEnd);
+            }
         }
     };
 
@@ -295,7 +309,15 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
                         kpi={filterKpi}
                         onBrushChange={handleBrushChange}
                         verEventos={verEventos}
+                        onVerEventosChange={onVerEventosChange}
                         eventosByYear={eventosByYear}
+                        verEventosAjuste={verEventosAjuste}
+                        onVerEventosAjusteChange={onVerEventosAjusteChange}
+                        eventosAjusteByDate={eventosAjusteByDate}
+                        verEventosAA={verEventosAA}
+                        onVerEventosAAChange={onVerEventosAAChange}
+                        eventosAAByDate={eventosAAByDate}
+                        onOpenListadoEventos={() => setShowEventosAjuste(true)}
                     />
 
                     {/* Multi-KPI Summary Cards */}
@@ -620,6 +642,21 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
                         </div>
                     </div>
                 </>
+            )}
+
+            {/* Eventos de Ajuste Modal */}
+            {showEventosAjuste && (
+                <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 no-print overflow-y-auto py-4 sm:py-8">
+                    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 p-4 sm:p-6">
+                        <button
+                            onClick={() => setShowEventosAjuste(false)}
+                            className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all z-10"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                        <EventosPeriodView />
+                    </div>
+                </div>
             )}
         </div>
     );

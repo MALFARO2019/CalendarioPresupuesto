@@ -12,6 +12,8 @@ interface PeriodData {
     real: number;
     anterior: number;
     anteriorAjustado: number;
+    anteriorFull?: number;
+    anteriorAjustadoFull?: number;
     pctAlcance: number;
     pctAnterior: number;
     pctAnteriorAjustado: number;
@@ -22,10 +24,18 @@ interface InteractiveBrushChartProps {
     kpi: string;
     onBrushChange?: (startIndex: number, endIndex: number) => void;
     verEventos?: boolean;
+    onVerEventosChange?: (v: boolean) => void;
     eventosByYear?: EventosByDate;
+    verEventosAjuste?: boolean;
+    onVerEventosAjusteChange?: (v: boolean) => void;
+    eventosAjusteByDate?: EventosByDate;
+    verEventosAA?: boolean;
+    onVerEventosAAChange?: (v: boolean) => void;
+    eventosAAByDate?: EventosByDate;
+    onOpenListadoEventos?: () => void;
 }
 
-export function InteractiveBrushChart({ periods, kpi, onBrushChange, verEventos = false, eventosByYear = {} }: InteractiveBrushChartProps) {
+export function InteractiveBrushChart({ periods, kpi, onBrushChange, verEventos = false, onVerEventosChange, eventosByYear = {}, verEventosAjuste = false, onVerEventosAjusteChange, eventosAjusteByDate = {}, verEventosAA = false, onVerEventosAAChange, eventosAAByDate = {}, onOpenListadoEventos }: InteractiveBrushChartProps) {
     // Series visibility state
     const [showReal, setShowReal] = useState(true);
     const [showPresupuesto, setShowPresupuesto] = useState(true);
@@ -42,14 +52,18 @@ export function InteractiveBrushChart({ periods, kpi, onBrushChange, verEventos 
         return null;
     }
 
+    // Helper to normalize dates from SQL (2026-02-02T00:00:00.000Z) to YYYY-MM-DD
+    const toDateStr = (d: string) => d ? d.split('T')[0] : d;
+
     // Prepare data for chart
     const chartData = periods.map(p => ({
         name: p.periodo,
         Real: p.real,
-        Presupuesto: p.presupuestoConDatos,
-        Anterior: p.anterior,
-        AnteriorAjustado: p.anteriorAjustado,
-        periodoInicio: p.periodoInicio
+        Presupuesto: p.presupuesto,
+        Anterior: p.anteriorFull ?? p.anterior,
+        AnteriorAjustado: p.anteriorAjustadoFull ?? p.anteriorAjustado,
+        periodoInicio: toDateStr(p.periodoInicio),
+        periodoFin: toDateStr(p.periodoFin)
     }));
 
     const handleBrushChange = (brushData: any) => {
@@ -74,6 +88,55 @@ export function InteractiveBrushChart({ periods, kpi, onBrushChange, verEventos 
 
         const difAjust = real - anteriorAjustado;
         const difAjustPct = anteriorAjustado > 0 ? (difAjust / anteriorAjustado) * 100 : 0;
+
+        // Find events for the hovered period
+        const periodData = payload[0]?.payload;
+        const periodName = periodData?.name;
+
+        // Find regular events in this period
+        const regularEventsForPeriod: { evento: string; esFeriado: boolean }[] = [];
+        if (verEventos && periodData) {
+            const period = periods.find(p => p.periodo === periodName);
+            if (period) {
+                const pStart = toDateStr(period.periodoInicio);
+                const pEnd = toDateStr(period.periodoFin);
+                Object.entries(eventosByYear).forEach(([d, evs]) => {
+                    if (d >= pStart && d <= pEnd) {
+                        evs.forEach(e => regularEventsForPeriod.push({ evento: e.evento, esFeriado: e.esFeriado }));
+                    }
+                });
+            }
+        }
+
+        // Find ajuste events
+        const ajusteEventsForPeriod: { evento: string }[] = [];
+        if (verEventosAjuste && periodData) {
+            const period = periods.find(p => p.periodo === periodName);
+            if (period) {
+                const pStart = toDateStr(period.periodoInicio);
+                const pEnd = toDateStr(period.periodoFin);
+                Object.entries(eventosAjusteByDate).forEach(([d, evs]) => {
+                    if (d >= pStart && d <= pEnd) {
+                        evs.forEach(e => ajusteEventsForPeriod.push({ evento: e.evento }));
+                    }
+                });
+            }
+        }
+
+        // Find año anterior events
+        const aaEventsForPeriod: { evento: string }[] = [];
+        if (verEventosAA && periodData) {
+            const period = periods.find(p => p.periodo === periodName);
+            if (period) {
+                const pStart = toDateStr(period.periodoInicio);
+                const pEnd = toDateStr(period.periodoFin);
+                Object.entries(eventosAAByDate).forEach(([d, evs]) => {
+                    if (d >= pStart && d <= pEnd) {
+                        evs.forEach(e => aaEventsForPeriod.push({ evento: e.evento }));
+                    }
+                });
+            }
+        }
 
         return (
             <div className="bg-white border-2 border-gray-200 rounded-lg shadow-xl p-3">
@@ -103,13 +166,99 @@ export function InteractiveBrushChart({ periods, kpi, onBrushChange, verEventos 
                         Dif. Ajust.: {difAjust >= 0 ? '₡' : '₡-'}{formatCurrencyCompact(Math.abs(difAjust), kpi)} ({difAjustPct.toFixed(1)}%)
                     </div>
                 )}
+                {/* Regular events */}
+                {regularEventsForPeriod.length > 0 && (
+                    <>
+                        <div className="h-px bg-amber-200 my-1.5" />
+                        {regularEventsForPeriod.map((ev, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-xs font-medium">
+                                <div className={`w-2 h-2 rounded-full ${ev.esFeriado ? 'bg-red-500' : 'bg-amber-400'}`}></div>
+                                <span className={ev.esFeriado ? 'text-red-700 font-semibold' : 'text-amber-800 font-semibold'}>{ev.evento}</span>
+                            </div>
+                        ))}
+                    </>
+                )}
+                {/* Ajuste events */}
+                {ajusteEventsForPeriod.length > 0 && (
+                    <>
+                        <div className="h-px bg-red-200 my-1.5" />
+                        {ajusteEventsForPeriod.map((aev, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-xs font-medium">
+                                <div className="w-2 h-2 rounded-full bg-red-600"></div>
+                                <span className="text-red-700 font-semibold">{aev.evento}</span>
+                            </div>
+                        ))}
+                    </>
+                )}
+                {/* Año anterior events */}
+                {aaEventsForPeriod.length > 0 && (
+                    <>
+                        <div className="h-px bg-purple-200 my-1.5" />
+                        {aaEventsForPeriod.map((aev, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-xs font-medium">
+                                <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                                <span className="text-purple-700 font-semibold">{aev.evento}</span>
+                            </div>
+                        ))}
+                    </>
+                )}
             </div>
         );
     };
 
     return (
         <div className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-gray-200 mb-6">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Tendencia</h3>
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h3 className="text-lg font-bold text-gray-800">Tendencia</h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Event toggle buttons */}
+                    {onVerEventosChange && (
+                        <button
+                            onClick={() => onVerEventosChange(!verEventos)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${verEventos
+                                ? 'bg-amber-100 text-amber-700 border-amber-300'
+                                : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                                }`}
+                        >
+                            <span>{verEventos ? '📅' : '🗓️'}</span>
+                            Eventos
+                        </button>
+                    )}
+                    {onVerEventosAAChange && (
+                        <button
+                            onClick={() => onVerEventosAAChange(!verEventosAA)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${verEventosAA
+                                ? 'bg-purple-100 text-purple-700 border-purple-300'
+                                : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                                }`}
+                        >
+                            <span>{verEventosAA ? '🟣' : '⚪'}</span>
+                            Eventos Año Ant.
+                        </button>
+                    )}
+                    {onVerEventosAjusteChange && (
+                        <button
+                            onClick={() => onVerEventosAjusteChange(!verEventosAjuste)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${verEventosAjuste
+                                ? 'bg-red-100 text-red-700 border-red-300'
+                                : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                                }`}
+                        >
+                            <span>{verEventosAjuste ? '🔴' : '⚪'}</span>
+                            Eventos Ajuste
+                        </button>
+                    )}
+                    {onOpenListadoEventos && (
+                        <button
+                            onClick={onOpenListadoEventos}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border bg-indigo-50 text-indigo-700 border-indigo-300 hover:bg-indigo-100 hover:border-indigo-400"
+                        >
+                            <span>📋</span>
+                            Listado Eventos
+                        </button>
+                    )}
+                </div>
+            </div>
 
             {/* Series visibility controls */}
             <div className="mb-4 pb-3 border-b border-gray-200">
@@ -294,11 +443,9 @@ export function InteractiveBrushChart({ periods, kpi, onBrushChange, verEventos 
                     )}
                     {/* Event Reference Lines – match dates within displayed period ranges */}
                     {verEventos && Object.entries(eventosByYear).map(([dateStr, evs]) => {
-                        // Find which period this date falls in
-                        const period = periods.find(p => dateStr >= p.periodoInicio && dateStr <= p.periodoFin);
+                        const period = periods.find(p => dateStr >= toDateStr(p.periodoInicio) && dateStr <= toDateStr(p.periodoFin));
                         if (!period) return null;
                         const hasFeriado = evs.some(e => e.esFeriado);
-                        const label = evs.map(e => e.evento).slice(0, 2).join(', ');
                         return (
                             <ReferenceLine
                                 key={dateStr}
@@ -307,6 +454,38 @@ export function InteractiveBrushChart({ periods, kpi, onBrushChange, verEventos 
                                 strokeWidth={2}
                                 strokeDasharray="4 2"
                                 label={{ value: '📅', position: 'insideTopLeft', fontSize: 10 }}
+                                isFront
+                            />
+                        );
+                    })}
+                    {/* Ajuste Event Reference Lines (red) */}
+                    {verEventosAjuste && Object.entries(eventosAjusteByDate).map(([dateStr, evs]) => {
+                        const period = periods.find(p => dateStr >= toDateStr(p.periodoInicio) && dateStr <= toDateStr(p.periodoFin));
+                        if (!period) return null;
+                        return (
+                            <ReferenceLine
+                                key={`aj-${dateStr}`}
+                                x={period.periodo}
+                                stroke="#DC2626"
+                                strokeWidth={2}
+                                strokeDasharray="4 2"
+                                label={{ value: '🔴', position: 'top', fontSize: 10 }}
+                                isFront
+                            />
+                        );
+                    })}
+                    {/* Año Anterior Event Reference Lines (purple) */}
+                    {verEventosAA && Object.entries(eventosAAByDate).map(([dateStr, evs]) => {
+                        const period = periods.find(p => dateStr >= toDateStr(p.periodoInicio) && dateStr <= toDateStr(p.periodoFin));
+                        if (!period) return null;
+                        return (
+                            <ReferenceLine
+                                key={`aa-${dateStr}`}
+                                x={period.periodo}
+                                stroke="#8B5CF6"
+                                strokeWidth={2}
+                                strokeDasharray="4 2"
+                                label={{ value: '🟣', position: 'top', fontSize: 10 }}
                                 isFront
                             />
                         );

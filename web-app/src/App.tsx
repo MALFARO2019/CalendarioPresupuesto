@@ -69,6 +69,7 @@ function App() {
   const [verEventos, setVerEventos] = useState(false);
   const [eventsByDate, setEventsByDate] = useState<EventosByDate>({});
   const [eventosByYear, setEventosByYear] = useState<EventosByDate>({});
+  const [spEventosByYear, setSpEventosByYear] = useState<EventosByDate>({});
   const [eventosYear, setEventosYear] = useState(new Date().getFullYear());
   const [verEventosAjuste, setVerEventosAjuste] = useState(false);
   const [eventosAjusteByDate, setEventosAjusteByDate] = useState<EventosByDate>({});
@@ -98,6 +99,7 @@ function App() {
     if (!verEventos) {
       setEventsByDate({});
       setEventosByYear({});
+      setSpEventosByYear({});
       return;
     }
     const token = getToken();
@@ -124,7 +126,10 @@ function App() {
     Promise.all([
       fetchEventosPorAno(eventosYear),
       fetchSPEventosPorAno(eventosYear)
-    ]).then(([dim, sp]) => setEventosByYear(mergeEvents(dim, sp)));
+    ]).then(([dim, sp]) => {
+      setEventosByYear(mergeEvents(dim, sp));
+      setSpEventosByYear(sp); // SP-only para Rangos
+    });
   }, [verEventos, currentDate, eventosYear]);
 
   // Fetch eventos del año anterior y mapear a fechas del año actual
@@ -1196,7 +1201,13 @@ function App() {
             yearType={yearType}
             verEventos={verEventos}
             onVerEventosChange={(v) => setVerEventos(v)}
-            eventosByYear={eventosByYear}
+            eventosByYear={spEventosByYear}
+            verEventosAjuste={verEventosAjuste}
+            onVerEventosAjusteChange={(v) => setVerEventosAjuste(v)}
+            eventosAjusteByDate={eventosAjusteByDate}
+            verEventosAA={verEventosAA}
+            onVerEventosAAChange={(v) => setVerEventosAA(v)}
+            eventosAAByDate={eventosAAByDate}
           />
         )}
 

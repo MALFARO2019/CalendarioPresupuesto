@@ -156,6 +156,8 @@ async function getRangosData(req, res) {
                 SUM(MontoReal) as real,
                 SUM(CASE WHEN MontoReal > 0 THEN MontoAnterior ELSE 0 END) as anterior,
                 SUM(CASE WHEN MontoReal > 0 THEN ISNULL(MontoAnteriorAjustado, 0) ELSE 0 END) as anteriorAjustado,
+                SUM(MontoAnterior) as anteriorFull,
+                SUM(ISNULL(MontoAnteriorAjustado, 0)) as anteriorAjustadoFull,
                 CASE 
                     WHEN SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END) > 0 
                     THEN SUM(MontoReal) / SUM(CASE WHEN MontoReal > 0 THEN Monto ELSE 0 END)
