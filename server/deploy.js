@@ -134,6 +134,22 @@ function addDeployEntry(version, notes, servers, deployedBy, status = 'pending')
     };
     log.entries.push(entry);
     writeDeployLog(log);
+
+    // Auto-sync local package.json version so getCurrentVersion() stays accurate
+    if (version && version !== 'sin versión') {
+        try {
+            const pkgPath = path.join(__dirname, 'package.json');
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            const semver = version.replace(/^v/, '');
+            const parts = semver.split('.');
+            const fullVersion = parts.length === 2 ? `${semver}.0` : semver;
+            if (pkg.version !== fullVersion) {
+                pkg.version = fullVersion;
+                fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+            }
+        } catch (e) { /* non-fatal */ }
+    }
+
     return entry;
 }
 
@@ -368,6 +384,27 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
     } catch (e) {
         // Non-fatal: version display might be wrong but deploy can continue
         steps[steps.length - 1] = { step: 'Registrando versión', status: 'warning', detail: e.message.substring(0, 200) };
+    }
+
+    // Step 2c: Update package.json version on remote server (primary source for version-check)
+    if (deployVersion) {
+        try {
+            const semverVersion = deployVersion.replace(/^v/, '');
+            // Ensure it has 3 parts (e.g. 1.2 -> 1.2.0)
+            const parts = semverVersion.split('.');
+            const fullVersion = parts.length === 2 ? `${semverVersion}.0` : semverVersion;
+            await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+                `$pkgPath = '${appDir}\\\\\\\\server\\\\\\\\package.json'; ` +
+                `if (Test-Path $pkgPath) { ` +
+                `$pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json; ` +
+                `$pkg.version = '${fullVersion}'; ` +
+                `$pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -Encoding UTF8; ` +
+                `Write-Output 'OK' } else { Write-Output 'NO_FILE' } }`
+            );
+        } catch (e) {
+            // Non-fatal, deploy-log.json serves as fallback
+        }
     }
 
     // Step 3: Install server dependencies
