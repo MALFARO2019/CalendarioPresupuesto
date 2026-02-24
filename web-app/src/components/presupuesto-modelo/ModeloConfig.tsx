@@ -306,6 +306,10 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
                                                     <span>🔄 {new Date(c.ultimoCalculo).toLocaleString('es-CR')}</span>
                                                 )}
                                             </div>
+                                            <div className="text-[10px] text-gray-400 mt-0.5 flex flex-wrap gap-x-3 font-mono">
+                                                <span title="Stored Procedure">🗄️ SP_CALCULAR_PRESUPUESTO</span>
+                                                {c.ejecutarEnJob && <span title="SQL Agent Job (primario) + Node.js fallback (+30min)">📋 Job: Modelo Presupuesto - Calculo Diario</span>}
+                                            </div>
                                         </div>
                                     </div>
                                     {/* Action buttons row */}

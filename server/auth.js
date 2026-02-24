@@ -424,6 +424,17 @@ IMPORTANTE:
             END
         `);
 
+        // Add ApareceEnTitulo* columns for profile visibility in view headers
+        const apareceColumns = ['ApareceEnTituloAlcance', 'ApareceEnTituloMensual', 'ApareceEnTituloAnual', 'ApareceEnTituloTendencia', 'ApareceEnTituloRangos'];
+        for (const col of apareceColumns) {
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_PERFILES') AND name = '${col}')
+                BEGIN
+                    ALTER TABLE APP_PERFILES ADD [${col}] BIT NOT NULL DEFAULT 1;
+                END
+            `);
+        }
+
         // Add Modelo Presupuesto permissions to APP_PERFILES
         for (const col of modeloPresupuestoColumns) {
             await pool.request().query(`
@@ -1059,6 +1070,11 @@ async function getAllProfiles() {
         restaurarVersiones: p.restaurarVersiones || false,
         esAdmin: p.EsAdmin,
         permitirEnvioClave: p.PermitirEnvioClave,
+        apareceEnTituloAlcance: p.ApareceEnTituloAlcance ?? true,
+        apareceEnTituloMensual: p.ApareceEnTituloMensual ?? true,
+        apareceEnTituloAnual: p.ApareceEnTituloAnual ?? true,
+        apareceEnTituloTendencia: p.ApareceEnTituloTendencia ?? true,
+        apareceEnTituloRangos: p.ApareceEnTituloRangos ?? true,
         usuariosAsignados: p.UsuariosAsignados,
         fechaCreacion: p.FechaCreacion,
         fechaModificacion: p.FechaModificacion,
@@ -1109,6 +1125,11 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
         .input('ejecutarRecalculo', sql.Bit, permisos.ejecutarRecalculo || false)
         .input('ajustarCurva', sql.Bit, permisos.ajustarCurva || false)
         .input('restaurarVersiones', sql.Bit, permisos.restaurarVersiones || false)
+        .input('apareceEnTituloAlcance', sql.Bit, permisos.apareceEnTituloAlcance !== undefined ? permisos.apareceEnTituloAlcance : true)
+        .input('apareceEnTituloMensual', sql.Bit, permisos.apareceEnTituloMensual !== undefined ? permisos.apareceEnTituloMensual : true)
+        .input('apareceEnTituloAnual', sql.Bit, permisos.apareceEnTituloAnual !== undefined ? permisos.apareceEnTituloAnual : true)
+        .input('apareceEnTituloTendencia', sql.Bit, permisos.apareceEnTituloTendencia !== undefined ? permisos.apareceEnTituloTendencia : true)
+        .input('apareceEnTituloRangos', sql.Bit, permisos.apareceEnTituloRangos !== undefined ? permisos.apareceEnTituloRangos : true)
         .query(`
             INSERT INTO APP_PERFILES (
                 Nombre, Descripcion, AccesoTendencia, AccesoTactica, AccesoEventos,
@@ -1117,7 +1138,9 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
                 EsAdmin, PermitirEnvioClave, UsuarioCreador,
                 accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual,
                 verAjustePresupuesto, verVersiones, verBitacora, verReferencias,
-                editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones
+                editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones,
+                ApareceEnTituloAlcance, ApareceEnTituloMensual, ApareceEnTituloAnual,
+                ApareceEnTituloTendencia, ApareceEnTituloRangos
             )
             OUTPUT INSERTED.Id
             VALUES (
@@ -1127,7 +1150,9 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
                 @esAdmin, @permitirEnvioClave, @usuarioCreador,
                 @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual,
                 @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias,
-                @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones
+                @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones,
+                @apareceEnTituloAlcance, @apareceEnTituloMensual, @apareceEnTituloAnual,
+                @apareceEnTituloTendencia, @apareceEnTituloRangos
             )
         `);
 
@@ -1187,6 +1212,11 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
         .input('ejecutarRecalculo', sql.Bit, permisos.ejecutarRecalculo || false)
         .input('ajustarCurva', sql.Bit, permisos.ajustarCurva || false)
         .input('restaurarVersiones', sql.Bit, permisos.restaurarVersiones || false)
+        .input('apareceEnTituloAlcance', sql.Bit, permisos.apareceEnTituloAlcance !== undefined ? permisos.apareceEnTituloAlcance : true)
+        .input('apareceEnTituloMensual', sql.Bit, permisos.apareceEnTituloMensual !== undefined ? permisos.apareceEnTituloMensual : true)
+        .input('apareceEnTituloAnual', sql.Bit, permisos.apareceEnTituloAnual !== undefined ? permisos.apareceEnTituloAnual : true)
+        .input('apareceEnTituloTendencia', sql.Bit, permisos.apareceEnTituloTendencia !== undefined ? permisos.apareceEnTituloTendencia : true)
+        .input('apareceEnTituloRangos', sql.Bit, permisos.apareceEnTituloRangos !== undefined ? permisos.apareceEnTituloRangos : true)
         .query(`
             UPDATE APP_PERFILES
             SET Nombre = @nombre,
@@ -1215,6 +1245,11 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
                 ejecutarRecalculo = @ejecutarRecalculo,
                 ajustarCurva = @ajustarCurva,
                 restaurarVersiones = @restaurarVersiones,
+                ApareceEnTituloAlcance = @apareceEnTituloAlcance,
+                ApareceEnTituloMensual = @apareceEnTituloMensual,
+                ApareceEnTituloAnual = @apareceEnTituloAnual,
+                ApareceEnTituloTendencia = @apareceEnTituloTendencia,
+                ApareceEnTituloRangos = @apareceEnTituloRangos,
                 FechaModificacion = GETDATE()
             WHERE Id = @id
         `);

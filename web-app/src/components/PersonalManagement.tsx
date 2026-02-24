@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from './ui/Toast';
-import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchAsignaciones, fetchProfiles, fetchPersonal, createAsignacion, updateAsignacion, deleteAsignacion as apiDeleteAsignacion } from '../api';
-import type { Profile, PersonalItem, Asignacion } from '../api';
+import { API_BASE, getToken, fetchPersonalStores, fetchLocalesSinCobertura, fetchAsignaciones, fetchProfiles, fetchPersonal, createAsignacion, updateAsignacion, deleteAsignacion as apiDeleteAsignacion, fetchCargos, updateCargo } from '../api';
+import type { Profile, PersonalItem, Asignacion, Cargo } from '../api';
 import { Plus, Edit2, Trash2, MapPin, RefreshCw, X, Calendar, AlertTriangle, Shield, Search } from 'lucide-react';
 import { SearchableSelect } from './SearchableSelect';
 
@@ -13,10 +13,12 @@ export const PersonalManagement: React.FC = () => {
     const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'asignaciones' | 'cobertura'>('asignaciones');
+    const [activeTab, setActiveTab] = useState<'asignaciones' | 'cobertura' | 'cargos'>('asignaciones');
     const [allStores, setAllStores] = useState<string[]>([]);
     const [localesSinCobertura, setLocalesSinCobertura] = useState<{ Local: string, PerfilesFaltantes: string }[]>([]);
     const [loadingCobertura, setLoadingCobertura] = useState(false);
+    const [cargos, setCargos] = useState<Cargo[]>([]);
+    const [savingCargo, setSavingCargo] = useState<number | null>(null);
 
     // Asignacion form
     const [showAsigForm, setShowAsigForm] = useState(false);
@@ -96,12 +98,29 @@ export const PersonalManagement: React.FC = () => {
         finally { setLoadingCobertura(false); }
     }, [activeTab, coberturaPerfil, coberturaMonth, coberturaYear]);
 
+    const loadCargos = useCallback(async () => {
+        try {
+            const data = await fetchCargos();
+            setCargos(data);
+        } catch (e: any) { console.error('Error loading cargos', e); }
+    }, []);
+
+    const toggleCargoVisibility = async (cargoId: number, field: string, currentValue: boolean) => {
+        setSavingCargo(cargoId);
+        try {
+            await updateCargo(cargoId, { [field]: !currentValue });
+            await loadCargos();
+        } catch (e: any) { setError(e.message); }
+        finally { setSavingCargo(null); }
+    };
+
     useEffect(() => {
         loadProfiles();
         loadUsuarios();
         loadAsignaciones();
         loadStores();
-    }, [loadProfiles, loadUsuarios, loadAsignaciones, loadStores]);
+        loadCargos();
+    }, [loadProfiles, loadUsuarios, loadAsignaciones, loadStores, loadCargos]);
 
     useEffect(() => {
         loadCobertura();
@@ -193,10 +212,10 @@ export const PersonalManagement: React.FC = () => {
             )}
 
             <div className="flex items-center gap-1 sm:gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
-                {(['asignaciones', 'cobertura'] as const).map(tab => (
+                {(['asignaciones', 'cobertura', 'cargos'] as const).map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)}
                         className={`px-3 sm:px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : '🛡️ Cobertura'}
+                        {tab === 'asignaciones' ? `📋 Asignaciones (${asignaciones.length})` : tab === 'cobertura' ? '🛡️ Cobertura' : '🏷️ Cargos'}
                     </button>
                 ))}
             </div>
@@ -368,6 +387,61 @@ export const PersonalManagement: React.FC = () => {
                             ))}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* ── TAB: Cargos (Visibility per View) ── */}
+            {activeTab === 'cargos' && (
+                <div>
+                    <p className="text-sm text-gray-500 mb-4">Configura en cuáles vistas se muestra cada cargo/perfil junto al nombre del local.</p>
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th className="text-left px-4 py-3 font-semibold text-gray-600">Cargo</th>
+                                        <th className="text-center px-2 py-3 font-semibold text-gray-600 text-xs">Alcance</th>
+                                        <th className="text-center px-2 py-3 font-semibold text-gray-600 text-xs">Mensual</th>
+                                        <th className="text-center px-2 py-3 font-semibold text-gray-600 text-xs">Anual</th>
+                                        <th className="text-center px-2 py-3 font-semibold text-gray-600 text-xs">Tendencia</th>
+                                        <th className="text-center px-2 py-3 font-semibold text-gray-600 text-xs">Rangos</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {cargos.filter(c => c.ACTIVO).map(cargo => (
+                                        <tr key={cargo.ID} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-4 py-3 font-medium text-gray-800">
+                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">{cargo.NOMBRE}</span>
+                                            </td>
+                                            {[
+                                                { field: 'mostrarEnAlcance', value: cargo.MostrarEnAlcance },
+                                                { field: 'mostrarEnMensual', value: cargo.MostrarEnMensual },
+                                                { field: 'mostrarEnAnual', value: cargo.MostrarEnAnual },
+                                                { field: 'mostrarEnTendencia', value: cargo.MostrarEnTendencia },
+                                                { field: 'mostrarEnRangos', value: cargo.MostrarEnRangos },
+                                            ].map(({ field, value }) => (
+                                                <td key={field} className="text-center px-2 py-3">
+                                                    <button
+                                                        onClick={() => toggleCargoVisibility(cargo.ID, field, value)}
+                                                        disabled={savingCargo === cargo.ID}
+                                                        className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center transition-all ${value
+                                                                ? 'bg-indigo-500 border-indigo-500 text-white hover:bg-indigo-600'
+                                                                : 'bg-white border-gray-300 text-transparent hover:border-indigo-300'
+                                                            } ${savingCargo === cargo.ID ? 'opacity-50' : ''}`}
+                                                    >
+                                                        {value && <span className="text-xs font-bold">✓</span>}
+                                                    </button>
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                    {cargos.filter(c => c.ACTIVO).length === 0 && (
+                                        <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No hay cargos configurados.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             )}
 

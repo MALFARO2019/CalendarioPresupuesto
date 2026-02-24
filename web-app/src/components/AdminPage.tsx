@@ -15,7 +15,8 @@ import {
 } from '../api';
 import {
     ArrowLeft, UserPlus, Trash2, Loader2, AlertCircle,
-    CheckCircle, Users, Store, Calendar, Edit2, X, Check, Shield, Bot, Save, RotateCcw, Ticket
+    CheckCircle, Users, Store, Calendar, Edit2, X, Check, Shield, Bot, Save, RotateCcw, Ticket,
+    Eye, EyeOff
 } from 'lucide-react';
 import { EventsManagement } from './EventsManagement';
 import { DatabaseConfigPanel } from './DatabaseConfigPanel';
@@ -124,6 +125,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editEmail, setEditEmail] = useState('');
     const [editNombre, setEditNombre] = useState('');
     const [editClave, setEditClave] = useState('');
+    const [showEditClave, setShowEditClave] = useState(false);
     const [editStores, setEditStores] = useState<string[]>([]);
     const [editCanales, setEditCanales] = useState<string[]>([]);
     const [editActivo, setEditActivo] = useState(true);
@@ -415,6 +417,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setEditEmail(user.email);
         setEditNombre(user.nombre);
         setEditClave('');
+        setShowEditClave(false);
         setEditStores(user.allowedStores || []);
         setEditCanales(user.allowedCanales || ALL_CANALES);
         setEditActivo(user.activo);
@@ -1169,10 +1172,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                             <table className="w-full">
                                                 <thead>
                                                     <tr className="bg-gray-50 border-b border-gray-200">
-                                                        <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[20%]">Email</th>
-                                                        <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[12%]">Nombre</th>
+                                                        <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[22%]">Email</th>
+                                                        <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[14%]">Nombre</th>
                                                         <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[10%]">Perfil</th>
-                                                        <th className="text-center px-2 py-3 text-xs font-bold text-gray-500 uppercase w-[7%]">Clave</th>
                                                         <th className="text-left px-3 py-3 text-xs font-bold text-gray-500 uppercase">Permisos / Canales</th>
                                                         <th className="text-center px-2 py-3 text-xs font-bold text-gray-500 uppercase w-[7%]">Estado</th>
                                                         <th className="text-right px-3 py-3 text-xs font-bold text-gray-500 uppercase w-[6%]"></th>
@@ -1181,7 +1183,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                 <tbody>
                                                     {filteredUsers.length === 0 ? (
                                                         <tr>
-                                                            <td colSpan={7} className="text-center py-12 text-gray-400">
+                                                            <td colSpan={6} className="text-center py-12 text-gray-400">
                                                                 {searchTerm
                                                                     ? `No se encontraron usuarios que coincidan con "${searchTerm}"`
                                                                     : 'No hay usuarios registrados. Haga clic en "Agregar Usuario" para crear uno.'}
@@ -1209,9 +1211,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                                             : <span className="text-[10px] text-gray-400">—</span>;
                                                                     })()}
                                                                 </td>
-                                                                <td className="px-3 py-2">
-                                                                    <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded tracking-wider">{user.clave || '—'}</span>
-                                                                </td>
+
                                                                 <td className="px-3 py-2">
                                                                     <div className="flex flex-wrap gap-1">
                                                                         {user.esAdmin && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium">Admin</span>}
@@ -1347,6 +1347,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                         </div>
                                                     </div>
 
+                                                    {/* Clave actual con ojo ocultador */}
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Clave Actual</label>
+                                                        <div className="flex items-center gap-2 bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3">
+                                                            <span className="font-mono text-sm text-indigo-600 tracking-[0.3em] flex-1">
+                                                                {showEditClave
+                                                                    ? (editingUser?.clave || '—')
+                                                                    : (editingUser?.clave ? '••••••' : '—')}
+                                                            </span>
+                                                            {editingUser?.clave && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setShowEditClave(!showEditClave)}
+                                                                    className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                                    title={showEditClave ? 'Ocultar clave' : 'Mostrar clave'}
+                                                                >
+                                                                    {showEditClave ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Campo para nueva clave */}
                                                     <div>
                                                         <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Nueva Clave (6 dígitos, dejar vacío para no cambiar)</label>
                                                         <input
@@ -1355,7 +1378,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             onChange={e => setEditClave(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                                             placeholder="Dejar vacío para mantener la actual"
                                                             maxLength={6}
-                                                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring border-indigo-200 text-sm transition-all tracking-[0.3em] font-mono"
+                                                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm transition-all tracking-[0.3em] font-mono"
                                                         />
                                                     </div>
 

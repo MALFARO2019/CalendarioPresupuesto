@@ -169,12 +169,15 @@ function App() {
       setAdminNameForLocal([]);
       return;
     }
+    // Map dashboardTab to a vista name for filtering cargos visibility
+    const vistaMap: Record<string, string> = { mensual: 'mensual', anual: 'anual', tendencia: 'tendencia', rangos: 'rangos' };
+    const vista = vistaMap[dashboardTab] || 'alcance';
     let cancelled = false;
-    fetchAdminPorLocal(filterLocal).then(lista => {
+    fetchAdminPorLocal(filterLocal, vista).then(lista => {
       if (!cancelled) setAdminNameForLocal(lista);
     });
     return () => { cancelled = true; };
-  }, [filterLocal, groups]);
+  }, [filterLocal, groups, dashboardTab]);
 
   // Fetch adjustment events (USARENPRESUPUESTO) - no year filter
   useEffect(() => {
@@ -1072,6 +1075,7 @@ function App() {
                 startDate: `${currentDate.getFullYear()}-01-01`,
                 endDate: fechaLimite
               }}
+              personalLocal={adminNameForLocal}
             />
 
             <div id="annual-calendar-container">

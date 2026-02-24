@@ -391,11 +391,11 @@ async function renameCargo(id, newName) {
 async function getPersonalPorLocal(local, vista = null) {
     const pool = await poolPromise;
     let vistaFilter = '';
-    if (vista === 'alcance') vistaFilter = 'AND ISNULL(c.MostrarEnAlcance, 1) = 1';
-    else if (vista === 'mensual') vistaFilter = 'AND ISNULL(c.MostrarEnMensual, 1) = 1';
-    else if (vista === 'anual') vistaFilter = 'AND ISNULL(c.MostrarEnAnual, 1) = 1';
-    else if (vista === 'tendencia') vistaFilter = 'AND ISNULL(c.MostrarEnTendencia, 1) = 1';
-    else if (vista === 'rangos') vistaFilter = 'AND ISNULL(c.MostrarEnRangos, 1) = 1';
+    if (vista === 'alcance') vistaFilter = 'AND ISNULL(p.ApareceEnTituloAlcance, 1) = 1';
+    else if (vista === 'mensual') vistaFilter = 'AND ISNULL(p.ApareceEnTituloMensual, 1) = 1';
+    else if (vista === 'anual') vistaFilter = 'AND ISNULL(p.ApareceEnTituloAnual, 1) = 1';
+    else if (vista === 'tendencia') vistaFilter = 'AND ISNULL(p.ApareceEnTituloTendencia, 1) = 1';
+    else if (vista === 'rangos') vistaFilter = 'AND ISNULL(p.ApareceEnTituloRangos, 1) = 1';
 
     const result = await pool.request()
         .input('local', sql.NVarChar, local)
@@ -404,7 +404,7 @@ async function getPersonalPorLocal(local, vista = null) {
                    a.LOCAL, a.PERFIL, a.FECHA_INICIO, a.FECHA_FIN
             FROM DIM_PERSONAL_ASIGNACIONES a
             INNER JOIN APP_USUARIOS u ON u.Id = a.USUARIO_ID
-            LEFT JOIN DIM_PERSONAL_CARGOS c ON c.NOMBRE = a.PERFIL AND c.ACTIVO = 1
+            LEFT JOIN APP_PERFILES p ON p.Nombre = a.PERFIL
             WHERE a.LOCAL = @local AND a.ACTIVO = 1
               AND (a.FECHA_FIN IS NULL OR a.FECHA_FIN >= CAST(GETDATE() AS DATE))
               ${vistaFilter}

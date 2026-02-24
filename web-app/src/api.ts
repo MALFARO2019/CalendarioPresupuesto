@@ -883,6 +883,11 @@ export interface Profile {
     restaurarVersiones: boolean;
     esAdmin: boolean;
     permitirEnvioClave: boolean;
+    apareceEnTituloAlcance: boolean;
+    apareceEnTituloMensual: boolean;
+    apareceEnTituloAnual: boolean;
+    apareceEnTituloTendencia: boolean;
+    apareceEnTituloRangos: boolean;
     usuariosAsignados: number;
     fechaCreacion: string;
     fechaModificacion: string | null;
@@ -928,6 +933,11 @@ export async function createProfile(data: {
         restaurarVersiones?: boolean;
         esAdmin: boolean;
         permitirEnvioClave: boolean;
+        apareceEnTituloAlcance?: boolean;
+        apareceEnTituloMensual?: boolean;
+        apareceEnTituloAnual?: boolean;
+        apareceEnTituloTendencia?: boolean;
+        apareceEnTituloRangos?: boolean;
     };
 }): Promise<{ success: boolean; profileId: number }> {
     const response = await fetch(`${API_BASE}/admin/profiles`, {
@@ -972,6 +982,11 @@ export async function updateProfile(
             restaurarVersiones?: boolean;
             esAdmin: boolean;
             permitirEnvioClave: boolean;
+            apareceEnTituloAlcance?: boolean;
+            apareceEnTituloMensual?: boolean;
+            apareceEnTituloAnual?: boolean;
+            apareceEnTituloTendencia?: boolean;
+            apareceEnTituloRangos?: boolean;
         };
     }
 ): Promise<{ success: boolean }> {

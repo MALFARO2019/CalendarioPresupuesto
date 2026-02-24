@@ -52,6 +52,11 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
         restaurarVersiones: false,
         esAdmin: false,
         permitirEnvioClave: true,
+        apareceEnTituloAlcance: true,
+        apareceEnTituloMensual: true,
+        apareceEnTituloAnual: true,
+        apareceEnTituloTendencia: true,
+        apareceEnTituloRangos: true,
     });
 
     useEffect(() => {
@@ -101,6 +106,11 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     restaurarVersiones: formData.restaurarVersiones,
                     esAdmin: formData.esAdmin,
                     permitirEnvioClave: formData.permitirEnvioClave,
+                    apareceEnTituloAlcance: formData.apareceEnTituloAlcance,
+                    apareceEnTituloMensual: formData.apareceEnTituloMensual,
+                    apareceEnTituloAnual: formData.apareceEnTituloAnual,
+                    apareceEnTituloTendencia: formData.apareceEnTituloTendencia,
+                    apareceEnTituloRangos: formData.apareceEnTituloRangos,
                 }
             });
             setShowCreateModal(false);
@@ -142,6 +152,11 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     restaurarVersiones: formData.restaurarVersiones,
                     esAdmin: formData.esAdmin,
                     permitirEnvioClave: formData.permitirEnvioClave,
+                    apareceEnTituloAlcance: formData.apareceEnTituloAlcance,
+                    apareceEnTituloMensual: formData.apareceEnTituloMensual,
+                    apareceEnTituloAnual: formData.apareceEnTituloAnual,
+                    apareceEnTituloTendencia: formData.apareceEnTituloTendencia,
+                    apareceEnTituloRangos: formData.apareceEnTituloRangos,
                 }
             });
             setEditingProfile(null);
@@ -215,6 +230,11 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             restaurarVersiones: false,
             esAdmin: false,
             permitirEnvioClave: true,
+            apareceEnTituloAlcance: true,
+            apareceEnTituloMensual: true,
+            apareceEnTituloAnual: true,
+            apareceEnTituloTendencia: true,
+            apareceEnTituloRangos: true,
         });
     };
 
@@ -247,6 +267,11 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             restaurarVersiones: profile.restaurarVersiones || false,
             esAdmin: profile.esAdmin,
             permitirEnvioClave: profile.permitirEnvioClave,
+            apareceEnTituloAlcance: profile.apareceEnTituloAlcance ?? true,
+            apareceEnTituloMensual: profile.apareceEnTituloMensual ?? true,
+            apareceEnTituloAnual: profile.apareceEnTituloAnual ?? true,
+            apareceEnTituloTendencia: profile.apareceEnTituloTendencia ?? true,
+            apareceEnTituloRangos: profile.apareceEnTituloRangos ?? true,
         });
     };
 
@@ -472,6 +497,30 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                                             ))}
                                         </>
                                     )}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-3">📌 Aparece en títulos de vista</label>
+                                <p className="text-xs text-gray-500 mb-2">Controla si el nombre de este perfil aparece en el encabezado de cada vista</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {[
+                                        { key: 'apareceEnTituloAlcance', label: 'Alcance de Presupuesto' },
+                                        { key: 'apareceEnTituloMensual', label: 'Mensual' },
+                                        { key: 'apareceEnTituloAnual', label: 'Anual' },
+                                        { key: 'apareceEnTituloTendencia', label: 'Tendencia' },
+                                        { key: 'apareceEnTituloRangos', label: 'Rangos' },
+                                    ].map(({ key, label }) => (
+                                        <label key={key} className="flex items-center gap-2 p-3 bg-teal-50 rounded-lg cursor-pointer hover:bg-teal-100 border-l-2 border-teal-400">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData[key as keyof typeof formData] as boolean}
+                                                onChange={e => setFormData({ ...formData, [key]: e.target.checked })}
+                                                className="w-4 h-4 text-teal-600"
+                                            />
+                                            <span className="text-sm font-medium text-teal-800">{label}</span>
+                                        </label>
+                                    ))}
                                 </div>
                             </div>
                         </div>
