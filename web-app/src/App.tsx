@@ -26,6 +26,7 @@ import { ComparableDaysTable } from './components/ComparableDaysTable';
 import { SummaryCard } from './components/SummaryCard';
 import { GroupMembersCard } from './components/GroupMembersCard';
 import { RangosView } from './components/RangosView';
+import { ComparableMonthsTable } from './components/ComparableMonthsTable';
 import { PreferencesView } from './components/PreferencesView';
 import { InocuidadView } from './components/inocuidad/InocuidadView';
 import { ReportsView } from './components/reports/ReportsView';
@@ -1101,6 +1102,15 @@ function App() {
                 eventosAjusteByDate={eventosAjusteByDate}
               />
             </div>
+
+            {/* Comparable Months Table */}
+            <ComparableMonthsTable
+              data={data}
+              kpi={filterKpi}
+              yearType={yearType}
+              year={year}
+              fechaLimite={fechaLimite}
+            />
 
             <InfoCard />
 
