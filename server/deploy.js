@@ -626,12 +626,15 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         if (deployVersion && normalizeVersion(remoteVersion) === normalizeVersion(deployVersion)) {
             steps[steps.length - 1] = { step: 'Verificando API', status: 'success', detail: `API responde ${remoteVersion} ✓` };
         } else if (remoteVersion.startsWith('ERROR:')) {
-            steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `API no responde: ${remoteVersion.substring(0, 150)}. Diag: ${diagInfo}` };
+            steps[steps.length - 1] = { step: 'Verificando API', status: 'error', detail: `API no responde: ${remoteVersion.substring(0, 150)}. Diag: ${diagInfo}` };
+            return { success: false, steps, timing: buildTiming(startTime) };
         } else {
-            steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `API responde "${remoteVersion}" pero se esperaba "${deployVersion}". Diag: ${diagInfo}` };
+            steps[steps.length - 1] = { step: 'Verificando API', status: 'error', detail: `API responde "${remoteVersion}" pero se esperaba "${deployVersion}". Diag: ${diagInfo}` };
+            return { success: false, steps, timing: buildTiming(startTime) };
         }
     } catch (e) {
-        steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `No se pudo verificar: ${e.message.substring(0, 150)}` };
+        steps[steps.length - 1] = { step: 'Verificando API', status: 'error', detail: `No se pudo verificar: ${e.message.substring(0, 150)}` };
+        return { success: false, steps, timing: buildTiming(startTime) };
     }
 
     // Record the deployed version for this server
