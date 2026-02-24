@@ -1023,7 +1023,7 @@ function App() {
               </div>
             </div>
 
-            {/* Comparable Days Table */}
+            {/* ⚠️ DO NOT REMOVE — Comparable Days Table (Días Comparables) — CRITICAL: must always be visible */}
             <div className="print-page">
               <div className="mt-8">
                 <ComparableDaysTable
@@ -1103,7 +1103,8 @@ function App() {
               />
             </div>
 
-            {/* Comparable Months Table */}
+
+            {/* ⚠️ DO NOT REMOVE — Comparable Months Table (Meses Comparables) — CRITICAL: must always be visible */}
             <ComparableMonthsTable
               data={data}
               kpi={filterKpi}
