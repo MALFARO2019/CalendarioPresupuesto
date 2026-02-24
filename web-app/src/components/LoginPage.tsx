@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { login, adminLogin, API_BASE } from '../api';
-import { Mail, Lock, Loader2, AlertCircle, Settings } from 'lucide-react';
+import { login, adminLogin, fetchImpersonateUsers, impersonateLogin, API_BASE } from '../api';
+import { Mail, Lock, Loader2, AlertCircle, Settings, Eye, Search, User } from 'lucide-react';
 
 interface LoginPageProps {
     onLoginSuccess: () => void;
@@ -22,6 +22,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminAcc
     const [adminPassword, setAdminPassword] = useState('');
     const [adminLoading, setAdminLoading] = useState(false);
     const [adminError, setAdminError] = useState('');
+
+    // Ver Como (impersonation) state
+    const [showVerComo, setShowVerComo] = useState(false);
+    const [verComoStep, setVerComoStep] = useState<'validating' | 'selecting'>('validating');
+    const [verComoLoading, setVerComoLoading] = useState(false);
+    const [verComoError, setVerComoError] = useState('');
+    const [verComoUsers, setVerComoUsers] = useState<{ id: number; email: string; nombre: string }[]>([]);
+    const [verComoFilter, setVerComoFilter] = useState('');
+    const [verComoSelectingId, setVerComoSelectingId] = useState<number | null>(null);
 
     // Version state
     const [appVersion, setAppVersion] = useState('');
@@ -113,6 +122,61 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminAcc
             setAdminLoading(false);
         }
     };
+
+    // Handle "Ver como" flow
+    const handleVerComoOpen = () => {
+        setVerComoError('');
+        setVerComoUsers([]);
+        setVerComoFilter('');
+        setVerComoSelectingId(null);
+
+        if (!email.trim() || !clave.trim()) {
+            setVerComoStep('validating');
+            setVerComoError('Primero ingrese sus credenciales de administrador en el formulario de login.');
+            setShowVerComo(true);
+            return;
+        }
+
+        // Auto-validate
+        setVerComoStep('validating');
+        setShowVerComo(true);
+        setVerComoLoading(true);
+
+        fetchImpersonateUsers(email.trim(), clave.trim())
+            .then(users => {
+                setVerComoUsers(users);
+                setVerComoStep('selecting');
+                setVerComoLoading(false);
+            })
+            .catch(err => {
+                setVerComoLoading(false);
+                setVerComoError(err.message || 'Error al validar credenciales.');
+            });
+    };
+
+    const handleVerComoSelect = async (targetUserId: number) => {
+        setVerComoSelectingId(targetUserId);
+        setVerComoError('');
+
+        try {
+            const result = await impersonateLogin(email.trim(), clave.trim(), targetUserId);
+            if (result.success) {
+                setShowVerComo(false);
+                onLoginSuccess();
+            } else {
+                setVerComoError(result.error || 'Error al impersonar usuario.');
+                setVerComoSelectingId(null);
+            }
+        } catch (err: any) {
+            setVerComoError('No se pudo conectar al servidor.');
+            setVerComoSelectingId(null);
+        }
+    };
+
+    const filteredVerComoUsers = verComoUsers.filter(u => {
+        const term = verComoFilter.toLowerCase();
+        return u.nombre.toLowerCase().includes(term) || u.email.toLowerCase().includes(term);
+    });
 
     // Fetch version on mount
     useEffect(() => {
@@ -208,14 +272,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminAcc
                             >
                                 ¿Olvidaste tu clave?
                             </button>
-                            <div>
+                            <div className="flex items-center justify-center gap-3">
                                 <button
                                     type="button"
                                     onClick={() => { setShowAdminAccess(true); setAdminError(''); setAdminPassword(''); }}
-                                    className="text-white/40 hover:text-white/70 text-xs font-medium transition-colors flex items-center gap-1 mx-auto"
+                                    className="text-white/40 hover:text-white/70 text-xs font-medium transition-colors flex items-center gap-1"
                                 >
                                     <Settings className="w-3 h-3" />
                                     Acceso Administrador
+                                </button>
+                                <span className="text-white/20">|</span>
+                                <button
+                                    type="button"
+                                    onClick={handleVerComoOpen}
+                                    className="text-white/40 hover:text-white/70 text-xs font-medium transition-colors flex items-center gap-1"
+                                >
+                                    <Eye className="w-3 h-3" />
+                                    Ver como
                                 </button>
                             </div>
                         </div>
@@ -362,6 +435,117 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminAcc
                                         )}
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Ver Como (Impersonation) Modal */}
+                    {showVerComo && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl max-h-[85vh] flex flex-col">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 bg-teal-100 rounded-xl flex items-center justify-center">
+                                        <Eye className="w-5 h-5 text-teal-600" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-gray-800">Ver como</h3>
+                                </div>
+
+                                {verComoStep === 'validating' ? (
+                                    <>
+                                        <p className="text-gray-500 text-sm mb-6">
+                                            {verComoLoading
+                                                ? 'Validando credenciales de administrador...'
+                                                : 'Ingrese sus credenciales de administrador en el formulario de login y presione "Ver como" de nuevo.'}
+                                        </p>
+
+                                        {verComoLoading && (
+                                            <div className="flex justify-center py-8">
+                                                <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
+                                            </div>
+                                        )}
+
+                                        {verComoError && (
+                                            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+                                                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                                                <span className="text-red-700 text-sm">{verComoError}</span>
+                                            </div>
+                                        )}
+
+                                        <button
+                                            onClick={() => { setShowVerComo(false); setVerComoError(''); }}
+                                            className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all text-sm mt-auto"
+                                        >
+                                            Cerrar
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-gray-500 text-sm mb-4">
+                                            Seleccione un usuario para ver la aplicación con sus permisos.
+                                        </p>
+
+                                        {/* Search filter */}
+                                        <div className="relative mb-3">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                value={verComoFilter}
+                                                onChange={(e) => setVerComoFilter(e.target.value)}
+                                                placeholder="Buscar por nombre o email..."
+                                                className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-all text-sm"
+                                                autoFocus
+                                            />
+                                        </div>
+
+                                        {verComoError && (
+                                            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-3">
+                                                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                                                <span className="text-red-700 text-sm">{verComoError}</span>
+                                            </div>
+                                        )}
+
+                                        {/* User list */}
+                                        <div className="flex-1 overflow-y-auto min-h-0 space-y-1 mb-4 max-h-[45vh]">
+                                            {filteredVerComoUsers.length === 0 ? (
+                                                <p className="text-center text-gray-400 text-sm py-8">
+                                                    {verComoFilter ? 'No se encontraron usuarios' : 'No hay usuarios activos'}
+                                                </p>
+                                            ) : (
+                                                filteredVerComoUsers.map(u => (
+                                                    <button
+                                                        key={u.id}
+                                                        onClick={() => handleVerComoSelect(u.id)}
+                                                        disabled={verComoSelectingId !== null}
+                                                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${verComoSelectingId === u.id
+                                                            ? 'bg-teal-50 border-2 border-teal-300'
+                                                            : 'hover:bg-gray-50 border-2 border-transparent'
+                                                            } disabled:opacity-50`}
+                                                    >
+                                                        <div className="w-9 h-9 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                            {verComoSelectingId === u.id ? (
+                                                                <Loader2 className="w-4 h-4 animate-spin text-teal-600" />
+                                                            ) : (
+                                                                <User className="w-4 h-4 text-teal-600" />
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="text-sm font-semibold text-gray-800 truncate">{u.nombre}</div>
+                                                            <div className="text-xs text-gray-500 truncate">{u.email}</div>
+                                                        </div>
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        <button
+                                            onClick={() => { setShowVerComo(false); setVerComoError(''); setVerComoSelectingId(null); }}
+                                            className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all text-sm"
+                                            disabled={verComoSelectingId !== null}
+                                        >
+                                            Cancelar
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}

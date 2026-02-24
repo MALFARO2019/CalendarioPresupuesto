@@ -10,6 +10,18 @@ const axios = require('axios');
 const formsService = require('./formsService');
 const { sql, poolPromise } = require('../db');
 
+/**
+ * Format a Date as YYYY-MM-DD using LOCAL timezone (avoids UTC shift).
+ * Using toISOString() would convert to UTC, which can shift dates by ±1 day
+ * for timezones like Costa Rica (UTC-6).
+ */
+function localDateStr(d) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 // SharePoint site and list identifiers
 const SP_SITE_HOSTNAME = 'rostipolloscr.sharepoint.com';
 const SP_SITE_PATH = '/sites/OperacionesRostipollos';
@@ -80,8 +92,23 @@ function mapSharePointItem(item) {
     const f = item.fields || {};
 
     // Start and End are the date fields in this list
-    const fechaInicio = f.Start || f.EventDate || f.FechaDeInicio || f.StartDate || null;
-    const fechaFin = f.End || f.EndDate || f.FechaDeFin || null;
+    const rawStart = f.Start || f.EventDate || f.FechaDeInicio || f.StartDate || null;
+    const rawEnd = f.End || f.EndDate || f.FechaDeFin || null;
+
+    // Parse dates: strip time/timezone to treat as local date (avoid UTC shift)
+    function parseLocalDate(val) {
+        if (!val) return null;
+        // If string, take just the YYYY-MM-DD part to avoid timezone shifts
+        if (typeof val === 'string') {
+            const dateOnly = val.substring(0, 10); // 'YYYY-MM-DD'
+            const [y, m, d] = dateOnly.split('-').map(Number);
+            return new Date(y, m - 1, d); // local midnight
+        }
+        return new Date(val);
+    }
+
+    const fechaInicio = parseLocalDate(rawStart);
+    const fechaFin = parseLocalDate(rawEnd);
 
     // Ubicación is an array of location names
     let ubicacion = null;
@@ -96,8 +123,8 @@ function mapSharePointItem(item) {
     return {
         sharePointItemId: String(item.id),
         titulo: f.Title || f.Titulo || '(Sin título)',
-        fechaInicio: fechaInicio ? new Date(fechaInicio) : null,
-        fechaFin: fechaFin ? new Date(fechaFin) : null,
+        fechaInicio: fechaInicio,
+        fechaFin: fechaFin,
         ubicacion: ubicacion,
         categoria: f['Tipo_x0020_Evento'] || f.Category || null,
         todoElDia: (f['Duraci_x00f3_n_x0020_Evento'] === 'Todo el día') || f.fAllDayEvent === true || false,
@@ -231,15 +258,25 @@ async function getEventosPorMes(year, month) {
     const byDate = {};
 
     for (const row of result.recordset) {
-        const eventStart = new Date(row.FechaInicio);
-        const eventEnd = row.FechaFin ? new Date(row.FechaFin) : eventStart;
+        // Extract local date components to avoid UTC timezone shift
+        // SQL DATETIME comes as JS Date in UTC; use getUTC* to get the stored date correctly
+        const si = row.FechaInicio;
+        const eventStart = new Date(si.getUTCFullYear(), si.getUTCMonth(), si.getUTCDate());
+        let eventEnd;
+        if (row.FechaFin) {
+            const ei = row.FechaFin;
+            eventEnd = new Date(ei.getUTCFullYear(), ei.getUTCMonth(), ei.getUTCDate());
+        } else {
+            eventEnd = eventStart;
+        }
 
         // For multi-day events, create an entry for each day in the month
         const loopStart = new Date(Math.max(eventStart.getTime(), startDate.getTime()));
         const loopEnd = new Date(Math.min(eventEnd.getTime(), endDate.getTime() - 1));
 
         for (let d = new Date(loopStart); d <= loopEnd; d.setDate(d.getDate() + 1)) {
-            const dateStr = d.toISOString().substring(0, 10);
+            // Use local date string to avoid UTC timezone shift
+            const dateStr = localDateStr(d);
 
             if (!byDate[dateStr]) byDate[dateStr] = [];
             byDate[dateStr].push({
@@ -281,14 +318,23 @@ async function getEventosPorAno(year) {
     const byDate = {};
 
     for (const row of result.recordset) {
-        const eventStart = new Date(row.FechaInicio);
-        const eventEnd = row.FechaFin ? new Date(row.FechaFin) : eventStart;
+        // Extract local date components to avoid UTC timezone shift
+        const si = row.FechaInicio;
+        const eventStart = new Date(si.getUTCFullYear(), si.getUTCMonth(), si.getUTCDate());
+        let eventEnd;
+        if (row.FechaFin) {
+            const ei = row.FechaFin;
+            eventEnd = new Date(ei.getUTCFullYear(), ei.getUTCMonth(), ei.getUTCDate());
+        } else {
+            eventEnd = eventStart;
+        }
 
         const loopStart = new Date(Math.max(eventStart.getTime(), startDate.getTime()));
         const loopEnd = new Date(Math.min(eventEnd.getTime(), endDate.getTime() - 1));
 
         for (let d = new Date(loopStart); d <= loopEnd; d.setDate(d.getDate() + 1)) {
-            const dateStr = d.toISOString().substring(0, 10);
+            // Use local date string to avoid UTC timezone shift
+            const dateStr = localDateStr(d);
 
             if (!byDate[dateStr]) byDate[dateStr] = [];
             byDate[dateStr].push({

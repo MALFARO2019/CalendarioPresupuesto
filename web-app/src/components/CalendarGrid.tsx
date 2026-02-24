@@ -1,5 +1,6 @@
 import React from 'react';
 import type { BudgetRecord } from '../mockData';
+import type { EventoItem } from '../api';
 import { DayCell } from './DayCell';
 import { getDaysInMonth, startOfMonth, getDay } from 'date-fns';
 import { useUserPreferences } from '../context/UserPreferences';
@@ -11,10 +12,31 @@ interface CalendarGridProps {
     year: number;
     comparisonType: string;
     kpi: string;
-    eventsByDate?: Record<string, { id: number; evento: string; esFeriado: boolean; esInterno: boolean }[]>;
-    eventosAjusteByDate?: Record<string, { id: number; evento: string; esFeriado: boolean; esInterno: boolean }[]>;
-    eventosAAByDate?: Record<string, { id: number; evento: string; esFeriado: boolean; esInterno: boolean }[]>;
+    eventsByDate?: Record<string, EventoItem[]>;
+    eventosAjusteByDate?: Record<string, EventoItem[]>;
+    eventosAAByDate?: Record<string, EventoItem[]>;
 }
+
+/** Renders extra info lines (categoria, ubicacion, todoElDia) inside event tooltips */
+const EventExtraInfo: React.FC<{ ev: EventoItem }> = ({ ev }) => (
+    <>
+        {ev.categoria && (
+            <p className="text-[9px] text-gray-500 flex items-center gap-1 mt-0.5">
+                <span className="opacity-70">🏷️</span> {ev.categoria}
+            </p>
+        )}
+        {ev.ubicacion && (
+            <p className="text-[9px] text-gray-500 flex items-center gap-1">
+                <span className="opacity-70">📍</span> {ev.ubicacion}
+            </p>
+        )}
+        {ev.todoElDia && (
+            <p className="text-[9px] text-gray-400 flex items-center gap-1">
+                <span className="opacity-70">⏰</span> Todo el día
+            </p>
+        )}
+    </>
+);
 
 // L = Lunes, K = Martes, M = Miércoles, J, V, S, D
 const DAYS_OF_WEEK = ['L', 'K', 'M', 'J', 'V', 'S', 'D'];
@@ -78,12 +100,13 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                                     {ev.evento}
                                 </div>
                                 {/* Rich tooltip */}
-                                <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/ev:flex flex-col min-w-[160px] max-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl p-2 text-left pointer-events-none">
-                                    <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded mb-1 inline-block ${ev.esFeriado ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
+                                <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/ev:flex flex-col min-w-[180px] max-w-[260px] bg-white border border-gray-200 rounded-xl shadow-xl p-2.5 text-left pointer-events-none">
+                                    <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded mb-1 inline-block ${ev.esFeriado ? 'bg-red-100 text-red-700' : ev.ubicacion || ev.categoria ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-800'
                                         }`}>
-                                        {ev.esFeriado ? '🔴 Feriado' : '🟡 Evento'}
+                                        {ev.esFeriado ? '🔴 Feriado' : ev.ubicacion || ev.categoria ? '🟢 SharePoint' : '🟡 Evento'}
                                     </div>
                                     <p className="text-xs font-semibold text-gray-800 leading-snug">{ev.evento}</p>
+                                    <EventExtraInfo ev={ev} />
                                 </div>
                             </div>
                         ))}
@@ -94,9 +117,12 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                                 <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/more:flex flex-col min-w-[160px] max-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl p-2 pointer-events-none">
                                     {dayEvents.map((ev2, j) => (
                                         <div key={j} className="flex items-start gap-1.5 py-1 border-b last:border-0 border-gray-100">
-                                            <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${ev2.esFeriado ? 'bg-red-500' : 'bg-amber-400'
+                                            <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${ev2.esFeriado ? 'bg-red-500' : ev2.ubicacion || ev2.categoria ? 'bg-teal-500' : 'bg-amber-400'
                                                 }`} />
-                                            <p className="text-[10px] text-gray-800 font-medium leading-snug">{ev2.evento}</p>
+                                            <div>
+                                                <p className="text-[10px] text-gray-800 font-medium leading-snug">{ev2.evento}</p>
+                                                <EventExtraInfo ev={ev2} />
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -142,9 +168,10 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
                                 <div className="text-[8px] leading-tight font-semibold truncate rounded px-0.5 cursor-default bg-purple-500 text-white">
                                     {ev.evento}
                                 </div>
-                                <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/ev:flex flex-col min-w-[160px] max-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl p-2 text-left pointer-events-none">
+                                <div className="absolute bottom-full left-0 mb-1 z-50 hidden group-hover/ev:flex flex-col min-w-[180px] max-w-[260px] bg-white border border-gray-200 rounded-xl shadow-xl p-2.5 text-left pointer-events-none">
                                     <div className="text-[10px] font-bold px-1.5 py-0.5 rounded mb-1 inline-block bg-purple-100 text-purple-700">🟣 Año Anterior</div>
                                     <p className="text-xs font-semibold text-gray-800 leading-snug">{ev.evento}</p>
+                                    <EventExtraInfo ev={ev} />
                                 </div>
                             </div>
                         ))}

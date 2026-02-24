@@ -181,28 +181,47 @@ export const ComparableCurves: React.FC<ComparableCurvesProps> = ({
         ? `${MONTH_SHORT[month]} ${year} • ${DATA_TYPE_LABELS[dataType]}`
         : `${year} • ${DATA_TYPE_LABELS[dataType]}`;
 
-    // Always render header
+    // Header is always rendered — even when stores haven't loaded yet
+    const headerButton = (
+        <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-emerald-50 to-cyan-50 hover:from-emerald-100 hover:to-cyan-100 transition-colors"
+        >
+            <div className="flex items-center gap-2 sm:gap-3">
+                <span className="text-lg sm:text-xl">📈</span>
+                <div className="text-left">
+                    <h3 className="text-sm sm:text-base font-bold text-gray-800">{title}</h3>
+                    <p className="text-[10px] sm:text-xs text-gray-500">
+                        {subtitle}{stores.length > 0 ? ` • ${stores.length} locales` : ''}
+                    </p>
+                </div>
+            </div>
+            {expanded
+                ? <ChevronUp className="w-5 h-5 text-gray-400" />
+                : <ChevronDown className="w-5 h-5 text-gray-400" />
+            }
+        </button>
+    );
+
+    // When stores haven't loaded, show header with loading message
+    if (stores.length === 0) {
+        return (
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-lg overflow-hidden mt-8">
+                {headerButton}
+                {expanded && (
+                    <div className="px-6 py-8 text-center text-gray-400 text-sm">
+                        Cargando locales...
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // Normal render with data
     return (
         <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-lg overflow-hidden mt-8">
-            {/* ⚠️ DO NOT REMOVE — Comparable Curves (Comparación por Local) — CRITICAL: must always be visible when group is selected */}
-            <button
-                onClick={() => setExpanded(!expanded)}
-                className="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-emerald-50 to-cyan-50 hover:from-emerald-100 hover:to-cyan-100 transition-colors"
-            >
-                <div className="flex items-center gap-2 sm:gap-3">
-                    <span className="text-lg sm:text-xl">📈</span>
-                    <div className="text-left">
-                        <h3 className="text-sm sm:text-base font-bold text-gray-800">{title}</h3>
-                        <p className="text-[10px] sm:text-xs text-gray-500">
-                            {subtitle} • {stores.length} locales
-                        </p>
-                    </div>
-                </div>
-                {expanded
-                    ? <ChevronUp className="w-5 h-5 text-gray-400" />
-                    : <ChevronDown className="w-5 h-5 text-gray-400" />
-                }
-            </button>
+            {/* ⚠️ DO NOT REMOVE — Comparable Curves (Comparación por Local) — CRITICAL: must always be visible */}
+            {headerButton}
 
             {/* Expanded content */}
             {expanded && (

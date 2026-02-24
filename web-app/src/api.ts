@@ -42,6 +42,7 @@ export interface User {
     offlineAdmin?: boolean;
     cedula?: string | null;
     telefono?: string | null;
+    impersonatedBy?: string;
 }
 
 
@@ -55,8 +56,8 @@ export function getToken(): string | null {
 }
 
 export function setToken(token: string, user?: any): void {
-    // Don't store token for superadmin user (must always login manually)
-    if (user && user.email === 'soporte@rostipolloscr.com') {
+    // Don't store token for superadmin or impersonated sessions (must always login manually)
+    if (user && (user.email === 'soporte@rostipolloscr.com' || user.impersonatedBy)) {
         // Store in sessionStorage instead (cleared when browser closes)
         sessionStorage.setItem('auth_token', token);
         return;
@@ -77,8 +78,8 @@ export function getUser(): User | null {
 }
 
 export function setUser(user: User): void {
-    // Don't store user for superadmin (must always login manually)
-    if (user.email === 'soporte@rostipolloscr.com') {
+    // Don't store user for superadmin or impersonated sessions (must always login manually)
+    if (user.email === 'soporte@rostipolloscr.com' || user.impersonatedBy) {
         sessionStorage.setItem('auth_user', JSON.stringify(user));
         return;
     }
@@ -132,6 +133,42 @@ export async function adminLogin(password: string): Promise<{ success: boolean; 
     sessionStorage.setItem('auth_user', JSON.stringify(data.user));
 
     return { success: true };
+}
+
+export async function fetchImpersonateUsers(email: string, clave: string): Promise<{ id: number; email: string; nombre: string }[]> {
+    const response = await fetch(`${API_BASE}/auth/impersonate/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, clave })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || 'Error al obtener usuarios');
+    }
+
+    return data;
+}
+
+export async function impersonateLogin(email: string, clave: string, targetUserId: number): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+    const response = await fetch(`${API_BASE}/auth/impersonate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, clave, targetUserId })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        return { success: false, error: data.error };
+    }
+
+    // Store token and user (sessionStorage for impersonated sessions)
+    setToken(data.token, data.user);
+    setUser(data.user);
+
+    return { success: true, token: data.token, user: data.user };
 }
 
 export async function verifyToken(): Promise<boolean> {
@@ -296,6 +333,27 @@ export async function fetchAvailableCanales(): Promise<string[]> {
     }
     const data = await response.json();
     return data.canales || [];
+}
+
+// GET /api/admin/grupos-almacen - Fetch configured store groups
+export interface GrupoAlmacen {
+    IDGRUPO: number;
+    DESCRIPCION: string;
+    CODVISIBLE: number;
+    Activo: boolean;
+    TotalMiembros: number;
+}
+
+export async function fetchGruposAlmacen(): Promise<GrupoAlmacen[]> {
+    try {
+        const response = await fetch(`${API_BASE}/admin/grupos-almacen`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return [];
+        return response.json();
+    } catch {
+        return [];
+    }
 }
 
 // ==========================================
@@ -523,6 +581,16 @@ export async function deleteEvento(id: number): Promise<{ success: boolean }> {
     return response.json();
 }
 
+export async function reorderEventos(order: number[]): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/eventos/reorder`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ order })
+    });
+    if (!response.ok) throw new Error('Error reordering eventos');
+    return response.json();
+}
+
 export async function fetchEventoFechas(idEvento: number): Promise<EventoFecha[]> {
     const response = await fetch(`${API_BASE}/eventos/${idEvento}/fechas`, {
         headers: authHeaders()
@@ -582,6 +650,10 @@ export interface EventoItem {
     esFeriado: boolean;
     esInterno: boolean;
     usarEnPresupuesto?: boolean;
+    ubicacion?: string;
+    categoria?: string;
+    todoElDia?: boolean;
+    descripcion?: string;
 }
 
 export type EventosByDate = Record<string, EventoItem[]>;
@@ -658,6 +730,50 @@ export async function fetchEventosAjuste(): Promise<EventosByDate> {
     } catch {
         return {};
     }
+}
+
+// Evento ajuste item with event details for period view
+export interface EventoAjustePeriodo {
+    IDEVENTO: number;
+    EVENTO: string;
+    ESFERIADO: string;
+    ESINTERNO: string;
+    USARENPRESUPUESTO: string;
+    FECHA: string;
+    FECHA_EFECTIVA: string | null;
+    Canal: string;
+    GrupoAlmacen: number | null;
+    USUARIO_MODIFICACION: string | null;
+    FECHA_MODIFICACION: string | null;
+}
+
+// GET /api/eventos-ajuste/periodo - adjustment events in a date range
+export async function fetchEventosPeriodo(desde: string, hasta: string): Promise<EventoAjustePeriodo[]> {
+    const response = await fetch(`${API_BASE}/eventos-ajuste/periodo?desde=${desde}&hasta=${hasta}`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error fetching eventos del período');
+    return response.json();
+}
+
+// POST /api/eventos-ajuste/send-email - send adjustment report email
+export async function sendEventosEmail(payload: {
+    to: string;
+    desde: string;
+    hasta: string;
+    items: any[];
+    chartImage?: string;
+}): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/eventos-ajuste/send-email`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Error enviando correo' }));
+        throw new Error(err.error || 'Error enviando correo');
+    }
+    return response.json();
 }
 
 export async function fetchTactica(data: {

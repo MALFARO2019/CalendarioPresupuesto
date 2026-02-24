@@ -1499,6 +1499,150 @@ async function syncProfilePermissions(perfilId) {
     return countResult.recordset[0].UpdatedCount;
 }
 
+/**
+ * Impersonate a user: admin logs in, then gets a JWT for a target user
+ */
+async function impersonateUser(adminEmail, adminClave, targetUserId, ip, userAgent) {
+    // 1. Validate admin credentials
+    const adminResult = await loginUser(adminEmail, adminClave, ip, userAgent);
+    if (!adminResult.success) {
+        return { success: false, message: adminResult.message };
+    }
+    if (!adminResult.user.esAdmin) {
+        logLoginEvent(adminEmail, adminResult.user.nombre, false, 'Impersonación denegada: no es admin', ip, userAgent);
+        return { success: false, message: 'Solo los administradores pueden usar "Ver como".' };
+    }
+
+    // 2. Get the target user from DB
+    const pool = await poolPromise;
+    const result = await pool.request()
+        .input('id', sql.Int, targetUserId)
+        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(restaurarVersiones,0) as restaurarVersiones, ISNULL(AccesoAsignaciones,0) as AccesoAsignaciones, ISNULL(AccesoGruposAlmacen,0) as AccesoGruposAlmacen, ISNULL(AccesoReportes,0) as AccesoReportes FROM APP_USUARIOS WHERE Id = @id');
+
+    if (result.recordset.length === 0) {
+        return { success: false, message: 'Usuario objetivo no encontrado.' };
+    }
+
+    const user = result.recordset[0];
+    if (!user.Activo) {
+        return { success: false, message: 'El usuario objetivo está desactivado.' };
+    }
+
+    // 3. Get target user's stores & canales
+    const storesResult = await pool.request()
+        .input('userId', sql.Int, user.Id)
+        .query('SELECT Local FROM APP_USUARIO_ALMACEN WHERE UsuarioId = @userId');
+    const allowedStores = storesResult.recordset.map(r => r.Local);
+
+    const canalesResult = await pool.request()
+        .input('userId', sql.Int, user.Id)
+        .query('SELECT Canal FROM APP_USUARIO_CANAL WHERE UsuarioId = @userId');
+    const allowedCanales = canalesResult.recordset.map(r => r.Canal);
+
+    // 4. Generate JWT for target user with impersonation marker
+    const token = jwt.sign(
+        {
+            userId: user.Id,
+            email: user.Email,
+            nombre: user.Nombre,
+            allowedStores,
+            allowedCanales,
+            claveHash: user.Clave,
+            accesoTendencia: user.AccesoTendencia,
+            accesoTactica: user.AccesoTactica,
+            accesoEventos: user.AccesoEventos,
+            accesoPresupuesto: user.AccesoPresupuesto,
+            accesoPresupuestoMensual: user.AccesoPresupuestoMensual,
+            accesoPresupuestoAnual: user.AccesoPresupuestoAnual,
+            accesoPresupuestoRangos: user.AccesoPresupuestoRangos,
+            accesoTiempos: user.AccesoTiempos,
+            accesoEvaluaciones: user.AccesoEvaluaciones,
+            accesoInventarios: user.AccesoInventarios,
+            accesoPersonal: user.AccesoPersonal,
+            accesoModeloPresupuesto: user.accesoModeloPresupuesto,
+            verConfigModelo: user.verConfigModelo,
+            verConsolidadoMensual: user.verConsolidadoMensual,
+            verAjustePresupuesto: user.verAjustePresupuesto,
+            verVersiones: user.verVersiones,
+            verBitacora: user.verBitacora,
+            verReferencias: user.verReferencias,
+            editarConsolidado: user.editarConsolidado,
+            ejecutarRecalculo: user.ejecutarRecalculo,
+            ajustarCurva: user.ajustarCurva,
+            restaurarVersiones: user.restaurarVersiones,
+            accesoAsignaciones: user.AccesoAsignaciones,
+            accesoGruposAlmacen: user.AccesoGruposAlmacen,
+            accesoReportes: user.AccesoReportes,
+            esAdmin: user.EsAdmin,
+            esProtegido: user.EsProtegido,
+            impersonatedBy: adminEmail  // Mark as impersonated
+        },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+    );
+
+    // 5. Log the impersonation
+    logLoginEvent(adminEmail, adminResult.user.nombre, true, `Impersonación de ${user.Email} (${user.Nombre})`, ip, userAgent);
+
+    return {
+        success: true,
+        token,
+        user: {
+            id: user.Id,
+            email: user.Email,
+            nombre: user.Nombre,
+            accesoTendencia: user.AccesoTendencia,
+            accesoTactica: user.AccesoTactica,
+            accesoEventos: user.AccesoEventos,
+            accesoPresupuesto: user.AccesoPresupuesto,
+            accesoPresupuestoMensual: user.AccesoPresupuestoMensual,
+            accesoPresupuestoAnual: user.AccesoPresupuestoAnual,
+            accesoPresupuestoRangos: user.AccesoPresupuestoRangos,
+            accesoTiempos: user.AccesoTiempos,
+            accesoEvaluaciones: user.AccesoEvaluaciones,
+            accesoInventarios: user.AccesoInventarios,
+            accesoPersonal: user.AccesoPersonal,
+            accesoModeloPresupuesto: user.accesoModeloPresupuesto,
+            verConfigModelo: user.verConfigModelo,
+            verConsolidadoMensual: user.verConsolidadoMensual,
+            verAjustePresupuesto: user.verAjustePresupuesto,
+            verVersiones: user.verVersiones,
+            verBitacora: user.verBitacora,
+            verReferencias: user.verReferencias,
+            editarConsolidado: user.editarConsolidado,
+            ejecutarRecalculo: user.ejecutarRecalculo,
+            ajustarCurva: user.ajustarCurva,
+            restaurarVersiones: user.restaurarVersiones,
+            accesoAsignaciones: user.AccesoAsignaciones,
+            accesoGruposAlmacen: user.AccesoGruposAlmacen,
+            accesoReportes: user.AccesoReportes,
+            esAdmin: user.EsAdmin,
+            esProtegido: user.EsProtegido,
+            allowedStores,
+            allowedCanales,
+            impersonatedBy: adminEmail
+        }
+    };
+}
+
+/**
+ * Get a lightweight list of active users for the impersonation selector
+ */
+async function getActiveUsersForImpersonation() {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+        SELECT Id, Email, Nombre
+        FROM APP_USUARIOS
+        WHERE Activo = 1
+        ORDER BY Nombre, Email
+    `);
+    return result.recordset.map(u => ({
+        id: u.Id,
+        email: u.Email,
+        nombre: u.Nombre || u.Email
+    }));
+}
+
 module.exports = {
     ensureSecurityTables,
     loginUser,
@@ -1517,5 +1661,7 @@ module.exports = {
     syncProfilePermissions,
     logLoginEvent,
     getLoginAudit,
+    impersonateUser,
+    getActiveUsersForImpersonation,
     ADMIN_PASSWORD
 };

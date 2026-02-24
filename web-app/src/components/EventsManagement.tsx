@@ -5,20 +5,27 @@ import {
     createEvento,
     updateEvento,
     deleteEvento,
+    reorderEventos,
     fetchEventoFechas,
     createEventoFecha,
     updateEventoFecha,
     deleteEventoFecha,
+    fetchAvailableCanales,
+    fetchGruposAlmacen,
     getUser,
     type Evento,
-    type EventoFecha
+    type EventoFecha,
+    type GrupoAlmacen
 } from '../api';
+import { SearchableCombobox, type ComboboxOption } from './ui/SearchableCombobox';
 import {
     Calendar, Plus, Trash2, Edit2, X, Loader2, AlertCircle,
-    CheckCircle, CalendarDays
+    CheckCircle, CalendarDays, Search, ArrowUpDown
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { EventosPeriodView } from './EventosPeriodView';
+import { EventReorderModal } from './EventReorderModal';
 
 interface EventsManagementProps {
     // No props needed - authentication is handled by token
@@ -33,6 +40,8 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [searchFilter, setSearchFilter] = useState('');
+    const [showReorderModal, setShowReorderModal] = useState(false);
 
     // Event form state
     const [showEventForm, setShowEventForm] = useState(false);
@@ -56,8 +65,23 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
 
     const user = getUser();
 
+    // Combobox options for Canal and Grupo Almacén
+    const [canalesOptions, setCanalesOptions] = useState<ComboboxOption[]>([]);
+    const [gruposOptions, setGruposOptions] = useState<ComboboxOption[]>([]);
+
     useEffect(() => {
         loadEventos();
+        // Load combobox options
+        fetchAvailableCanales().then(canales => {
+            const opts: ComboboxOption[] = [{ value: 'Todos', label: 'Todos' }];
+            canales.forEach(c => {
+                if (c !== 'Todos') opts.push({ value: c, label: c });
+            });
+            setCanalesOptions(opts);
+        }).catch(() => { });
+        fetchGruposAlmacen().then(grupos => {
+            setGruposOptions(grupos.map(g => ({ value: String(g.IDGRUPO), label: g.DESCRIPCION })));
+        }).catch(() => { });
     }, []);
 
     useEffect(() => {
@@ -259,13 +283,43 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                             <Calendar className="w-5 h-5 text-indigo-600" />
                             <h2 className="text-lg font-bold text-gray-800">Tipos de Eventos</h2>
                         </div>
-                        <button
-                            onClick={() => { setEditingEvento(null); setShowEventForm(true); }}
-                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition-all"
-                        >
-                            <Plus className="w-4 h-4" />
-                            Nuevo
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setShowReorderModal(true)}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-xs font-medium transition-all"
+                                title="Reordenar eventos"
+                            >
+                                <ArrowUpDown className="w-3.5 h-3.5" />
+                                Ordenar
+                            </button>
+                            <button
+                                onClick={() => { setEditingEvento(null); setShowEventForm(true); }}
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition-all"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Nuevo
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Search Filter */}
+                    <div className="relative mb-3">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                            type="text"
+                            value={searchFilter}
+                            onChange={e => setSearchFilter(e.target.value)}
+                            placeholder="Buscar evento..."
+                            className="w-full pl-9 pr-8 py-2 border-2 border-gray-200 rounded-xl focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 text-sm transition-all"
+                        />
+                        {searchFilter && (
+                            <button
+                                onClick={() => setSearchFilter('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
                     </div>
 
                     {/* Event Form */}
@@ -345,49 +399,53 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                         ) : eventos.length === 0 ? (
                             <p className="text-center text-gray-400 py-8 text-sm">No hay eventos registrados</p>
                         ) : (
-                            eventos.map((evento) => (
-                                <div
-                                    key={evento.IDEVENTO}
-                                    className={`p-3 rounded-lg border-2 transition-all cursor-pointer ${selectedEvento === evento.IDEVENTO
-                                        ? 'bg-indigo-50 border-indigo-300'
-                                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                                        }`}
-                                    onClick={() => setSelectedEvento(evento.IDEVENTO)}
-                                >
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                            <h4 className="font-semibold text-sm text-gray-800">{evento.EVENTO}</h4>
-                                            <div className="flex gap-2 mt-1">
-                                                {evento.ESFERIADO === 'S' && (
-                                                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Feriado</span>
-                                                )}
-                                                {evento.USARENPRESUPUESTO === 'S' && (
-                                                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Presupuesto</span>
-                                                )}
-                                                {evento.ESINTERNO === 'S' && (
-                                                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">Interno</span>
-                                                )}
+                            [...eventos]
+                                .filter(e => !searchFilter.trim() || (e.EVENTO || '').toLowerCase().includes(searchFilter.toLowerCase()))
+                                .map((evento) => (
+                                    <div
+                                        key={evento.IDEVENTO}
+                                        className={`p-3 rounded-lg border-2 transition-all cursor-pointer ${selectedEvento === evento.IDEVENTO
+                                            ? 'bg-indigo-50 border-indigo-300'
+                                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                            }`}
+                                        onClick={() => setSelectedEvento(evento.IDEVENTO)}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex-1">
+                                                <h4 className="font-semibold text-sm text-gray-800">
+                                                    {evento.EVENTO || <span className="text-red-400 italic">(Sin nombre - ID: {evento.IDEVENTO})</span>}
+                                                </h4>
+                                                <div className="flex gap-2 mt-1">
+                                                    {evento.ESFERIADO === 'S' && (
+                                                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Feriado</span>
+                                                    )}
+                                                    {evento.USARENPRESUPUESTO === 'S' && (
+                                                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Presupuesto</span>
+                                                    )}
+                                                    {evento.ESINTERNO === 'S' && (
+                                                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">Interno</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-1 ml-2">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleEditEvento(evento); }}
+                                                    className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                                                    title="Editar"
+                                                >
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteEvento(evento.IDEVENTO, evento.EVENTO); }}
+                                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                    title="Eliminar"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
                                             </div>
                                         </div>
-                                        <div className="flex gap-1 ml-2">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleEditEvento(evento); }}
-                                                className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
-                                                title="Editar"
-                                            >
-                                                <Edit2 className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleDeleteEvento(evento.IDEVENTO, evento.EVENTO); }}
-                                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                                title="Eliminar"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
                                     </div>
-                                </div>
-                            ))
+                                ))
                         )}
                     </div>
                 </div>
@@ -447,21 +505,19 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Canal</label>
-                                                <input
-                                                    type="text"
+                                                <SearchableCombobox
+                                                    options={canalesOptions}
                                                     value={fechaForm.Canal}
-                                                    onChange={(e) => setFechaForm({ ...fechaForm, Canal: e.target.value })}
-                                                    className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm"
-                                                    placeholder="Todos, Local, Delivery..."
+                                                    onChange={(v) => setFechaForm({ ...fechaForm, Canal: v || 'Todos' })}
+                                                    placeholder="Todos"
                                                 />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Grupo Almacén</label>
-                                                <input
-                                                    type="number"
-                                                    value={fechaForm.GrupoAlmacen || ''}
-                                                    onChange={(e) => setFechaForm({ ...fechaForm, GrupoAlmacen: e.target.value ? parseInt(e.target.value) : null })}
-                                                    className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm"
+                                                <SearchableCombobox
+                                                    options={gruposOptions}
+                                                    value={fechaForm.GrupoAlmacen ? String(fechaForm.GrupoAlmacen) : ''}
+                                                    onChange={(v) => setFechaForm({ ...fechaForm, GrupoAlmacen: v ? parseInt(v) : null })}
                                                     placeholder="Opcional"
                                                 />
                                             </div>
@@ -500,6 +556,7 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <span className="font-semibold text-sm text-gray-800">
                                                             {safeFormatDate(fecha.FECHA)}
+                                                            {fecha.FECHA && (() => { try { const d = parseISO(fecha.FECHA.split('T')[0]); return <span className="ml-1.5 text-xs font-medium text-indigo-500 capitalize">({format(d, 'EEEE', { locale: es })})</span>; } catch { return null; } })()}
                                                         </span>
                                                         {fecha.Canal && (
                                                             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
@@ -508,7 +565,10 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                                         )}
                                                     </div>
                                                     <div className="text-xs text-gray-500">
-                                                        <div>Referencia: {safeFormatDate(fecha.FECHA_EFECTIVA)}</div>
+                                                        <div>
+                                                            Referencia: {safeFormatDate(fecha.FECHA_EFECTIVA)}
+                                                            {fecha.FECHA_EFECTIVA && (() => { try { const d = parseISO(fecha.FECHA_EFECTIVA.split('T')[0]); return <span className="ml-1 text-indigo-400 capitalize">({format(d, 'EEEE', { locale: es })})</span>; } catch { return null; } })()}
+                                                        </div>
                                                         {fecha.USUARIO_MODIFICACION && (
                                                             <div className="mt-1 text-gray-400">
                                                                 Modificado por {fecha.USUARIO_MODIFICACION} el {fecha.FECHA_MODIFICACION && format(new Date(fecha.FECHA_MODIFICACION), 'PPpp', { locale: es })}
@@ -541,6 +601,22 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                     )}
                 </div>
             </div>
+
+            {/* Period-based adjustments view */}
+            <EventosPeriodView />
+
+            {/* Reorder Modal */}
+            {showReorderModal && (
+                <EventReorderModal
+                    eventos={eventos}
+                    onSave={async (orderedIds) => {
+                        await reorderEventos(orderedIds);
+                        setSuccess('Orden guardado exitosamente');
+                        loadEventos();
+                    }}
+                    onClose={() => setShowReorderModal(false)}
+                />
+            )}
         </div>
     );
 };

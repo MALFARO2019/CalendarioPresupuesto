@@ -5,13 +5,49 @@ const { sql, poolPromise } = require('./db');
 // ==========================================
 
 /**
- * Get all events from DIM_EVENTOS
+ * Ensure ORDEN column exists in DIM_EVENTOS
+ */
+let _ordenReady = null;
+async function ensureOrdenColumn() {
+    try {
+        const pool = await poolPromise;
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_EVENTOS') AND name = 'ORDEN')
+            BEGIN
+                ALTER TABLE DIM_EVENTOS ADD ORDEN INT NULL;
+            END
+        `);
+        // Initialize ORDEN for rows that don't have it
+        await pool.request().query(`
+            UPDATE DIM_EVENTOS SET ORDEN = IDEVENTO WHERE ORDEN IS NULL
+        `);
+        console.log('✅ ORDEN column ready in DIM_EVENTOS');
+    } catch (err) {
+        console.warn('Warning: Could not ensure ORDEN column:', err.message);
+    }
+}
+
+// Run on module load and store the promise
+_ordenReady = ensureOrdenColumn();
+
+/**
+ * Get all events from DIM_EVENTOS ordered by ORDEN
  */
 async function getAllEventos() {
+    // Wait for ORDEN column migration to complete first
+    if (_ordenReady) await _ordenReady;
     const pool = await poolPromise;
-    const result = await pool.request()
-        .query('SELECT * FROM DIM_EVENTOS ORDER BY IDEVENTO');
-    return result.recordset;
+    try {
+        const result = await pool.request()
+            .query('SELECT * FROM DIM_EVENTOS ORDER BY ISNULL(ORDEN, 9999), IDEVENTO');
+        return result.recordset;
+    } catch (err) {
+        // Fallback if ORDEN column doesn't exist
+        console.warn('Falling back to ORDER BY IDEVENTO:', err.message);
+        const result = await pool.request()
+            .query('SELECT * FROM DIM_EVENTOS ORDER BY IDEVENTO');
+        return result.recordset;
+    }
 }
 
 /**
@@ -19,14 +55,19 @@ async function getAllEventos() {
  */
 async function createEvento(evento, esFeriado, usarEnPresupuesto, esInterno) {
     const pool = await poolPromise;
+    // Get next ORDEN value
+    const maxOrden = await pool.request()
+        .query('SELECT ISNULL(MAX(ORDEN), 0) + 1 AS nextOrden FROM DIM_EVENTOS');
+    const nextOrden = maxOrden.recordset[0].nextOrden;
     const result = await pool.request()
         .input('evento', sql.NVarChar(200), evento)
         .input('esFeriado', sql.NVarChar(1), esFeriado)
         .input('usarEnPresupuesto', sql.NVarChar(1), usarEnPresupuesto)
         .input('esInterno', sql.NVarChar(1), esInterno)
+        .input('orden', sql.Int, nextOrden)
         .query(`
-            INSERT INTO DIM_EVENTOS (EVENTO, ESFERIADO, USARENPRESUPUESTO, ESINTERNO)
-            VALUES (@evento, @esFeriado, @usarEnPresupuesto, @esInterno);
+            INSERT INTO DIM_EVENTOS (EVENTO, ESFERIADO, USARENPRESUPUESTO, ESINTERNO, ORDEN)
+            VALUES (@evento, @esFeriado, @usarEnPresupuesto, @esInterno, @orden);
             SELECT SCOPE_IDENTITY() AS IDEVENTO;
         `);
     return result.recordset[0].IDEVENTO;
@@ -166,6 +207,27 @@ async function deleteEventoFecha(idEvento, fecha) {
         .query('DELETE FROM DIM_EVENTOS_FECHAS WHERE IDEVENTO = @idEvento AND FECHA = @fecha');
 }
 
+/**
+ * Reorder events - receives array of { id, orden }
+ */
+async function reorderEventos(items) {
+    const pool = await poolPromise;
+    const transaction = pool.transaction();
+    try {
+        await transaction.begin();
+        for (const item of items) {
+            await transaction.request()
+                .input(`id_${item.id}`, sql.Int, item.id)
+                .input(`orden_${item.id}`, sql.Int, item.orden)
+                .query(`UPDATE DIM_EVENTOS SET ORDEN = @orden_${item.id} WHERE IDEVENTO = @id_${item.id}`);
+        }
+        await transaction.commit();
+    } catch (err) {
+        await transaction.rollback();
+        throw err;
+    }
+}
+
 module.exports = {
     getAllEventos,
     createEvento,
@@ -174,5 +236,6 @@ module.exports = {
     getEventoFechas,
     createEventoFecha,
     updateEventoFecha,
-    deleteEventoFecha
+    deleteEventoFecha,
+    reorderEventos
 };

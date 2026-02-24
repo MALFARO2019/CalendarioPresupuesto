@@ -19,7 +19,9 @@ const {
     assignProfileToUsers,
     syncProfilePermissions,
     logLoginEvent,
-    getLoginAudit
+    getLoginAudit,
+    impersonateUser,
+    getActiveUsersForImpersonation
 } = require('./auth');
 const { sendPasswordEmail, sendReportEmail, verifyEmailService } = require('./emailService');
 const { getTendenciaData, getResumenCanal, getResumenGrupos } = require('./tendencia');
@@ -33,7 +35,8 @@ const {
     getEventoFechas,
     createEventoFecha,
     updateEventoFecha,
-    deleteEventoFecha
+    deleteEventoFecha,
+    reorderEventos
 } = require('./eventos');
 const { ensureDBConfigTable } = require('./ensureDBConfig');
 const invgateDb = require('./invgateDb');
@@ -67,7 +70,7 @@ const app = express();
 const port = process.env.PORT || 80;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Initialize security tables and DB config table on startup
 (async () => {
@@ -553,6 +556,78 @@ app.post('/api/auth/admin-login', (req, res) => {
         logLoginEvent('admin@offline', null, false, 'Error: ' + err.message, req.ip, req.headers['user-agent']);
         console.error('Error in /api/auth/admin-login:', err);
         res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/auth/impersonate - Admin impersonates a target user
+app.post('/api/auth/impersonate', async (req, res) => {
+    try {
+        const { email, clave, targetUserId } = req.body;
+        if (!email || !clave || !targetUserId) {
+            return res.status(400).json({ error: 'Email, clave y usuario objetivo son requeridos' });
+        }
+
+        const impersonatePromise = impersonateUser(email.trim().toLowerCase(), clave.trim(), parseInt(targetUserId), req.ip, req.headers['user-agent']);
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('DB_TIMEOUT')), 10000)
+        );
+
+        let result;
+        try {
+            result = await Promise.race([impersonatePromise, timeoutPromise]);
+        } catch (timeoutErr) {
+            if (timeoutErr.message === 'DB_TIMEOUT') {
+                return res.status(503).json({ error: 'No se pudo conectar a la base de datos.' });
+            }
+            throw timeoutErr;
+        }
+
+        if (!result.success) {
+            return res.status(401).json({ error: result.message });
+        }
+        res.json(result);
+    } catch (err) {
+        console.error('Error in /api/auth/impersonate:', err);
+        res.status(500).json({ error: 'Error al impersonar usuario.' });
+    }
+});
+
+// POST /api/auth/impersonate/users - Get active users for impersonation selector (validates admin first)
+app.post('/api/auth/impersonate/users', async (req, res) => {
+    try {
+        const { email, clave } = req.body;
+        if (!email || !clave) {
+            return res.status(400).json({ error: 'Email y clave son requeridos' });
+        }
+
+        // Validate admin credentials
+        const loginPromise = loginUser(email.trim().toLowerCase(), clave.trim(), req.ip, req.headers['user-agent']);
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('DB_TIMEOUT')), 10000)
+        );
+
+        let loginResult;
+        try {
+            loginResult = await Promise.race([loginPromise, timeoutPromise]);
+        } catch (timeoutErr) {
+            if (timeoutErr.message === 'DB_TIMEOUT') {
+                return res.status(503).json({ error: 'No se pudo conectar a la base de datos.' });
+            }
+            throw timeoutErr;
+        }
+
+        if (!loginResult.success) {
+            return res.status(401).json({ error: loginResult.message });
+        }
+        if (!loginResult.user.esAdmin) {
+            return res.status(403).json({ error: 'Solo los administradores pueden usar "Ver como".' });
+        }
+
+        const users = await getActiveUsersForImpersonation();
+        res.json(users);
+    } catch (err) {
+        console.error('Error in /api/auth/impersonate/users:', err);
+        res.status(500).json({ error: 'Error al obtener usuarios.' });
     }
 });
 
@@ -2089,11 +2164,33 @@ app.post('/api/eventos', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { evento, esFeriado, usarEnPresupuesto, esInterno } = req.body;
+        const evento = req.body.evento || req.body.EVENTO;
+        const esFeriado = req.body.esFeriado || req.body.ESFERIADO;
+        const usarEnPresupuesto = req.body.usarEnPresupuesto || req.body.USARENPRESUPUESTO;
+        const esInterno = req.body.esInterno || req.body.ESINTERNO;
         const id = await createEvento(evento, esFeriado, usarEnPresupuesto, esInterno);
         res.json({ success: true, id });
     } catch (err) {
         console.error('Error creating evento:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/eventos/reorder - Reorder events (MUST be before :id route)
+app.put('/api/eventos/reorder', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoEventos && !req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
+        }
+        const { order } = req.body;
+        if (!Array.isArray(order)) {
+            return res.status(400).json({ error: 'Se requiere un array de IDs' });
+        }
+        const items = order.map((id, idx) => ({ id, orden: idx + 1 }));
+        await reorderEventos(items);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error reordering eventos:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -2104,7 +2201,10 @@ app.put('/api/eventos/:id', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { evento, esFeriado, usarEnPresupuesto, esInterno } = req.body;
+        const evento = req.body.evento || req.body.EVENTO;
+        const esFeriado = req.body.esFeriado || req.body.ESFERIADO;
+        const usarEnPresupuesto = req.body.usarEnPresupuesto || req.body.USARENPRESUPUESTO;
+        const esInterno = req.body.esInterno || req.body.ESINTERNO;
         await updateEvento(parseInt(req.params.id), evento, esFeriado, usarEnPresupuesto, esInterno);
         res.json({ success: true });
     } catch (err) {
@@ -2515,7 +2615,10 @@ app.post('/api/eventos', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos && !req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { evento, esFeriado, usarEnPresupuesto, esInterno } = req.body;
+        const evento = req.body.evento || req.body.EVENTO;
+        const esFeriado = req.body.esFeriado || req.body.ESFERIADO;
+        const usarEnPresupuesto = req.body.usarEnPresupuesto || req.body.USARENPRESUPUESTO;
+        const esInterno = req.body.esInterno || req.body.ESINTERNO;
         const id = await createEvento(evento, esFeriado, usarEnPresupuesto, esInterno);
         res.json({ success: true, id });
     } catch (err) {
@@ -2530,7 +2633,10 @@ app.put('/api/eventos/:id', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos && !req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { evento, esFeriado, usarEnPresupuesto, esInterno } = req.body;
+        const evento = req.body.evento || req.body.EVENTO;
+        const esFeriado = req.body.esFeriado || req.body.ESFERIADO;
+        const usarEnPresupuesto = req.body.usarEnPresupuesto || req.body.USARENPRESUPUESTO;
+        const esInterno = req.body.esInterno || req.body.ESINTERNO;
         await updateEvento(parseInt(req.params.id), evento, esFeriado, usarEnPresupuesto, esInterno);
         res.json({ success: true });
     } catch (err) {
@@ -2735,6 +2841,161 @@ app.get('/api/eventos-ajuste/all', authMiddleware, async (req, res) => {
     } catch (err) {
         console.error('Error in /api/eventos-ajuste/all:', err);
         res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/eventos-ajuste/periodo?desde=YYYY-MM-DD&hasta=YYYY-MM-DD - Adjustment events in a date range
+app.get('/api/eventos-ajuste/periodo', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoEventos && !req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
+        }
+        const { desde, hasta } = req.query;
+        if (!desde || !hasta) {
+            return res.status(400).json({ error: 'Se requieren parámetros desde y hasta' });
+        }
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('desde', sql.Date, desde)
+            .input('hasta', sql.Date, hasta)
+            .query(`
+                SELECT 
+                    EF.IDEVENTO,
+                    E.EVENTO,
+                    E.ESFERIADO,
+                    E.ESINTERNO,
+                    E.USARENPRESUPUESTO,
+                    EF.FECHA,
+                    EF.FECHA_EFECTIVA,
+                    EF.Canal,
+                    EF.GrupoAlmacen,
+                    EF.USUARIO_MODIFICACION,
+                    EF.FECHA_MODIFICACION
+                FROM DIM_EVENTOS_FECHAS EF
+                INNER JOIN DIM_EVENTOS E ON E.IDEVENTO = EF.IDEVENTO
+                WHERE E.USARENPRESUPUESTO = 'S'
+                  AND EF.FECHA >= @desde AND EF.FECHA <= @hasta
+                ORDER BY EF.FECHA
+            `);
+
+        const items = result.recordset.map(row => ({
+            IDEVENTO: row.IDEVENTO,
+            EVENTO: row.EVENTO,
+            ESFERIADO: row.ESFERIADO,
+            ESINTERNO: row.ESINTERNO,
+            USARENPRESUPUESTO: row.USARENPRESUPUESTO,
+            FECHA: row.FECHA instanceof Date ? row.FECHA.toISOString().substring(0, 10) : String(row.FECHA).substring(0, 10),
+            FECHA_EFECTIVA: row.FECHA_EFECTIVA ? (row.FECHA_EFECTIVA instanceof Date ? row.FECHA_EFECTIVA.toISOString().substring(0, 10) : String(row.FECHA_EFECTIVA).substring(0, 10)) : null,
+            Canal: row.Canal || 'Todos',
+            GrupoAlmacen: row.GrupoAlmacen,
+            USUARIO_MODIFICACION: row.USUARIO_MODIFICACION,
+            FECHA_MODIFICACION: row.FECHA_MODIFICACION
+        }));
+
+        res.json(items);
+    } catch (err) {
+        console.error('Error in /api/eventos-ajuste/periodo:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/eventos-ajuste/send-email - Send adjustment report email
+app.post('/api/eventos-ajuste/send-email', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.accesoEventos && !req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
+        }
+
+        const { to, desde, hasta, items, chartImage } = req.body;
+        if (!to || !desde || !hasta) {
+            return res.status(400).json({ error: 'Se requieren destinatario, desde y hasta' });
+        }
+
+        // Build email HTML
+        const tableRows = (items || []).map(item => {
+            const fecha = item.FECHA || '';
+            const evento = item.EVENTO || '';
+            const ref = item.FECHA_EFECTIVA || '—';
+            const diff = item.diff !== undefined ? item.diff : 0;
+            const diffColor = diff === 0 ? '#64748b' : diff > 0 ? '#16a34a' : '#dc2626';
+            const diffText = diff === 0 ? '0d' : `${diff > 0 ? '+' : ''}${diff}d`;
+            const canal = item.Canal || 'Todos';
+            const esFeriado = item.ESFERIADO === 'S' ? ' 🔴' : '';
+            return `<tr style="border-bottom:1px solid #e5e7eb;">
+                <td style="padding:8px 12px;font-size:13px;">${fecha}</td>
+                <td style="padding:8px 12px;font-size:13px;">${evento}${esFeriado}</td>
+                <td style="padding:8px 12px;font-size:13px;">${ref}</td>
+                <td style="padding:8px 12px;font-size:13px;text-align:center;">
+                    <span style="color:${diffColor};font-weight:600;">${diffText}</span>
+                </td>
+                <td style="padding:8px 12px;font-size:13px;">${canal}</td>
+            </tr>`;
+        }).join('');
+
+        const htmlBody = `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:700px;margin:0 auto;">
+            <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:20px 24px;border-radius:12px 12px 0 0;">
+                <h2 style="color:#fff;margin:0;font-size:18px;">📅 Reporte de Ajustes por Período</h2>
+                <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">
+                    Período: <strong>${desde}</strong> → <strong>${hasta}</strong>
+                </p>
+            </div>
+            <div style="background:#f8fafc;padding:16px 24px;border:1px solid #e2e8f0;">
+                ${chartImage ? `
+                    <h3 style="font-size:14px;color:#374151;margin:0 0 8px;">📊 Mapa de Referencias</h3>
+                    <img src="${chartImage}" alt="Gráfico de ajustes" style="max-width:100%;border-radius:8px;border:1px solid #e5e7eb;" />
+                    <br/><br/>
+                ` : ''}
+                <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;">
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;">Fecha</th>
+                            <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;">Evento</th>
+                            <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;">Referencia</th>
+                            <th style="padding:10px 12px;text-align:center;font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;">Dif.</th>
+                            <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;">Canal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af;">Sin ajustes en el período</td></tr>'}
+                    </tbody>
+                </table>
+                <p style="color:#9ca3af;font-size:11px;margin:12px 0 0;text-align:right;">
+                    ${(items || []).length} ajuste(s) · Enviado por ${req.user.nombre || req.user.email}
+                </p>
+            </div>
+            <div style="background:#f1f5f9;padding:12px 24px;border-radius:0 0 12px 12px;border:1px solid #e2e8f0;border-top:none;">
+                <p style="margin:0;font-size:11px;color:#94a3b8;">KPIs Rosti — Calendario Presupuesto · Generado automáticamente</p>
+            </div>
+        </div>`;
+
+        // Strip chartImage from HTML body to avoid oversized sp_send_dbmail calls
+        // (base64 data URIs are blocked by most email clients anyway)
+        const cleanHtmlBody = htmlBody.replace(/<img src="data:image[^"]*"[^>]*\/>/g, '<p style="color:#6b7280;font-size:12px;font-style:italic;">📊 Gráfico disponible en la aplicación web</p>');
+
+        // Send via SQL Server Database Mail (sp_send_dbmail)
+        const pool = await poolPromise;
+        const subject = `📅 Ajustes por Período: ${desde} → ${hasta}`;
+
+        console.log(`📧 Sending email to: ${to}, subject: ${subject}`);
+
+        await pool.request()
+            .input('recipients', sql.NVarChar, to)
+            .input('subject', sql.NVarChar, subject)
+            .input('body', sql.NVarChar(sql.MAX), cleanHtmlBody)
+            .query(`
+                EXEC msdb.dbo.sp_send_dbmail
+                    @recipients = @recipients,
+                    @subject = @subject,
+                    @body = @body,
+                    @body_format = 'HTML'
+            `);
+
+        console.log(`✅ Email sent successfully to: ${to}`);
+        res.json({ success: true, message: `Correo enviado a ${to}` });
+    } catch (err) {
+        console.error('❌ Error in /api/eventos-ajuste/send-email:', err);
+        res.status(500).json({ error: `Error al enviar correo: ${err.message}` });
     }
 });
 

@@ -542,6 +542,27 @@ function App() {
   // Dashboard view
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 font-inter text-gray-800 pb-20">
+      {/* Impersonation Banner */}
+      {user?.impersonatedBy && (
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 text-sm font-medium shadow-md z-50 relative">
+          <div className="flex items-center gap-2 min-w-0">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <span className="truncate">
+              Viendo como: <strong>{user.nombre || user.email}</strong>
+              <span className="hidden sm:inline opacity-80"> — por {user.impersonatedBy}</span>
+            </span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex-shrink-0 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-bold transition-all"
+          >
+            Salir
+          </button>
+        </div>
+      )}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-md">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 h-16 sm:h-20 flex items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
@@ -1037,17 +1058,15 @@ function App() {
               </div>
             </div>
 
-            {/* ⚠️ DO NOT REMOVE — Comparable Curves (Comparación por Local) — Only visible when group selected */}
-            {showGroupCard && groupMembers.length > 0 && (
-              <ComparableCurves
-                stores={groupMembers}
-                year={currentDate.getFullYear()}
-                month={currentDate.getMonth()}
-                canal={filterCanal}
-                kpi={filterKpi}
-                mode="mensual"
-              />
-            )}
+            {/* ⚠️ DO NOT REMOVE — Comparable Curves (Comparación por Local) — Always visible */}
+            <ComparableCurves
+              stores={showGroupCard ? groupMembers : individualStores}
+              year={currentDate.getFullYear()}
+              month={currentDate.getMonth()}
+              canal={filterCanal}
+              kpi={filterKpi}
+              mode="mensual"
+            />
 
             {/* Page 5: Increments & Info */}
             <div className="print-page">
@@ -1126,17 +1145,15 @@ function App() {
               fechaLimite={fechaLimite}
             />
 
-            {/* ⚠️ DO NOT REMOVE — Comparable Curves Annual (Comparación por Local) — Only visible when group selected */}
-            {showGroupCard && groupMembers.length > 0 && (
-              <ComparableCurves
-                stores={groupMembers}
-                year={year}
-                canal={filterCanal}
-                kpi={filterKpi}
-                mode="anual"
-                fechaLimite={fechaLimite}
-              />
-            )}
+            {/* ⚠️ DO NOT REMOVE — Comparable Curves Annual (Comparación por Local) — Always visible */}
+            <ComparableCurves
+              stores={showGroupCard ? groupMembers : individualStores}
+              year={year}
+              canal={filterCanal}
+              kpi={filterKpi}
+              mode="anual"
+              fechaLimite={fechaLimite}
+            />
 
             <InfoCard />
 
