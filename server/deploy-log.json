@@ -1071,6 +1071,59 @@
           "detail": "API responde \"v1.1.0\" pero se esperaba \"v1.2\". Diag: DIAG_ERR: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Ma"
         }
       ]
+    },
+    {
+      "id": 1771967694297,
+      "version": "v1.2",
+      "date": "2026-02-24T21:14:54.297Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 6c14fa5 feat: add recalculation timer/ETA, fix store removal scroll, migration 006 duracion_calculo"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.2 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Configurando infraestructura",
+          "status": "warning",
+          "detail": "No se pudo validar infraestructura: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Management.Automation.PSCredential('Administrador', (ConvertTo-SecureString 'R0st1p017' -AsPlainText -"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "\"DefaultAppPool\" se detuvo correctamente\r\n\"DefaultAppPool\" se inici� correctamente.\r\nIIS AppPool reciclado. Servicio NSSM reiniciado"
+        },
+        {
+          "step": "Verificando API",
+          "status": "warning",
+          "detail": "API no responde: ERROR: Error en el servidor remoto: (404) No se encontr�.. Diag: DIAG_ERR: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Ma"
+        }
+      ]
     }
   ]
 }
