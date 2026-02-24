@@ -177,7 +177,8 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
             const result = await modeloPresupuesto.ejecutarCalculo(usuario, codAlmacen || null, mes || null, nombrePresupuesto || null);
             // SP returns a recordset with TotalRegistros
             const totalRegistros = result.recordset?.[0]?.TotalRegistros || 0;
-            res.json({ success: true, totalRegistros });
+            const duracionSegundos = result.duracionSegundos || 0;
+            res.json({ success: true, totalRegistros, duracionSegundos });
         } catch (err) {
             console.error('Error POST /api/modelo-presupuesto/calcular:', err);
             res.status(500).json({ error: err.message });

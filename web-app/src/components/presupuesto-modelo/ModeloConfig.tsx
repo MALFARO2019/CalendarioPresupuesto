@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../ui/Toast';
 import {
     fetchModeloConfig, saveModeloConfig, deleteModeloConfig,
@@ -9,6 +9,14 @@ import {
 interface Props {
     onConfigSelect: (config: ModeloConfigType | null) => void;
     selectedConfigId: number | null;
+}
+
+/** Format seconds to a human-readable string like "3m 42s" or "15s" */
+function formatDuration(seconds: number): string {
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
 export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId }) => {
@@ -35,6 +43,25 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
     const [loadingVal, setLoadingVal] = useState(false);
     const [recalcId, setRecalcId] = useState<number | null>(null); // which config is recalculating
     const [togglingJobId, setTogglingJobId] = useState<number | null>(null); // which config is toggling job
+
+    // Elapsed timer for recalculation
+    const [elapsed, setElapsed] = useState(0);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Cleanup timer on unmount
+    useEffect(() => {
+        return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    }, []);
+
+    const startTimer = () => {
+        setElapsed(0);
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = setInterval(() => setElapsed(prev => prev + 1), 1000);
+    };
+
+    const stopTimer = () => {
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    };
 
     const loadConfigs = useCallback(async () => {
         try {
@@ -121,14 +148,23 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
     const handleRecalc = async (config: ModeloConfigType) => {
         try {
             setRecalcId(config.id);
-            setMessage({ type: 'info', text: `Recalculando "${config.nombrePresupuesto}"... esto puede tomar varios minutos.` });
+            startTimer();
+            const expectedDur = config.duracionUltimoCalculo;
+            const etaMsg = expectedDur
+                ? ` (duración esperada: ~${formatDuration(expectedDur)})`
+                : ' (primera ejecución, sin estimado previo)';
+            setMessage({ type: 'info', text: `Recalculando "${config.nombrePresupuesto}"...${etaMsg}` });
             const result = await ejecutarRecalculo(config.nombrePresupuesto);
-            setMessage({ type: 'success', text: `Recálculo completado: ${result.totalRegistros?.toLocaleString() || '—'} registros generados` });
+            stopTimer();
+            const durMsg = result.duracionSegundos ? ` en ${formatDuration(result.duracionSegundos)}` : '';
+            setMessage({ type: 'success', text: `Recálculo completado${durMsg}: ${result.totalRegistros?.toLocaleString() || '—'} registros generados` });
             await loadConfigs();
         } catch (err: any) {
+            stopTimer();
             setMessage({ type: 'error', text: err.message });
         } finally {
             setRecalcId(null);
+            stopTimer();
         }
     };
     const handleToggleJob = async (config: ModeloConfigType) => {
@@ -280,6 +316,7 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
                         const isSelected = c.id === selectedConfigId;
                         const isRecalcing = recalcId === c.id;
                         const isTogglingJob = togglingJobId === c.id;
+                        const expectedDur = c.duracionUltimoCalculo;
                         return (
                             <div key={c.id}
                                 onClick={() => handleSelect(c)}
@@ -305,6 +342,9 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
                                                 {c.ultimoCalculo && (
                                                     <span>🔄 {new Date(c.ultimoCalculo).toLocaleString('es-CR')}</span>
                                                 )}
+                                                {c.duracionUltimoCalculo > 0 && (
+                                                    <span title="Duración del último recálculo">⏱️ {formatDuration(c.duracionUltimoCalculo)}</span>
+                                                )}
                                             </div>
                                             <div className="text-[10px] text-gray-400 mt-0.5 flex flex-wrap gap-x-3 font-mono">
                                                 <span title="Stored Procedure">🗄️ SP_CALCULAR_PRESUPUESTO</span>
@@ -316,11 +356,30 @@ export const ModeloConfig: React.FC<Props> = ({ onConfigSelect, selectedConfigId
                                     <div className="flex items-center gap-2 flex-shrink-0 flex-wrap" onClick={e => e.stopPropagation()}>
                                         {/* Run recalc button */}
                                         {canRecalc && (
-                                            <button onClick={() => handleRecalc(c)} disabled={isRecalcing || recalcId !== null}
-                                                className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1 transition-all"
-                                                title={`Ejecutar recálculo para ${c.nombrePresupuesto}`}>
-                                                {isRecalcing ? <span className="animate-spin">⏳</span> : '🔄'} Recalcular
-                                            </button>
+                                            <div className="flex flex-col items-center gap-0.5">
+                                                <button onClick={() => handleRecalc(c)} disabled={isRecalcing || recalcId !== null}
+                                                    className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1 transition-all"
+                                                    title={`Ejecutar recálculo para ${c.nombrePresupuesto}`}>
+                                                    {isRecalcing ? <span className="animate-spin">⏳</span> : '🔄'} Recalcular
+                                                </button>
+                                                {/* Live elapsed + ETA during recalculation */}
+                                                {isRecalcing && (
+                                                    <div className="text-[10px] text-emerald-700 font-medium text-center whitespace-nowrap">
+                                                        {formatDuration(elapsed)}
+                                                        {expectedDur > 0 && (
+                                                            <span className="text-gray-500 ml-1">
+                                                                / ~{formatDuration(expectedDur)}
+                                                                {elapsed < expectedDur
+                                                                    ? ` (faltan ~${formatDuration(expectedDur - elapsed)})`
+                                                                    : ' (excedido)'}
+                                                            </span>
+                                                        )}
+                                                        {!expectedDur && (
+                                                            <span className="text-gray-400 ml-1">(sin estimado previo)</span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
                                         {/* Job toggle */}
                                         {isAdmin && (

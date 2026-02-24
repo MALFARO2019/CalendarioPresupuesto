@@ -1553,6 +1553,7 @@ export interface ModeloConfig {
     horaCalculo: string;
     ultimoCalculo: string | null;
     ultimoUsuario: string | null;
+    duracionUltimoCalculo: number;
     activo: boolean;
     ejecutarEnJob: boolean;
 }
@@ -1685,7 +1686,7 @@ export async function deleteModeloConfig(id: number): Promise<{ success: boolean
 }
 
 // Calculation
-export async function ejecutarRecalculo(nombrePresupuesto?: string, codAlmacen?: string, mes?: number): Promise<{ success: boolean; totalRegistros?: number }> {
+export async function ejecutarRecalculo(nombrePresupuesto?: string, codAlmacen?: string, mes?: number): Promise<{ success: boolean; totalRegistros?: number; duracionSegundos?: number }> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 min timeout
     try {

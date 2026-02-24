@@ -37,6 +37,7 @@ async function getAllConfigs() {
                    TablaDestino as tablaDestino, HoraCalculo as horaCalculo,
                    UltimoCalculo as ultimoCalculo, UltimoUsuario as ultimoUsuario,
                    Activo as activo, ISNULL(EjecutarEnJob, 0) as ejecutarEnJob,
+                   ISNULL(DuracionUltimoCalculo, 0) as duracionUltimoCalculo,
                    FechaCreacion as fechaCreacion, FechaModificacion as fechaModificacion
             FROM MODELO_PRESUPUESTO_CONFIG
             ORDER BY Activo DESC, AnoModelo DESC, Id DESC
@@ -160,23 +161,33 @@ async function ejecutarCalculo(usuario, codAlmacen = null, mes = null, nombrePre
     if (codAlmacen) request.input('CodAlmacen', sql.NVarChar(10), codAlmacen);
     if (mes) request.input('Mes', sql.Int, mes);
 
+    // Measure execution duration
+    const startTime = Date.now();
+
     // Execute the stored procedure
     const result = await request.execute('SP_CALCULAR_PRESUPUESTO');
+
+    const duracionSegundos = Math.round((Date.now() - startTime) / 1000);
+    console.log(`⏱️ Recálculo "${nombrePresupuesto || 'default'}" completado en ${duracionSegundos}s`);
 
     // The SP already updates the config, but ensure it's done
     if (nombrePresupuesto) {
         await pool.request()
             .input('usuario', sql.NVarChar(200), usuario)
             .input('nombre', sql.NVarChar(100), nombrePresupuesto)
+            .input('duracion', sql.Int, duracionSegundos)
             .query(`
                 UPDATE MODELO_PRESUPUESTO_CONFIG
                 SET UltimoCalculo = GETDATE(),
                     UltimoUsuario = @usuario,
+                    DuracionUltimoCalculo = @duracion,
                     FechaModificacion = GETDATE()
                 WHERE NombrePresupuesto = @nombre
             `);
     }
 
+    // Attach duration to result for the endpoint to return
+    result.duracionSegundos = duracionSegundos;
     return result;
 }
 

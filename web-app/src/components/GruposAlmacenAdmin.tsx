@@ -93,6 +93,18 @@ export const GruposAlmacenAdmin: React.FC = () => {
         }
     };
 
+    // Silent refresh: update groups & stores without showing full-page spinner
+    const refreshData = async () => {
+        try {
+            const [g, s] = await Promise.all([
+                apiFetch('/api/admin/grupos-almacen'),
+                apiFetch('/api/admin/grupos-almacen/stores')
+            ]);
+            setGrupos(g);
+            setStores(s);
+        } catch { /* silent */ }
+    };
+
     const loadLineas = async (id: number) => {
         setLoadingLineas(true);
         try {
@@ -160,7 +172,7 @@ export const GruposAlmacenAdmin: React.FC = () => {
             });
             showToast('Grupo actualizado', 'success');
             setEditingId(null);
-            loadData();
+            refreshData();
         } catch (err: any) {
             showToast('Error: ' + err.message, 'error');
         } finally {
@@ -174,7 +186,7 @@ export const GruposAlmacenAdmin: React.FC = () => {
             await apiFetch(`/api/admin/grupos-almacen/${id}`, { method: 'DELETE' });
             showToast('Grupo eliminado', 'success');
             if (expandedId === id) { setExpandedId(null); setExpandedLineas([]); }
-            loadData();
+            refreshData();
         } catch (err: any) {
             showToast('Error: ' + err.message, 'error');
         }
@@ -192,7 +204,7 @@ export const GruposAlmacenAdmin: React.FC = () => {
             setStoreSearch('');
             setAddingToGroup(null);
             loadLineas(idgrupo);
-            loadData(); // refresh count
+            refreshData(); // refresh count without scroll reset
         } catch (err: any) {
             showToast('Error: ' + err.message, 'error');
         }
@@ -203,7 +215,7 @@ export const GruposAlmacenAdmin: React.FC = () => {
         try {
             await apiFetch(`/api/admin/grupos-almacen/lineas/${lineaId}`, { method: 'DELETE' });
             showToast('Almacén removido', 'success');
-            if (expandedId) { loadLineas(expandedId); loadData(); }
+            if (expandedId) { loadLineas(expandedId); refreshData(); }
         } catch (err: any) {
             showToast('Error: ' + err.message, 'error');
         }
