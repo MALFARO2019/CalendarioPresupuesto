@@ -888,6 +888,7 @@ export interface Profile {
     apareceEnTituloAnual: boolean;
     apareceEnTituloTendencia: boolean;
     apareceEnTituloRangos: boolean;
+    gruposAlmacenIds: number[];
     usuariosAsignados: number;
     fechaCreacion: string;
     fechaModificacion: string | null;
@@ -938,6 +939,7 @@ export async function createProfile(data: {
         apareceEnTituloAnual?: boolean;
         apareceEnTituloTendencia?: boolean;
         apareceEnTituloRangos?: boolean;
+        gruposAlmacenIds?: number[];
     };
 }): Promise<{ success: boolean; profileId: number }> {
     const response = await fetch(`${API_BASE}/admin/profiles`, {
@@ -987,6 +989,7 @@ export async function updateProfile(
             apareceEnTituloAnual?: boolean;
             apareceEnTituloTendencia?: boolean;
             apareceEnTituloRangos?: boolean;
+            gruposAlmacenIds?: number[];
         };
     }
 ): Promise<{ success: boolean }> {
@@ -1039,6 +1042,29 @@ export async function syncProfilePermissions(profileId: number): Promise<{ succe
     if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Error syncing profile permissions');
+    }
+    return response.json();
+}
+
+// ==========================================
+// GRUPOS ALMACEN API (for profile selector)
+// ==========================================
+
+export interface GrupoAlmacen {
+    IDGRUPO: number;
+    DESCRIPCION: string;
+    CODVISIBLE: number;
+    Activo: boolean;
+    TotalMiembros: number;
+}
+
+export async function fetchGruposAlmacen(): Promise<GrupoAlmacen[]> {
+    const response = await fetch(`${API_BASE}/admin/grupos-almacen`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Error fetching grupos' }));
+        throw new Error(error.error || 'Error fetching grupos de almacén');
     }
     return response.json();
 }
@@ -1299,12 +1325,13 @@ export async function deployToServer(
     password: string,
     appDir: string,
     version: string,
-    notes: string
+    notes: string,
+    branch?: string
 ): Promise<{ success: boolean; steps: { step: string; status: string; detail?: string }[]; entryId: number }> {
     const response = await fetch(`${API_BASE}/deploy/publish`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ serverIp, user, password, appDir, version, notes })
+        body: JSON.stringify({ serverIp, user, password, appDir, version, notes, branch: branch || 'main' })
     });
     if (!response.ok) {
         const err = await response.json();
@@ -1363,6 +1390,49 @@ export async function runSetupLocal(
     if (!response.ok) {
         const err = await response.json();
         throw new Error(err.error || 'Error al ejecutar configuración local');
+    }
+    return response.json();
+}
+
+// Git operations
+export interface GitStatus {
+    currentBranch: string;
+    uncommittedCount: number;
+    uncommittedFiles: string[];
+    unpushedCount: number;
+    unpushedCommits: string[];
+    needsCommit: boolean;
+    needsPush: boolean;
+    error?: string;
+}
+
+export async function fetchGitBranches(): Promise<string[]> {
+    const response = await fetch(`${API_BASE}/deploy/branches`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error al obtener branches');
+    const data = await response.json();
+    return data.branches || ['main'];
+}
+
+export async function fetchGitStatus(branch?: string): Promise<GitStatus> {
+    const params = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    const response = await fetch(`${API_BASE}/deploy/git-status${params}`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error al obtener estado git');
+    return response.json();
+}
+
+export async function commitAndPush(branch: string, message: string): Promise<{ success: boolean; steps: { step: string; status: string; detail?: string }[] }> {
+    const response = await fetch(`${API_BASE}/deploy/commit-push`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ branch, message })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Error al subir cambios');
     }
     return response.json();
 }

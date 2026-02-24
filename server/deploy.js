@@ -165,7 +165,159 @@ function runPowerShell(script) {
     });
 }
 
-async function deployToServer(serverIp, user, password, appDir, deployVersion) {
+// ==========================================
+// LOCAL GIT OPERATIONS
+// ==========================================
+
+function runGitCommand(cmd) {
+    const repoDir = path.resolve(__dirname, '..');
+    return new Promise((resolve, reject) => {
+        exec(cmd, { cwd: repoDir, maxBuffer: 1024 * 1024, timeout: 60000 }, (error, stdout, stderr) => {
+            if (error) {
+                reject(new Error(`${error.message}\n${stderr}`));
+            } else {
+                resolve(stdout.trim());
+            }
+        });
+    });
+}
+
+/**
+ * Get local git status: uncommitted changes + unpushed commits
+ */
+async function getLocalGitStatus(branch) {
+    branch = branch || 'main';
+    try {
+        // Uncommitted changes
+        const status = await runGitCommand('git status --porcelain');
+        const uncommittedFiles = status ? status.split('\n').filter(Boolean) : [];
+
+        // Unpushed commits
+        let unpushedCommits = [];
+        try {
+            const logOutput = await runGitCommand(`git log origin/${branch}..HEAD --oneline`);
+            unpushedCommits = logOutput ? logOutput.split('\n').filter(Boolean) : [];
+        } catch (e) {
+            // origin/branch might not exist yet
+        }
+
+        // Current branch
+        const currentBranch = await runGitCommand('git branch --show-current');
+
+        return {
+            currentBranch: currentBranch.trim(),
+            uncommittedCount: uncommittedFiles.length,
+            uncommittedFiles: uncommittedFiles.slice(0, 20), // limit
+            unpushedCount: unpushedCommits.length,
+            unpushedCommits: unpushedCommits.slice(0, 10),
+            needsCommit: uncommittedFiles.length > 0,
+            needsPush: unpushedCommits.length > 0
+        };
+    } catch (e) {
+        return { error: e.message, currentBranch: 'unknown', uncommittedCount: 0, uncommittedFiles: [], unpushedCount: 0, unpushedCommits: [], needsCommit: false, needsPush: false };
+    }
+}
+
+/**
+ * Get available remote branches
+ */
+async function getGitBranches() {
+    try {
+        await runGitCommand('git fetch --all --prune');
+        const output = await runGitCommand('git branch -a');
+        const branches = [];
+        const seen = new Set();
+        for (const line of output.split('\n')) {
+            const trimmed = line.replace('*', '').trim();
+            if (!trimmed) continue;
+            // Extract branch name
+            let name = trimmed;
+            if (name.startsWith('remotes/origin/')) {
+                name = name.replace('remotes/origin/', '');
+            }
+            if (name === 'HEAD' || name.includes('->')) continue;
+            if (!seen.has(name)) {
+                seen.add(name);
+                branches.push(name);
+            }
+        }
+        // Sort: main first, then alphabetically
+        branches.sort((a, b) => {
+            if (a === 'main') return -1;
+            if (b === 'main') return 1;
+            return a.localeCompare(b);
+        });
+        return branches;
+    } catch (e) {
+        return ['main'];
+    }
+}
+
+/**
+ * Commit all changes and push to specified branch
+ */
+async function commitAndPush(branch, message) {
+    branch = branch || 'main';
+    message = message || `Deploy ${new Date().toISOString()}`;
+    const steps = [];
+
+    // Check if there are changes to commit
+    const status = await runGitCommand('git status --porcelain');
+    const hasChanges = status && status.trim().length > 0;
+
+    if (hasChanges) {
+        // Stage all changes
+        steps.push({ step: 'Agregando cambios (git add)', status: 'running' });
+        try {
+            await runGitCommand('git add -A');
+            steps[steps.length - 1] = { step: 'Agregando cambios (git add)', status: 'success', detail: `${status.split('\n').filter(Boolean).length} archivos` };
+        } catch (e) {
+            steps[steps.length - 1] = { step: 'Agregando cambios (git add)', status: 'error', detail: e.message };
+            return { success: false, steps };
+        }
+
+        // Commit
+        steps.push({ step: 'Creando commit', status: 'running' });
+        try {
+            const safeMsg = message.replace(/"/g, "'");
+            const commitResult = await runGitCommand(`git commit -m "${safeMsg}"`);
+            steps[steps.length - 1] = { step: 'Creando commit', status: 'success', detail: commitResult.split('\n')[0] };
+        } catch (e) {
+            steps[steps.length - 1] = { step: 'Creando commit', status: 'error', detail: e.message };
+            return { success: false, steps };
+        }
+    } else {
+        steps.push({ step: 'Verificando cambios', status: 'success', detail: 'No hay cambios sin commit' });
+    }
+
+    // Push
+    steps.push({ step: `Subiendo a GitHub (${branch})`, status: 'running' });
+    try {
+        const pushResult = await runGitCommand(`git push origin ${branch}`);
+        steps[steps.length - 1] = { step: `Subiendo a GitHub (${branch})`, status: 'success', detail: pushResult || 'Push completado' };
+    } catch (e) {
+        // "Everything up-to-date" comes through stderr sometimes
+        if (e.message.includes('Everything up-to-date') || e.message.includes('up to date')) {
+            steps[steps.length - 1] = { step: `Subiendo a GitHub (${branch})`, status: 'success', detail: 'Ya estaba al día' };
+        } else {
+            steps[steps.length - 1] = { step: `Subiendo a GitHub (${branch})`, status: 'error', detail: e.message.substring(0, 300) };
+            return { success: false, steps };
+        }
+    }
+
+    return { success: true, steps };
+}
+
+/**
+ * Normalize version for comparison: v1.1.0 -> v1.1, v1.1 -> v1.1
+ */
+function normalizeVersion(v) {
+    if (!v) return '';
+    return v.replace(/\.0$/, '');
+}
+
+async function deployToServer(serverIp, user, password, appDir, deployVersion, branch) {
+    branch = branch || 'main';
     const steps = [];
     const credBlock = `$cred = New-Object System.Management.Automation.PSCredential('${user}', (ConvertTo-SecureString '${password}' -AsPlainText -Force))`;
 
@@ -187,7 +339,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
     steps.push({ step: 'Descargando código (git)', status: 'running' });
     try {
         const gitResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; Set-Location '${appDir}'; git fetch origin production 2>&1; git reset --hard origin/production 2>&1 }`
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; Set-Location '${appDir}'; git fetch origin ${branch} 2>&1; git reset --hard origin/${branch} 2>&1 }`
         );
         steps[steps.length - 1] = { step: 'Descargando código (git)', status: 'success', detail: gitResult.substring(0, 200) };
     } catch (e) {
@@ -311,14 +463,14 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion) {
                     `catch { Write-Output ('ERROR: ' + $_.Exception.Message) } }`
                 );
                 remoteVersion = healthResult.trim();
-                if (deployVersion && remoteVersion === deployVersion) break;
+                if (deployVersion && normalizeVersion(remoteVersion) === normalizeVersion(deployVersion)) break;
                 // If wrong version, try again (old process might still be releasing port)
             } catch (retryErr) {
                 remoteVersion = `ERROR: ${retryErr.message.substring(0, 80)}`;
             }
         }
 
-        if (deployVersion && remoteVersion === deployVersion) {
+        if (deployVersion && normalizeVersion(remoteVersion) === normalizeVersion(deployVersion)) {
             steps[steps.length - 1] = { step: 'Verificando API', status: 'success', detail: `API responde ${remoteVersion} ✓` };
         } else if (remoteVersion.startsWith('ERROR:')) {
             steps[steps.length - 1] = { step: 'Verificando API', status: 'warning', detail: `API no responde: ${remoteVersion.substring(0, 150)}. Diag: ${diagInfo}` };
@@ -624,5 +776,8 @@ module.exports = {
     getServerVersion,
     setServerVersion,
     compareVersions,
-    getAllServerVersions
+    getAllServerVersions,
+    getLocalGitStatus,
+    getGitBranches,
+    commitAndPush
 };

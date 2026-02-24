@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './ui/Toast';
-import { Shield, Plus, Users, Trash2, Edit2, RefreshCw, X, Check, Search } from 'lucide-react';
-import type { Profile, User } from '../api';
-import { fetchProfiles, createProfile, updateProfile, deleteProfile, assignProfileToUsers, syncProfilePermissions } from '../api';
+import { Shield, Plus, Users, Trash2, Edit2, RefreshCw, X, Check, Search, Store } from 'lucide-react';
+import type { Profile, User, GrupoAlmacen } from '../api';
+import { fetchProfiles, createProfile, updateProfile, deleteProfile, assignProfileToUsers, syncProfilePermissions, fetchGruposAlmacen } from '../api';
 
 interface ProfilesManagementProps {
     users: User[];
@@ -23,6 +23,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
     const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
     const [syncOnAssign, setSyncOnAssign] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [gruposAlmacen, setGruposAlmacen] = useState<GrupoAlmacen[]>([]);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -57,11 +58,22 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
         apareceEnTituloAnual: true,
         apareceEnTituloTendencia: true,
         apareceEnTituloRangos: true,
+        gruposAlmacenIds: [] as number[],
     });
 
     useEffect(() => {
         loadProfiles();
+        loadGrupos();
     }, []);
+
+    const loadGrupos = async () => {
+        try {
+            const data = await fetchGruposAlmacen();
+            setGruposAlmacen(data.filter(g => g.Activo));
+        } catch (err) {
+            console.error('Error loading grupos almacén:', err);
+        }
+    };
 
     const loadProfiles = async () => {
         setLoading(true);
@@ -111,6 +123,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     apareceEnTituloAnual: formData.apareceEnTituloAnual,
                     apareceEnTituloTendencia: formData.apareceEnTituloTendencia,
                     apareceEnTituloRangos: formData.apareceEnTituloRangos,
+                    gruposAlmacenIds: formData.gruposAlmacenIds,
                 }
             });
             setShowCreateModal(false);
@@ -157,6 +170,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     apareceEnTituloAnual: formData.apareceEnTituloAnual,
                     apareceEnTituloTendencia: formData.apareceEnTituloTendencia,
                     apareceEnTituloRangos: formData.apareceEnTituloRangos,
+                    gruposAlmacenIds: formData.gruposAlmacenIds,
                 }
             });
             setEditingProfile(null);
@@ -235,6 +249,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             apareceEnTituloAnual: true,
             apareceEnTituloTendencia: true,
             apareceEnTituloRangos: true,
+            gruposAlmacenIds: [] as number[],
         });
     };
 
@@ -272,6 +287,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             apareceEnTituloAnual: profile.apareceEnTituloAnual ?? true,
             apareceEnTituloTendencia: profile.apareceEnTituloTendencia ?? true,
             apareceEnTituloRangos: profile.apareceEnTituloRangos ?? true,
+            gruposAlmacenIds: profile.gruposAlmacenIds || [],
         });
     };
 
@@ -523,6 +539,44 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                                     ))}
                                 </div>
                             </div>
+
+                            {/* Grupos de Almacén */}
+                            {gruposAlmacen.length > 0 && (
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                        <Store className="w-4 h-4 text-emerald-600" />
+                                        Grupos de Almacén
+                                    </label>
+                                    <p className="text-xs text-gray-500 mb-2">Selecciona los grupos de almacén que tendrán acceso con este perfil. Al sincronizar permisos, los stores se copiarán a los usuarios.</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
+                                        {gruposAlmacen.map(g => (
+                                            <label
+                                                key={g.IDGRUPO}
+                                                className={`flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-all border ${formData.gruposAlmacenIds.includes(g.IDGRUPO)
+                                                        ? 'bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
+                                                        : 'bg-gray-50 border-transparent hover:bg-gray-100'
+                                                    }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.gruposAlmacenIds.includes(g.IDGRUPO)}
+                                                    onChange={e => {
+                                                        const ids = e.target.checked
+                                                            ? [...formData.gruposAlmacenIds, g.IDGRUPO]
+                                                            : formData.gruposAlmacenIds.filter(id => id !== g.IDGRUPO);
+                                                        setFormData({ ...formData, gruposAlmacenIds: ids });
+                                                    }}
+                                                    className="w-4 h-4 text-emerald-600"
+                                                />
+                                                <div className="min-w-0">
+                                                    <span className="text-sm font-medium text-gray-800 truncate block">{g.DESCRIPCION}</span>
+                                                    <span className="text-xs text-gray-400">{g.TotalMiembros} almacen{g.TotalMiembros !== 1 ? 'es' : ''}</span>
+                                                </div>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex gap-3 mt-6">

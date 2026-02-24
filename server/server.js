@@ -134,6 +134,35 @@ app.get('/api/deploy/log', authMiddleware, (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET git branches (local repo)
+app.get('/api/deploy/branches', authMiddleware, async (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const branches = await deployModule.getGitBranches();
+        res.json({ branches });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET git status (uncommitted + unpushed)
+app.get('/api/deploy/git-status', authMiddleware, async (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const branch = req.query.branch || 'main';
+        const status = await deployModule.getLocalGitStatus(branch);
+        res.json(status);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST commit and push
+app.post('/api/deploy/commit-push', authMiddleware, async (req, res) => {
+    if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+    try {
+        const { branch, message } = req.body;
+        const result = await deployModule.commitAndPush(branch || 'main', message);
+        res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST new deploy log entry
 app.post('/api/deploy/log', authMiddleware, (req, res) => {
     if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
@@ -149,7 +178,7 @@ app.post('/api/deploy/log', authMiddleware, (req, res) => {
 app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
     if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
     try {
-        const { serverIp, user, password, appDir, version, notes } = req.body;
+        const { serverIp, user, password, appDir, version, notes, branch } = req.body;
         if (!serverIp || !user || !password || !appDir) {
             return res.status(400).json({ error: 'Faltan parámetros: serverIp, user, password, appDir' });
         }
@@ -177,7 +206,7 @@ app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
         );
 
         // Execute deploy
-        const result = await deployModule.deployToServer(serverIp, user, password, appDir, version);
+        const result = await deployModule.deployToServer(serverIp, user, password, appDir, version, branch);
 
         // Update log entry with result
         deployModule.updateDeployEntry(entry.id, {

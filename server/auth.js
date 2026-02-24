@@ -491,6 +491,24 @@ IMPORTANTE:
             END
         `);
 
+        // Create APP_PERFIL_GRUPOALMACEN junction table (Profile <-> Warehouse Group)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_PERFIL_GRUPOALMACEN' AND xtype='U')
+            BEGIN
+                CREATE TABLE APP_PERFIL_GRUPOALMACEN (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    PerfilId INT NOT NULL,
+                    GrupoAlmacenId INT NOT NULL,
+                    CONSTRAINT FK_PerfilGrupo_Perfil FOREIGN KEY (PerfilId)
+                        REFERENCES APP_PERFILES(Id) ON DELETE CASCADE,
+                    CONSTRAINT FK_PerfilGrupo_Grupo FOREIGN KEY (GrupoAlmacenId)
+                        REFERENCES KpisRosti_GruposAlmacenCab(IDGRUPO) ON DELETE CASCADE,
+                    CONSTRAINT UQ_Perfil_GrupoAlmacen UNIQUE (PerfilId, GrupoAlmacenId)
+                );
+                CREATE INDEX IX_PerfilGrupo_PerfilId ON APP_PERFIL_GRUPOALMACEN(PerfilId);
+            END
+        `);
+
         console.log('✅ Security tables verified/created');
     } catch (err) {
         console.error('⚠️ Could not create security tables:', err.message);
@@ -1041,6 +1059,16 @@ async function getAllProfiles() {
         ORDER BY p.Nombre
     `);
 
+    // Fetch all profile-group associations in one query
+    const gruposResult = await pool.request().query(`
+        SELECT PerfilId, GrupoAlmacenId FROM APP_PERFIL_GRUPOALMACEN
+    `);
+    const gruposByPerfil = {};
+    for (const row of gruposResult.recordset) {
+        if (!gruposByPerfil[row.PerfilId]) gruposByPerfil[row.PerfilId] = [];
+        gruposByPerfil[row.PerfilId].push(row.GrupoAlmacenId);
+    }
+
     return result.recordset.map(p => ({
         id: p.Id,
         nombre: p.Nombre,
@@ -1075,6 +1103,7 @@ async function getAllProfiles() {
         apareceEnTituloAnual: p.ApareceEnTituloAnual ?? true,
         apareceEnTituloTendencia: p.ApareceEnTituloTendencia ?? true,
         apareceEnTituloRangos: p.ApareceEnTituloRangos ?? true,
+        gruposAlmacenIds: gruposByPerfil[p.Id] || [],
         usuariosAsignados: p.UsuariosAsignados,
         fechaCreacion: p.FechaCreacion,
         fechaModificacion: p.FechaModificacion,
@@ -1156,7 +1185,19 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
             )
         `);
 
-    return result.recordset[0].Id;
+    const profileId = result.recordset[0].Id;
+
+    // Save Grupos de Almacén associations
+    if (permisos.gruposAlmacenIds && permisos.gruposAlmacenIds.length > 0) {
+        for (const grupoId of permisos.gruposAlmacenIds) {
+            await pool.request()
+                .input('perfilId', sql.Int, profileId)
+                .input('grupoId', sql.Int, grupoId)
+                .query('INSERT INTO APP_PERFIL_GRUPOALMACEN (PerfilId, GrupoAlmacenId) VALUES (@perfilId, @grupoId)');
+        }
+    }
+
+    return profileId;
 }
 
 /**
@@ -1253,6 +1294,20 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
                 FechaModificacion = GETDATE()
             WHERE Id = @id
         `);
+
+    // Update Grupos de Almacén associations (delete + re-insert)
+    await pool.request()
+        .input('id', sql.Int, perfilId)
+        .query('DELETE FROM APP_PERFIL_GRUPOALMACEN WHERE PerfilId = @id');
+
+    if (permisos.gruposAlmacenIds && permisos.gruposAlmacenIds.length > 0) {
+        for (const grupoId of permisos.gruposAlmacenIds) {
+            await pool.request()
+                .input('perfilId', sql.Int, perfilId)
+                .input('grupoId', sql.Int, grupoId)
+                .query('INSERT INTO APP_PERFIL_GRUPOALMACEN (PerfilId, GrupoAlmacenId) VALUES (@perfilId, @grupoId)');
+        }
+    }
 }
 
 /**
@@ -1336,6 +1391,49 @@ async function assignProfileToUsers(perfilId, userIds, syncPermissions = true) {
                     WHERE Id = @userId
                 `);
         }
+
+        // Sync stores from Grupos de Almacén
+        if (syncPermissions) {
+            await syncStoresFromProfileGroups(pool, perfilId, userId);
+        }
+    }
+}
+
+/**
+ * Helper: Resolve stores from a profile's Grupos de Almacén and update a user's APP_USUARIO_ALMACEN
+ */
+async function syncStoresFromProfileGroups(pool, perfilId, userId) {
+    // Get all grupo IDs for this profile
+    const gruposResult = await pool.request()
+        .input('perfilId', sql.Int, perfilId)
+        .query('SELECT GrupoAlmacenId FROM APP_PERFIL_GRUPOALMACEN WHERE PerfilId = @perfilId');
+
+    if (gruposResult.recordset.length === 0) {
+        // No groups assigned to profile, don't touch user's stores
+        return;
+    }
+
+    // Get all stores from those groups
+    const grupoIds = gruposResult.recordset.map(r => r.GrupoAlmacenId);
+    const storesResult = await pool.request()
+        .query(`
+            SELECT DISTINCT CODALMACEN
+            FROM KpisRosti_GruposAlmacenLin
+            WHERE IDGRUPO IN (${grupoIds.join(',')}) AND Activo = 1
+        `);
+
+    const stores = storesResult.recordset.map(r => r.CODALMACEN);
+
+    // Replace user's stores
+    await pool.request()
+        .input('userId', sql.Int, userId)
+        .query('DELETE FROM APP_USUARIO_ALMACEN WHERE UsuarioId = @userId');
+
+    for (const store of stores) {
+        await pool.request()
+            .input('userId', sql.Int, userId)
+            .input('local', sql.NVarChar, store)
+            .query('INSERT INTO APP_USUARIO_ALMACEN (UsuarioId, Local) VALUES (@userId, @local)');
     }
 }
 
@@ -1412,6 +1510,15 @@ async function syncProfilePermissions(perfilId) {
                 FechaModificacion = GETDATE()
             WHERE PerfilId = @perfilId AND EsProtegido = 0
         `);
+
+    // Sync stores from Grupos de Almacén for all users with this profile
+    const usersWithProfile = await pool.request()
+        .input('perfilId', sql.Int, perfilId)
+        .query('SELECT Id FROM APP_USUARIOS WHERE PerfilId = @perfilId AND EsProtegido = 0');
+
+    for (const user of usersWithProfile.recordset) {
+        await syncStoresFromProfileGroups(pool, perfilId, user.Id);
+    }
 
     // Return count of updated users
     const countResult = await pool.request()

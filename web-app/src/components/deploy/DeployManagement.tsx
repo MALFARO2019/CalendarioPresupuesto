@@ -8,9 +8,13 @@ import {
     runSetupRemote,
     runSetupLocal,
     fetchServerVersion,
+    fetchGitBranches,
+    fetchGitStatus,
+    commitAndPush,
     type DeployLogEntry,
     type SetupGuide,
     type ServerVersionInfo,
+    type GitStatus,
 } from '../../api';
 
 // ==========================================
@@ -98,6 +102,12 @@ export function DeployManagement() {
     const [showAddEntry, setShowAddEntry] = useState(false);
     const [newVersion, setNewVersion] = useState('');
     const [newNotes, setNewNotes] = useState('');
+
+    // Git branch & status state
+    const [branches, setBranches] = useState<string[]>(['main']);
+    const [selectedBranch, setSelectedBranch] = useState('main');
+    const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
+    const [gitStatusLoading, setGitStatusLoading] = useState(false);
     const [newServers, setNewServers] = useState('10.29.1.25');
 
     // Load server version when selected server changes
@@ -172,22 +182,100 @@ export function DeployManagement() {
         } finally { setGuideLoading(false); }
     };
 
+    // Load git branches & status
+    const loadGitInfo = useCallback(async () => {
+        setGitStatusLoading(true);
+        try {
+            const [branchList, status] = await Promise.all([
+                fetchGitBranches(),
+                fetchGitStatus(selectedBranch)
+            ]);
+            setBranches(branchList);
+            setGitStatus(status);
+        } catch (e) {
+            console.warn('Error loading git info:', e);
+        } finally {
+            setGitStatusLoading(false);
+        }
+    }, [selectedBranch]);
+
+    useEffect(() => { loadGitInfo(); }, [loadGitInfo]);
+
+    const refreshGitStatus = useCallback(async () => {
+        try {
+            const status = await fetchGitStatus(selectedBranch);
+            setGitStatus(status);
+        } catch { /* ignore */ }
+    }, [selectedBranch]);
+
     const handleDeploy = async () => {
         if (!version.trim() || !selectedServer) return;
         setDeploying(true);
         setDeployResult(null);
-        setDeploySteps([
-            { step: 'Verificando conexión', status: 'running' },
+
+        const hasPendingChanges = gitStatus?.needsCommit || gitStatus?.needsPush;
+        const initialSteps: { step: string; status: string; detail?: string }[] = [];
+
+        if (hasPendingChanges) {
+            initialSteps.push({ step: 'Subiendo cambios a GitHub', status: 'running' });
+        }
+        initialSteps.push(
+            { step: 'Verificando conexión', status: 'pending' },
             { step: 'Descargando código (git)', status: 'pending' },
             { step: 'Registrando versión', status: 'pending' },
             { step: 'Instalando dependencias backend', status: 'pending' },
             { step: 'Construyendo frontend', status: 'pending' },
             { step: 'Reiniciando servicio', status: 'pending' },
             { step: 'Verificando API', status: 'pending' },
-        ]);
+        );
+        setDeploySteps(initialSteps);
+
         try {
-            const result = await deployToServer(selectedServer.ip, selectedServer.user, selectedServer.password, selectedServer.appDir, version, notes);
-            setDeploySteps(result.steps);
+            // Step 0: Auto-commit + push if needed
+            if (hasPendingChanges) {
+                const commitMsg = `Deploy ${version}: ${notes || 'Actualización'}`;
+                const pushResult = await commitAndPush(selectedBranch, commitMsg);
+                const pushOffset = 0;
+                if (pushResult.success) {
+                    setDeploySteps(prev => {
+                        const updated = [...prev];
+                        updated[pushOffset] = {
+                            step: 'Subiendo cambios a GitHub',
+                            status: 'success',
+                            detail: pushResult.steps.map(s => s.detail || s.step).join(' → ')
+                        };
+                        updated[pushOffset + 1] = { ...updated[pushOffset + 1], status: 'running' };
+                        return updated;
+                    });
+                } else {
+                    setDeploySteps(prev => {
+                        const updated = [...prev];
+                        updated[pushOffset] = {
+                            step: 'Subiendo cambios a GitHub',
+                            status: 'error',
+                            detail: pushResult.steps.find(s => s.status === 'error')?.detail || 'Error al subir'
+                        };
+                        return updated;
+                    });
+                    setDeployResult('error');
+                    setDeploying(false);
+                    return;
+                }
+                await refreshGitStatus();
+            }
+
+            // Remote deploy
+            const result = await deployToServer(selectedServer.ip, selectedServer.user, selectedServer.password, selectedServer.appDir, version, notes, selectedBranch);
+
+            // Merge steps: keep the push step (if any), replace the rest
+            if (hasPendingChanges) {
+                setDeploySteps(prev => [
+                    prev[0], // keep push step
+                    ...result.steps
+                ]);
+            } else {
+                setDeploySteps(result.steps);
+            }
             setDeployResult(result.success ? 'success' : 'error');
 
             // Refresh server version after successful deploy
@@ -583,7 +671,7 @@ export function DeployManagement() {
                             )}
                         </div>
 
-                        {/* Version & Notes */}
+                        {/* Version, Branch & Notes */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5">Versión *</label>
@@ -596,7 +684,48 @@ export function DeployManagement() {
                                     ))}
                                 </select>
                             </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5">Rama (Branch)</label>
+                                <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}
+                                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm font-mono transition-all bg-white appearance-none"
+                                    disabled={deploying}>
+                                    {branches.map(b => (
+                                        <option key={b} value={b}>{b}{b === gitStatus?.currentBranch ? ' ← actual' : ''}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
+
+                        {/* Git Status Indicator */}
+                        {gitStatus && (gitStatus.needsCommit || gitStatus.needsPush) && (
+                            <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                                <span className="text-lg">⚠️</span>
+                                <div className="flex-1">
+                                    <p className="text-sm font-semibold text-amber-800">Cambios pendientes</p>
+                                    <p className="text-xs text-amber-600">
+                                        {gitStatus.needsCommit && `${gitStatus.uncommittedCount} archivo(s) sin commit`}
+                                        {gitStatus.needsCommit && gitStatus.needsPush && ' · '}
+                                        {gitStatus.needsPush && `${gitStatus.unpushedCount} commit(s) sin push`}
+                                        {' — Se subirán automáticamente al publicar'}
+                                    </p>
+                                </div>
+                                <button onClick={refreshGitStatus} disabled={gitStatusLoading}
+                                    className="text-xs px-2 py-1 bg-amber-100 hover:bg-amber-200 rounded-lg text-amber-700 transition-colors"
+                                    title="Actualizar estado">
+                                    {gitStatusLoading ? '⏳' : '🔄'}
+                                </button>
+                            </div>
+                        )}
+                        {gitStatus && !gitStatus.needsCommit && !gitStatus.needsPush && !gitStatusLoading && (
+                            <div className="flex items-center gap-2 p-2 rounded-lg bg-green-50 border border-green-100">
+                                <span className="text-sm">✅</span>
+                                <span className="text-xs text-green-700">Todo al día con GitHub ({selectedBranch})</span>
+                                <button onClick={refreshGitStatus} disabled={gitStatusLoading}
+                                    className="ml-auto text-xs px-2 py-0.5 bg-green-100 hover:bg-green-200 rounded text-green-600 transition-colors">
+                                    🔄
+                                </button>
+                            </div>
+                        )}
 
                         {/* Notes */}
                         <div>
