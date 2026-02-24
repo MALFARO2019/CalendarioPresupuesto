@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Brush } from 'recharts';
 import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { fetchBudgetData } from '../api';
 import type { BudgetRecord } from '../mockData';
@@ -217,8 +217,8 @@ export const ComparableCurves: React.FC<ComparableCurvesProps> = ({
                                     key={key}
                                     onClick={() => { setDataType(key); setHasLoaded(false); }}
                                     className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${dataType === key
-                                            ? 'bg-indigo-600 text-white shadow-sm'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        ? 'bg-indigo-600 text-white shadow-sm'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                         }`}
                                 >
                                     {label}
@@ -304,6 +304,13 @@ export const ComparableCurves: React.FC<ComparableCurvesProps> = ({
                                             />
                                         )
                                     ))}
+                                    <Brush
+                                        dataKey="name"
+                                        height={30}
+                                        stroke="#6366F1"
+                                        fill="#E0E7FF"
+                                        travellerWidth={10}
+                                    />
                                 </LineChart>
                             </ResponsiveContainer>
                         </div>
