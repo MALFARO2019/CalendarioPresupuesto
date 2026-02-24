@@ -289,7 +289,7 @@ async function commitAndPush(branch, message) {
             steps[steps.length - 1] = { step: 'Agregando cambios (git add)', status: 'success', detail: `${status.split('\n').filter(Boolean).length} archivos` };
         } catch (e) {
             steps[steps.length - 1] = { step: 'Agregando cambios (git add)', status: 'error', detail: e.message };
-            return { success: false, steps, timing: buildTiming(startTime) };
+            return { success: false, steps };
         }
 
         // Commit
@@ -300,7 +300,7 @@ async function commitAndPush(branch, message) {
             steps[steps.length - 1] = { step: 'Creando commit', status: 'success', detail: commitResult.split('\n')[0] };
         } catch (e) {
             steps[steps.length - 1] = { step: 'Creando commit', status: 'error', detail: e.message };
-            return { success: false, steps, timing: buildTiming(startTime) };
+            return { success: false, steps };
         }
     } else {
         steps.push({ step: 'Verificando cambios', status: 'success', detail: 'No hay cambios sin commit' });
@@ -317,11 +317,11 @@ async function commitAndPush(branch, message) {
             steps[steps.length - 1] = { step: `Subiendo a GitHub (${branch})`, status: 'success', detail: 'Ya estaba al día' };
         } else {
             steps[steps.length - 1] = { step: `Subiendo a GitHub (${branch})`, status: 'error', detail: e.message.substring(0, 300) };
-            return { success: false, steps, timing: buildTiming(startTime) };
+            return { success: false, steps };
         }
     }
 
-    return { success: true, steps, timing: buildTiming(startTime) };
+    return { success: true, steps };
 }
 
 /**
