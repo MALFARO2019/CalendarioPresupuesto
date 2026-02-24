@@ -782,8 +782,9 @@ app.delete('/api/admin/users/:id', authMiddleware, async (req, res) => {
 // GET /api/admin/profiles - List all profiles
 app.get('/api/admin/profiles', authMiddleware, async (req, res) => {
     try {
-        if (!req.user.esAdmin) {
-            return res.status(403).json({ error: 'No tiene permisos de administrador' });
+        // Allow admin, users with accesoPersonal (assignment management), or accesoAsignaciones
+        if (!req.user.esAdmin && !req.user.accesoPersonal && !req.user.accesoAsignaciones) {
+            return res.status(403).json({ error: 'No tiene permisos para ver perfiles' });
         }
         const profiles = await getAllProfiles();
         res.json(profiles);
