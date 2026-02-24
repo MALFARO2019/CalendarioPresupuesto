@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useToast } from '../ui/Toast';
 import {
     fetchDeployLog,
@@ -58,6 +58,20 @@ function saveServers(servers: ServerConfig[]) {
     localStorage.setItem('deploy_servers', JSON.stringify(servers));
 }
 
+/** Format seconds to a human-readable string like "3m 42s" or "15s" */
+function formatDuration(seconds: number): string {
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
+function getDeployTimingHistory(): { durationMinutes: number }[] {
+    try {
+        return JSON.parse(localStorage.getItem('deploy_timing_history') || '[]');
+    } catch { return []; }
+}
+
 // ==========================================
 // DEPLOY MANAGEMENT COMPONENT
 // ==========================================
@@ -111,6 +125,38 @@ export function DeployManagement() {
     const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
     const [gitStatusLoading, setGitStatusLoading] = useState(false);
     const [newServers, setNewServers] = useState('10.29.1.25');
+
+    // Elapsed timer for deploy progress
+    const [deployElapsed, setDeployElapsed] = useState(0);
+    const deployTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Cleanup timer on unmount
+    useEffect(() => {
+        return () => { if (deployTimerRef.current) clearInterval(deployTimerRef.current); };
+    }, []);
+
+    const startDeployTimer = () => {
+        setDeployElapsed(0);
+        if (deployTimerRef.current) clearInterval(deployTimerRef.current);
+        deployTimerRef.current = setInterval(() => setDeployElapsed(prev => prev + 1), 1000);
+    };
+
+    const stopDeployTimer = () => {
+        if (deployTimerRef.current) { clearInterval(deployTimerRef.current); deployTimerRef.current = null; }
+    };
+
+    // Average deploy duration from history (in seconds)
+    const avgDeploySeconds = useMemo(() => {
+        const history = getDeployTimingHistory();
+        if (history.length === 0) return 0;
+        return Math.round(history.reduce((s, h) => s + h.durationMinutes * 60, 0) / history.length);
+    }, [deploying]); // recalculate when deploy starts/stops
+
+    const lastDeployDuration = useMemo(() => {
+        const history = getDeployTimingHistory();
+        if (history.length === 0) return 0;
+        return Math.round(history[history.length - 1].durationMinutes * 60);
+    }, [deploying]);
 
     // Load server version when selected server changes
     const loadServerVersion = async (ip: string) => {
@@ -216,6 +262,7 @@ export function DeployManagement() {
         setDeployResult(null);
         setDeployTiming(null);
         setDeployStartLocal(new Date());
+        startDeployTimer();
 
         const hasPendingChanges = gitStatus?.needsCommit || gitStatus?.needsPush;
         const initialSteps: { step: string; status: string; detail?: string }[] = [];
@@ -305,6 +352,7 @@ export function DeployManagement() {
                 s.status === 'running' ? { ...s, status: 'error', detail: e.message } : s
             ));
         } finally {
+            stopDeployTimer();
             setDeploying(false);
             loadChangelog();
         }
@@ -754,6 +802,16 @@ export function DeployManagement() {
                         </div>
 
                         {/* Deploy Button */}
+                        {/* Last deploy duration badge (visible before deploying) */}
+                        {!deploying && lastDeployDuration > 0 && (
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <span>📊 Última publicación demoró: <span className="font-bold text-gray-700">{formatDuration(lastDeployDuration)}</span></span>
+                                {avgDeploySeconds > 0 && avgDeploySeconds !== lastDeployDuration && (
+                                    <span className="text-gray-400">· Promedio: {formatDuration(avgDeploySeconds)}</span>
+                                )}
+                            </div>
+                        )}
+
                         <button onClick={handleDeploy} disabled={deploying || !version.trim()}
                             className={`w-full py-4 rounded-xl text-base font-bold transition-all flex items-center justify-center gap-2 ${deploying
                                 ? 'bg-amber-100 text-amber-700 cursor-wait'
@@ -761,23 +819,80 @@ export function DeployManagement() {
                                     ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-200'
                                     : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200'}`}>
                             {deploying ? (
-                                <><span className="animate-spin">⏳</span> Publicando...{(() => {
-                                    // Show ETA based on historical timing
-                                    try {
-                                        const history = JSON.parse(localStorage.getItem('deploy_timing_history') || '[]');
-                                        if (history.length > 0) {
-                                            const avgMin = history.reduce((s: number, h: any) => s + h.durationMinutes, 0) / history.length;
-                                            return <span className="ml-2 text-xs opacity-75">(ETA: ~{avgMin.toFixed(1)} min)</span>;
-                                        }
-                                    } catch { /* ignore */ }
-                                    return null;
-                                })()}</>
+                                <><span className="animate-spin">⏳</span> Publicando... <span className="font-mono text-sm">{formatDuration(deployElapsed)}</span></>
                             ) : deployResult === 'success' ? (
                                 <>✅ Publicado — Publicar de Nuevo</>
                             ) : (
                                 <>🚀 Publicar en {selectedServer?.ip}</>
                             )}
                         </button>
+
+                        {/* Live progress panel during deploy */}
+                        {deploying && (
+                            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                                {/* Progress bar */}
+                                {avgDeploySeconds > 0 ? (
+                                    <>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="font-semibold text-amber-800">⏱️ Progreso estimado</span>
+                                            <span className="font-bold text-amber-700 font-mono">
+                                                {Math.min(99, Math.round((deployElapsed / avgDeploySeconds) * 100))}%
+                                            </span>
+                                        </div>
+                                        <div className="w-full bg-amber-100 rounded-full h-3 overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full transition-all duration-1000 ease-linear"
+                                                style={{
+                                                    width: `${Math.min(99, (deployElapsed / avgDeploySeconds) * 100)}%`,
+                                                    background: deployElapsed < avgDeploySeconds
+                                                        ? 'linear-gradient(90deg, #f59e0b, #f97316)'
+                                                        : 'linear-gradient(90deg, #ef4444, #dc2626)',
+                                                }}
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="text-sm text-amber-700 flex items-center gap-2">
+                                        <span className="animate-pulse">📊</span>
+                                        <span>Primera publicación — sin estimado previo</span>
+                                    </div>
+                                )}
+
+                                {/* Stats row */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    {/* Elapsed */}
+                                    <div className="bg-white/70 rounded-lg px-3 py-2 text-center">
+                                        <div className="text-[10px] text-gray-500 uppercase font-bold">Tiempo</div>
+                                        <div className="text-sm font-bold text-amber-800 font-mono">{formatDuration(deployElapsed)}</div>
+                                    </div>
+                                    {/* Last duration */}
+                                    <div className="bg-white/70 rounded-lg px-3 py-2 text-center">
+                                        <div className="text-[10px] text-gray-500 uppercase font-bold">Última vez</div>
+                                        <div className="text-sm font-bold text-gray-700 font-mono">
+                                            {lastDeployDuration > 0 ? formatDuration(lastDeployDuration) : '—'}
+                                        </div>
+                                    </div>
+                                    {/* ETA */}
+                                    <div className="bg-white/70 rounded-lg px-3 py-2 text-center">
+                                        <div className="text-[10px] text-gray-500 uppercase font-bold">ETA</div>
+                                        <div className="text-sm font-bold text-amber-800 font-mono">
+                                            {avgDeploySeconds > 0 && deployElapsed < avgDeploySeconds
+                                                ? formatDuration(avgDeploySeconds - deployElapsed)
+                                                : avgDeploySeconds > 0 ? 'Excedido' : '—'}
+                                        </div>
+                                    </div>
+                                    {/* Estimated finish time */}
+                                    <div className="bg-white/70 rounded-lg px-3 py-2 text-center">
+                                        <div className="text-[10px] text-gray-500 uppercase font-bold">Hora fin</div>
+                                        <div className="text-sm font-bold text-gray-700 font-mono">
+                                            {avgDeploySeconds > 0 && deployStartLocal
+                                                ? new Date(deployStartLocal.getTime() + avgDeploySeconds * 1000).toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' })
+                                                : '—'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Deploy Progress */}
                         {deploySteps.length > 0 && (
