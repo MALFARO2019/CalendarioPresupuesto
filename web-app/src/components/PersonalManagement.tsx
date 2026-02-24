@@ -183,7 +183,7 @@ export const PersonalManagement: React.FC = () => {
 
         return (!q || a.USUARIO_NOMBRE.toLowerCase().includes(q))
             && (!ql || a.LOCAL.toLowerCase().includes(ql))
-            && (!qp || a.PERFIL.toLowerCase().includes(qp))
+            && (!qp || (a.PERFIL_ACTUAL || a.PERFIL).toLowerCase().includes(qp))
             && inDateRange;
     }).sort((a, b) => new Date(b.FECHA_INICIO).getTime() - new Date(a.FECHA_INICIO).getTime());
 
@@ -282,7 +282,7 @@ export const PersonalManagement: React.FC = () => {
                                                 <span className="flex items-center gap-1 text-gray-700"><MapPin className="w-3 h-3 text-gray-400" />{a.LOCAL}</span>
                                             </td>
                                             <td className="px-4 py-3">
-                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">{a.PERFIL}</span>
+                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">{a.PERFIL_ACTUAL || a.PERFIL}</span>
                                             </td>
                                             <td className="px-4 py-3 text-gray-600">{fmtDate(a.FECHA_INICIO)}</td>
                                             <td className="px-4 py-3 text-gray-600">{fmtDate(a.FECHA_FIN)}</td>

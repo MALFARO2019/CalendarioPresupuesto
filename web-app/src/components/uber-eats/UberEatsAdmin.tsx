@@ -316,6 +316,8 @@ export function UberEatsAdmin() {
                                     <input
                                         value={clientId}
                                         onChange={e => setClientId(e.target.value)}
+                                        autoComplete="off"
+                                        name="uber_client_id"
                                         className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all font-mono"
                                         placeholder="ej. Q8eKFoos24Fm8D9cYw4lBQtDEeWv0a82"
                                     />
@@ -331,6 +333,8 @@ export function UberEatsAdmin() {
                                             type={showSecret ? 'text' : 'password'}
                                             value={clientSecret}
                                             onChange={e => setClientSecret(e.target.value)}
+                                            autoComplete="new-password"
+                                            name="uber_client_secret"
                                             className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all font-mono"
                                             placeholder={config.CLIENT_SECRET?.value ? "Dejar vacío para no cambiar" : "Pega aquí el client_secret"}
                                         />

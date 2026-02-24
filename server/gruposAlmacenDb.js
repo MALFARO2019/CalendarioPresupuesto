@@ -216,8 +216,9 @@ async function removeLinea(id) {
 async function getAvailableStores() {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-        SELECT DISTINCT CODALMACEN, NOMBRE
+        SELECT RTRIM(CODALMACEN) AS CODALMACEN, NOMBRE_CONTA AS NOMBRE
         FROM DIM_NOMBRES_ALMACEN
+        WHERE NOMBRE_CONTA IS NOT NULL AND NOMBRE_CONTA != ''
         ORDER BY CODALMACEN
     `);
     return result.recordset;
