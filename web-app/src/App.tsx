@@ -27,6 +27,7 @@ import { SummaryCard } from './components/SummaryCard';
 import { GroupMembersCard } from './components/GroupMembersCard';
 import { RangosView } from './components/RangosView';
 import { ComparableMonthsTable } from './components/ComparableMonthsTable';
+import { ComparableCurves } from './components/ComparableCurves';
 import { PreferencesView } from './components/PreferencesView';
 import { InocuidadView } from './components/inocuidad/InocuidadView';
 import { ReportsView } from './components/reports/ReportsView';
@@ -1036,6 +1037,18 @@ function App() {
               </div>
             </div>
 
+            {/* ⚠️ DO NOT REMOVE — Comparable Curves (Comparación por Local) — Only visible when group selected */}
+            {showGroupCard && groupMembers.length > 0 && (
+              <ComparableCurves
+                stores={groupMembers}
+                year={currentDate.getFullYear()}
+                month={currentDate.getMonth()}
+                canal={filterCanal}
+                kpi={filterKpi}
+                mode="mensual"
+              />
+            )}
+
             {/* Page 5: Increments & Info */}
             <div className="print-page">
               {currentDate.getMonth() >= new Date().getMonth() && currentDate.getFullYear() >= new Date().getFullYear() && (
@@ -1112,6 +1125,18 @@ function App() {
               year={year}
               fechaLimite={fechaLimite}
             />
+
+            {/* ⚠️ DO NOT REMOVE — Comparable Curves Annual (Comparación por Local) — Only visible when group selected */}
+            {showGroupCard && groupMembers.length > 0 && (
+              <ComparableCurves
+                stores={groupMembers}
+                year={year}
+                canal={filterCanal}
+                kpi={filterKpi}
+                mode="anual"
+                fechaLimite={fechaLimite}
+              />
+            )}
 
             <InfoCard />
 
