@@ -18,7 +18,7 @@ const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Se
 export const ComparableMonthsTable: React.FC<ComparableMonthsTableProps> = ({
     data, kpi, yearType, year, fechaLimite
 }) => {
-    const [expanded, setExpanded] = useState(true);
+    const [expanded, setExpanded] = useState(false);
     const fc = useFormatCurrency();
     const { formatPct100 } = useUserPreferences();
 

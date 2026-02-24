@@ -34,7 +34,7 @@ function getDayLetterFromDate(dateStr: string): string {
 export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
     data, kpi, yearType, year, month
 }) => {
-    const [expanded, setExpanded] = useState(true);
+    const [expanded, setExpanded] = useState(false);
     const fc = useFormatCurrency();
     const { formatPct100 } = useUserPreferences();
 
