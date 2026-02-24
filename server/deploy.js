@@ -289,7 +289,7 @@ async function commitAndPush(branch, message) {
             steps[steps.length - 1] = { step: 'Agregando cambios (git add)', status: 'success', detail: `${status.split('\n').filter(Boolean).length} archivos` };
         } catch (e) {
             steps[steps.length - 1] = { step: 'Agregando cambios (git add)', status: 'error', detail: e.message };
-            return { success: false, steps };
+            return { success: false, steps, timing: buildTiming(startTime) };
         }
 
         // Commit
@@ -300,7 +300,7 @@ async function commitAndPush(branch, message) {
             steps[steps.length - 1] = { step: 'Creando commit', status: 'success', detail: commitResult.split('\n')[0] };
         } catch (e) {
             steps[steps.length - 1] = { step: 'Creando commit', status: 'error', detail: e.message };
-            return { success: false, steps };
+            return { success: false, steps, timing: buildTiming(startTime) };
         }
     } else {
         steps.push({ step: 'Verificando cambios', status: 'success', detail: 'No hay cambios sin commit' });
@@ -317,11 +317,11 @@ async function commitAndPush(branch, message) {
             steps[steps.length - 1] = { step: `Subiendo a GitHub (${branch})`, status: 'success', detail: 'Ya estaba al día' };
         } else {
             steps[steps.length - 1] = { step: `Subiendo a GitHub (${branch})`, status: 'error', detail: e.message.substring(0, 300) };
-            return { success: false, steps };
+            return { success: false, steps, timing: buildTiming(startTime) };
         }
     }
 
-    return { success: true, steps };
+    return { success: true, steps, timing: buildTiming(startTime) };
 }
 
 /**
@@ -335,6 +335,7 @@ function normalizeVersion(v) {
 async function deployToServer(serverIp, user, password, appDir, deployVersion, branch) {
     branch = branch || 'main';
     const steps = [];
+    const startTime = new Date();
     const credBlock = `$cred = New-Object System.Management.Automation.PSCredential('${user}', (ConvertTo-SecureString '${password}' -AsPlainText -Force))`;
 
     // Step 1: Test connection
@@ -346,7 +347,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         steps[steps.length - 1] = { step: 'Verificando conexión', status: 'success', detail: `Conectado a ${hostname.trim()}` };
     } catch (e) {
         steps[steps.length - 1] = { step: 'Verificando conexión', status: 'error', detail: e.message };
-        return { success: false, steps };
+        return { success: false, steps, timing: buildTiming(startTime) };
     }
 
     // Step 2: Git pull
@@ -360,7 +361,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         steps[steps.length - 1] = { step: 'Descargando código (git)', status: 'success', detail: gitResult.substring(0, 200) };
     } catch (e) {
         steps[steps.length - 1] = { step: 'Descargando código (git)', status: 'error', detail: e.message };
-        return { success: false, steps };
+        return { success: false, steps, timing: buildTiming(startTime) };
     }
 
     // Step 2b: Write version to remote deploy-log.json (so the server shows the correct version)
@@ -385,6 +386,27 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         // Non-fatal: version display might be wrong but deploy can continue
         steps[steps.length - 1] = { step: 'Registrando versión', status: 'warning', detail: e.message.substring(0, 200) };
     }
+
+    // Step 2c: Update package.json version on remote server (primary source for version-check)
+    if (deployVersion) {
+        try {
+            const semverVersion = deployVersion.replace(/^v/, '');
+            const parts = semverVersion.split('.');
+            const fullVersion = parts.length === 2 ? `${semverVersion}.0` : semverVersion;
+            await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+                `$pkgPath = Join-Path '${appDir}' 'server\\package.json'; ` +
+                `if (Test-Path $pkgPath) { ` +
+                `$pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json; ` +
+                `$pkg.version = '${fullVersion}'; ` +
+                `$pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -Encoding UTF8; ` +
+                `Write-Output 'OK' } else { Write-Output 'NO_FILE' } }`
+            );
+        } catch (e) {
+            // Non-fatal, deploy-log.json serves as fallback
+        }
+    }
+
 
     // Step 2c: Update package.json version on remote server (primary source for version-check)
     if (deployVersion) {
@@ -417,7 +439,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         steps[steps.length - 1] = { step: 'Instalando dependencias backend', status: 'success', detail: 'Dependencias instaladas' };
     } catch (e) {
         steps[steps.length - 1] = { step: 'Instalando dependencias backend', status: 'error', detail: e.message };
-        return { success: false, steps };
+        return { success: false, steps, timing: buildTiming(startTime) };
     }
 
     // Step 4: Build frontend
@@ -429,7 +451,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         steps[steps.length - 1] = { step: 'Construyendo frontend', status: 'success', detail: 'Build completado' };
     } catch (e) {
         steps[steps.length - 1] = { step: 'Construyendo frontend', status: 'error', detail: e.message };
-        return { success: false, steps };
+        return { success: false, steps, timing: buildTiming(startTime) };
     }
 
     // Step 5: Restart service
@@ -465,7 +487,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         steps[steps.length - 1] = { step: 'Reiniciando servicio', status: 'success', detail: restartResult.trim() };
     } catch (e) {
         steps[steps.length - 1] = { step: 'Reiniciando servicio', status: 'error', detail: e.message };
-        return { success: false, steps };
+        return { success: false, steps, timing: buildTiming(startTime) };
     }
 
     // Step 6: Post-deploy health check with diagnostics and retries
@@ -523,7 +545,22 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
         setServerVersion(serverIp, deployVersion, 'deploy-system');
     }
 
-    return { success: true, steps };
+    return { success: true, steps, timing: buildTiming(startTime) };
+}
+
+
+/**
+ * Build timing object for deploy results
+ */
+function buildTiming(startTime) {
+    const endTime = new Date();
+    const durationMs = endTime - startTime;
+    const durationMinutes = Math.round(durationMs / 60000 * 10) / 10;
+    return {
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        durationMinutes
+    };
 }
 
 // ==========================================
@@ -816,5 +853,6 @@ module.exports = {
     getAllServerVersions,
     getLocalGitStatus,
     getGitBranches,
-    commitAndPush
+    commitAndPush,
+    buildTiming
 };

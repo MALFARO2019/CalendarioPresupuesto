@@ -77,6 +77,8 @@ export function DeployManagement() {
     const [deploying, setDeploying] = useState(false);
     const [deploySteps, setDeploySteps] = useState<{ step: string; status: string; detail?: string }[]>([]);
     const [deployResult, setDeployResult] = useState<'success' | 'error' | null>(null);
+    const [deployTiming, setDeployTiming] = useState<{ startTime: string; endTime: string; durationMinutes: number } | null>(null);
+    const [deployStartLocal, setDeployStartLocal] = useState<Date | null>(null);
     const [showServerConfig, setShowServerConfig] = useState(false);
     const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
 
@@ -212,6 +214,8 @@ export function DeployManagement() {
         if (!version.trim() || !selectedServer) return;
         setDeploying(true);
         setDeployResult(null);
+        setDeployTiming(null);
+        setDeployStartLocal(new Date());
 
         const hasPendingChanges = gitStatus?.needsCommit || gitStatus?.needsPush;
         const initialSteps: { step: string; status: string; detail?: string }[] = [];
@@ -277,6 +281,19 @@ export function DeployManagement() {
                 setDeploySteps(result.steps);
             }
             setDeployResult(result.success ? 'success' : 'error');
+
+            // Save timing data
+            if (result.timing) {
+                setDeployTiming(result.timing);
+                // Save to localStorage for ETA calculation
+                try {
+                    const history = JSON.parse(localStorage.getItem('deploy_timing_history') || '[]');
+                    history.push({ ...result.timing, version, serverIp: selectedServer.ip, date: new Date().toISOString() });
+                    // Keep last 10 entries
+                    if (history.length > 10) history.splice(0, history.length - 10);
+                    localStorage.setItem('deploy_timing_history', JSON.stringify(history));
+                } catch { /* non-fatal */ }
+            }
 
             // Refresh server version after successful deploy
             if (result.success) {
@@ -744,7 +761,17 @@ export function DeployManagement() {
                                     ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-200'
                                     : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200'}`}>
                             {deploying ? (
-                                <><span className="animate-spin">⏳</span> Publicando...</>
+                                <><span className="animate-spin">⏳</span> Publicando...{(() => {
+                                    // Show ETA based on historical timing
+                                    try {
+                                        const history = JSON.parse(localStorage.getItem('deploy_timing_history') || '[]');
+                                        if (history.length > 0) {
+                                            const avgMin = history.reduce((s: number, h: any) => s + h.durationMinutes, 0) / history.length;
+                                            return <span className="ml-2 text-xs opacity-75">(ETA: ~{avgMin.toFixed(1)} min)</span>;
+                                        }
+                                    } catch { /* ignore */ }
+                                    return null;
+                                })()}</>
                             ) : deployResult === 'success' ? (
                                 <>✅ Publicado — Publicar de Nuevo</>
                             ) : (
@@ -765,6 +792,13 @@ export function DeployManagement() {
                                         ? `✅ Versión ${version} publicada exitosamente en ${selectedServer?.ip}`
                                         : `❌ Error al publicar. Revisa los pasos anteriores.`}
                                 </p>
+                                {deployTiming && (
+                                    <div className="mt-2 flex flex-wrap gap-4 text-xs text-gray-500">
+                                        <span>🕐 Inicio: {new Date(deployTiming.startTime).toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                                        <span>🏁 Fin: {new Date(deployTiming.endTime).toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                                        <span className="font-semibold text-gray-700">⏱️ Duración: {deployTiming.durationMinutes} min</span>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

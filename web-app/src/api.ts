@@ -1431,7 +1431,7 @@ export async function deployToServer(
     version: string,
     notes: string,
     branch?: string
-): Promise<{ success: boolean; steps: { step: string; status: string; detail?: string }[]; entryId: number }> {
+): Promise<{ success: boolean; steps: { step: string; status: string; detail?: string }[]; entryId: number; timing?: { startTime: string; endTime: string; durationMinutes: number } }> {
     const response = await fetch(`${API_BASE}/deploy/publish`, {
         method: 'POST',
         headers: authHeaders(),
