@@ -125,7 +125,35 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
 
     const getDifColor = (val: number) => val >= 0 ? 'text-green-600' : 'text-red-600';
 
-    if (!data || data.length === 0) return null;
+    if (!data || data.length === 0) {
+        return (
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-lg overflow-hidden">
+                <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 transition-colors"
+                >
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        <span className="text-lg sm:text-xl">📊</span>
+                        <div className="text-left">
+                            <h3 className="text-sm sm:text-base font-bold text-gray-800">Días Comparables</h3>
+                            <p className="text-[10px] sm:text-xs text-gray-500">
+                                {MONTH_NAMES[month]} {year} vs {prevYear} • {yearType}
+                            </p>
+                        </div>
+                    </div>
+                    {expanded
+                        ? <ChevronUp className="w-5 h-5 text-gray-400" />
+                        : <ChevronDown className="w-5 h-5 text-gray-400" />
+                    }
+                </button>
+                {expanded && (
+                    <div className="px-6 py-8 text-center text-gray-400 text-sm">
+                        Cargando datos comparables...
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-lg overflow-hidden">
