@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './ui/Toast';
-import { Shield, Plus, Users, Trash2, Edit2, RefreshCw, X, Check, Search, Store } from 'lucide-react';
-import type { Profile, User, GrupoAlmacen } from '../api';
-import { fetchProfiles, createProfile, updateProfile, deleteProfile, assignProfileToUsers, syncProfilePermissions, fetchGruposAlmacen } from '../api';
+import { Shield, Plus, Users, Trash2, Edit2, RefreshCw, X, Check, Search } from 'lucide-react';
+import type { Profile, User } from '../api';
+import { fetchProfiles, createProfile, updateProfile, deleteProfile, assignProfileToUsers, syncProfilePermissions } from '../api';
 
 interface ProfilesManagementProps {
     users: User[];
@@ -23,7 +23,6 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
     const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
     const [syncOnAssign, setSyncOnAssign] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [gruposAlmacen, setGruposAlmacen] = useState<GrupoAlmacen[]>([]);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -58,22 +57,13 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
         apareceEnTituloAnual: true,
         apareceEnTituloTendencia: true,
         apareceEnTituloRangos: true,
-        gruposAlmacenIds: [] as number[],
+        accesoAsignaciones: false,
+        accesoGruposAlmacen: false,
     });
 
     useEffect(() => {
         loadProfiles();
-        loadGrupos();
     }, []);
-
-    const loadGrupos = async () => {
-        try {
-            const data = await fetchGruposAlmacen();
-            setGruposAlmacen(data.filter(g => g.Activo));
-        } catch (err) {
-            console.error('Error loading grupos almacén:', err);
-        }
-    };
 
     const loadProfiles = async () => {
         setLoading(true);
@@ -123,7 +113,8 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     apareceEnTituloAnual: formData.apareceEnTituloAnual,
                     apareceEnTituloTendencia: formData.apareceEnTituloTendencia,
                     apareceEnTituloRangos: formData.apareceEnTituloRangos,
-                    gruposAlmacenIds: formData.gruposAlmacenIds,
+                    accesoAsignaciones: formData.accesoAsignaciones,
+                    accesoGruposAlmacen: formData.accesoGruposAlmacen,
                 }
             });
             setShowCreateModal(false);
@@ -170,7 +161,8 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     apareceEnTituloAnual: formData.apareceEnTituloAnual,
                     apareceEnTituloTendencia: formData.apareceEnTituloTendencia,
                     apareceEnTituloRangos: formData.apareceEnTituloRangos,
-                    gruposAlmacenIds: formData.gruposAlmacenIds,
+                    accesoAsignaciones: formData.accesoAsignaciones,
+                    accesoGruposAlmacen: formData.accesoGruposAlmacen,
                 }
             });
             setEditingProfile(null);
@@ -249,7 +241,8 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             apareceEnTituloAnual: true,
             apareceEnTituloTendencia: true,
             apareceEnTituloRangos: true,
-            gruposAlmacenIds: [] as number[],
+            accesoAsignaciones: false,
+            accesoGruposAlmacen: false,
         });
     };
 
@@ -287,7 +280,8 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             apareceEnTituloAnual: profile.apareceEnTituloAnual ?? true,
             apareceEnTituloTendencia: profile.apareceEnTituloTendencia ?? true,
             apareceEnTituloRangos: profile.apareceEnTituloRangos ?? true,
-            gruposAlmacenIds: profile.gruposAlmacenIds || [],
+            accesoAsignaciones: profile.accesoAsignaciones || false,
+            accesoGruposAlmacen: profile.accesoGruposAlmacen || false,
         });
     };
 
@@ -540,43 +534,27 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                                 </div>
                             </div>
 
-                            {/* Grupos de Almacén */}
-                            {gruposAlmacen.length > 0 && (
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                                        <Store className="w-4 h-4 text-emerald-600" />
-                                        Grupos de Almacén
-                                    </label>
-                                    <p className="text-xs text-gray-500 mb-2">Selecciona los grupos de almacén que tendrán acceso con este perfil. Al sincronizar permisos, los stores se copiarán a los usuarios.</p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
-                                        {gruposAlmacen.map(g => (
-                                            <label
-                                                key={g.IDGRUPO}
-                                                className={`flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-all border ${formData.gruposAlmacenIds.includes(g.IDGRUPO)
-                                                        ? 'bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
-                                                        : 'bg-gray-50 border-transparent hover:bg-gray-100'
-                                                    }`}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={formData.gruposAlmacenIds.includes(g.IDGRUPO)}
-                                                    onChange={e => {
-                                                        const ids = e.target.checked
-                                                            ? [...formData.gruposAlmacenIds, g.IDGRUPO]
-                                                            : formData.gruposAlmacenIds.filter(id => id !== g.IDGRUPO);
-                                                        setFormData({ ...formData, gruposAlmacenIds: ids });
-                                                    }}
-                                                    className="w-4 h-4 text-emerald-600"
-                                                />
-                                                <div className="min-w-0">
-                                                    <span className="text-sm font-medium text-gray-800 truncate block">{g.DESCRIPCION}</span>
-                                                    <span className="text-xs text-gray-400">{g.TotalMiembros} almacen{g.TotalMiembros !== 1 ? 'es' : ''}</span>
-                                                </div>
-                                            </label>
-                                        ))}
-                                    </div>
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-3">⚙️ Configuración (Panel Admin)</label>
+                                <p className="text-xs text-gray-500 mb-2">Controla acceso a secciones de configuración sin necesidad de ser administrador</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {[
+                                        { key: 'accesoAsignaciones', label: 'Asignaciones' },
+                                        { key: 'accesoGruposAlmacen', label: 'Grupos de Almacén' },
+                                    ].map(({ key, label }) => (
+                                        <label key={key} className="flex items-center gap-2 p-3 bg-orange-50 rounded-lg cursor-pointer hover:bg-orange-100 border-l-2 border-orange-400">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData[key as keyof typeof formData] as boolean}
+                                                onChange={e => setFormData({ ...formData, [key]: e.target.checked })}
+                                                className="w-4 h-4 text-orange-600"
+                                            />
+                                            <span className="text-sm font-medium text-orange-800">{label}</span>
+                                        </label>
+                                    ))}
                                 </div>
-                            )}
+                            </div>
+
                         </div>
 
                         <div className="flex gap-3 mt-6">
@@ -599,95 +577,98 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                         </div>
                     </div>
                 </div>
-            )}
+            )
+            }
 
             {/* Assign Modal */}
-            {showAssignModal && selectedProfile && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                        <h3 className="text-xl font-bold mb-4">
-                            Asignar perfil "{selectedProfile.nombre}"
-                        </h3>
+            {
+                showAssignModal && selectedProfile && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                            <h3 className="text-xl font-bold mb-4">
+                                Asignar perfil "{selectedProfile.nombre}"
+                            </h3>
 
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg">
-                                <input
-                                    type="checkbox"
-                                    checked={syncOnAssign}
-                                    onChange={e => setSyncOnAssign(e.target.checked)}
-                                    className="w-4 h-4"
-                                />
-                                <label className="text-sm">
-                                    Sincronizar permisos inmediatamente (recomendado)
-                                </label>
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg">
+                                    <input
+                                        type="checkbox"
+                                        checked={syncOnAssign}
+                                        onChange={e => setSyncOnAssign(e.target.checked)}
+                                        className="w-4 h-4"
+                                    />
+                                    <label className="text-sm">
+                                        Sincronizar permisos inmediatamente (recomendado)
+                                    </label>
+                                </div>
+
+                                {/* Search Input */}
+                                <div className="relative">
+                                    <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar por nombre o correo..."
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
+                                    />
+                                </div>
+
+                                <div className="space-y-2 max-h-96 overflow-y-auto">
+                                    {users
+                                        .filter(user => {
+                                            const search = searchTerm.toLowerCase();
+                                            return (
+                                                user.nombre?.toLowerCase().includes(search) ||
+                                                user.email.toLowerCase().includes(search)
+                                            );
+                                        })
+                                        .map(user => (
+                                            <label key={user.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedUsers.includes(user.id)}
+                                                    onChange={e => {
+                                                        if (e.target.checked) {
+                                                            setSelectedUsers([...selectedUsers, user.id]);
+                                                        } else {
+                                                            setSelectedUsers(selectedUsers.filter(id => id !== user.id));
+                                                        }
+                                                    }}
+                                                    className="w-4 h-4"
+                                                />
+                                                <div>
+                                                    <div className="font-medium">{user.nombre || user.email}</div>
+                                                    <div className="text-xs text-gray-500">{user.email}</div>
+                                                </div>
+                                            </label>
+                                        ))}
+                                </div>
                             </div>
 
-                            {/* Search Input */}
-                            <div className="relative">
-                                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                                <input
-                                    type="text"
-                                    placeholder="Buscar por nombre o correo..."
-                                    value={searchTerm}
-                                    onChange={e => setSearchTerm(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
-                                />
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={handleAssign}
+                                    disabled={selectedUsers.length === 0}
+                                    className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    Asignar a {selectedUsers.length} usuario(s)
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowAssignModal(false);
+                                        setSelectedUsers([]);
+                                        setSearchTerm('');
+                                    }}
+                                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                                >
+                                    Cancelar
+                                </button>
                             </div>
-
-                            <div className="space-y-2 max-h-96 overflow-y-auto">
-                                {users
-                                    .filter(user => {
-                                        const search = searchTerm.toLowerCase();
-                                        return (
-                                            user.nombre?.toLowerCase().includes(search) ||
-                                            user.email.toLowerCase().includes(search)
-                                        );
-                                    })
-                                    .map(user => (
-                                        <label key={user.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedUsers.includes(user.id)}
-                                                onChange={e => {
-                                                    if (e.target.checked) {
-                                                        setSelectedUsers([...selectedUsers, user.id]);
-                                                    } else {
-                                                        setSelectedUsers(selectedUsers.filter(id => id !== user.id));
-                                                    }
-                                                }}
-                                                className="w-4 h-4"
-                                            />
-                                            <div>
-                                                <div className="font-medium">{user.nombre || user.email}</div>
-                                                <div className="text-xs text-gray-500">{user.email}</div>
-                                            </div>
-                                        </label>
-                                    ))}
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 mt-6">
-                            <button
-                                onClick={handleAssign}
-                                disabled={selectedUsers.length === 0}
-                                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                            >
-                                Asignar a {selectedUsers.length} usuario(s)
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setShowAssignModal(false);
-                                    setSelectedUsers([]);
-                                    setSearchTerm('');
-                                }}
-                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                            >
-                                Cancelar
-                            </button>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* View Users Modal */}
             {

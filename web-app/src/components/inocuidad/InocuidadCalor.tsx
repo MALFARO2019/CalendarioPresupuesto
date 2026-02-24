@@ -1,41 +1,39 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getToken, API_BASE } from '../../api';
 
-interface Criterio {
+interface CategoryRow {
+    name: string;
     columnName: string;
-    shortName: string;
-    dataType: string;
-    orden: number;
+    group: string;
+    months: Record<number, number>;
+    promedio: number;
 }
 
-interface EvalRow {
-    codAlmacen: string;
-    local: string;
-    restaurante: string | null;
-    evaluador: string | null;
-    adminTurno: string | null;
-    totalPuntos: number | null;
-    submittedAt: string;
-    values: Record<string, any>;
+interface CategoryGroup {
+    group: string;
+    rows: CategoryRow[];
 }
 
 interface KpiConfig {
     Meta?: number;
     Advertencia?: number;
-    ColorMeta?: string;
-    ColorAdvertencia?: string;
-    ColorCritico?: string;
 }
 
 type RangeType = 'anual' | 'semestre' | 'trimestre' | 'mes';
 
-// Map RangeType to the backend's expected rangoTipo values
-const RANGE_TYPE_MAP: Record<RangeType, string> = {
-    anual: 'Año',
-    semestre: 'Semestre',
-    trimestre: 'Trimestre',
-    mes: 'Mes',
+const SEMESTERS_MONTHS: Record<number, number[]> = {
+    1: [1, 2, 3, 4, 5, 6],
+    2: [7, 8, 9, 10, 11, 12],
 };
+
+const TRIMESTERS_MONTHS: Record<number, number[]> = {
+    1: [1, 2, 3],
+    2: [4, 5, 6],
+    3: [7, 8, 9],
+    4: [10, 11, 12],
+};
+
+const MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 interface InocuidadCalorProps {
     year: number;
@@ -48,15 +46,32 @@ interface InocuidadCalorProps {
     sourceId: number | null;
 }
 
+function colorForScore(score: number | null | undefined): { bg: string; fg: string } {
+    if (score == null) return { bg: '#f3f4f6', fg: '#6b7280' };
+    if (score < 75) return { bg: '#fee2e2', fg: '#991b1b' };
+    if (score < 85) return { bg: '#fef3c7', fg: '#92400e' };
+    if (score < 92) return { bg: '#dcfce7', fg: '#166534' };
+    return { bg: '#bbf7d0', fg: '#14532d' };
+}
+
 export const InocuidadCalor: React.FC<InocuidadCalorProps> = ({
-    year, rangeType, rangePeriod, groups, individualStores, filterLocal, onFilterLocalChange, sourceId
+    year, rangeType, rangePeriod, groups, filterLocal, sourceId
 }) => {
-    const [rows, setRows] = useState<EvalRow[]>([]);
-    const [criterios, setCriterios] = useState<Criterio[]>([]);
+    const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [kpiConfig, setKpiConfig] = useState<KpiConfig | null>(null);
-    const [hoveredCell, setHoveredCell] = useState<{ row: number; col: number } | null>(null);
+
+    // Visible months based on range type
+    const visibleMonths = useMemo(() => {
+        switch (rangeType) {
+            case 'anual': return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+            case 'semestre': return SEMESTERS_MONTHS[rangePeriod] || [1, 2, 3, 4, 5, 6];
+            case 'trimestre': return TRIMESTERS_MONTHS[rangePeriod] || [1, 2, 3];
+            case 'mes': return [rangePeriod];
+            default: return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        }
+    }, [rangeType, rangePeriod]);
 
     // Fetch data
     useEffect(() => {
@@ -70,9 +85,7 @@ export const InocuidadCalor: React.FC<InocuidadCalorProps> = ({
 
                 const params = new URLSearchParams({
                     sourceId: String(sourceId),
-                    year: String(year),
-                    rangoTipo: RANGE_TYPE_MAP[rangeType],
-                    rangoValor: String(rangePeriod)
+                    year: String(year)
                 });
                 if (filterLocal && groups.includes(filterLocal)) {
                     params.set('grupo', filterLocal);
@@ -80,15 +93,14 @@ export const InocuidadCalor: React.FC<InocuidadCalorProps> = ({
                     params.set('locales', filterLocal);
                 }
 
-                const response = await fetch(`${API_BASE}/inocuidad/calor?${params}`, {
+                const response = await fetch(`${API_BASE}/inocuidad/calor-categorias?${params}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (response.status === 401) { localStorage.clear(); window.location.reload(); return; }
                 if (!response.ok) throw new Error(`Error ${response.status}`);
 
                 const result = await response.json();
-                setRows(result.rows || []);
-                setCriterios(result.criterios || []);
+                setCategoryGroups(result.groups || []);
                 setKpiConfig(result.kpiConfig || null);
             } catch (err: any) {
                 setError(err.message);
@@ -97,62 +109,41 @@ export const InocuidadCalor: React.FC<InocuidadCalorProps> = ({
             }
         };
         fetchData();
-    }, [sourceId, year, filterLocal, groups, rangeType, rangePeriod]);
+    }, [sourceId, year, filterLocal, groups]);
 
-    // Cell color: solid green/red/gray
-    const getCellColor = useCallback((value: any, dataType: string): { bg: string; border: string } => {
-        if (value === null || value === undefined || value === '') {
-            return { bg: '#e5e7eb', border: '#d1d5db' };
+    // Compute row spans for groups
+    const groupRowSpans = useMemo(() => {
+        const spans: Record<string, number> = {};
+        for (const g of categoryGroups) {
+            spans[g.group] = g.rows.length;
         }
-        if (dataType === 'int' || dataType.includes('numeric') || dataType.includes('float') || dataType.includes('decimal')) {
-            const num = parseFloat(value);
-            if (isNaN(num)) return { bg: '#e5e7eb', border: '#d1d5db' };
-            if (num > 0) return { bg: '#22c55e', border: '#16a34a' };
-            return { bg: '#ef4444', border: '#dc2626' };
-        }
-        const str = String(value).toLowerCase().trim();
-        if (['sí', 'si', 'yes', 'cumple', 'ok', 'bien', 'correcto', 'bueno', 'excelente', 'aprobado'].includes(str)) {
-            return { bg: '#22c55e', border: '#16a34a' };
-        }
-        if (['no', 'no cumple', 'reprobado', 'mal', 'incorrecto'].includes(str)) {
-            return { bg: '#ef4444', border: '#dc2626' };
-        }
-        if (['n/a', 'na', 'no aplica'].includes(str)) {
-            return { bg: '#e5e7eb', border: '#d1d5db' };
-        }
-        return { bg: '#fbbf24', border: '#f59e0b' };
-    }, []);
+        return spans;
+    }, [categoryGroups]);
 
-    const formatDate = useCallback((dateStr: string) => {
-        try {
-            const d = new Date(dateStr);
-            return d.toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: '2-digit' });
-        } catch {
-            return dateStr;
+    // Flatten groups to rows for rendering, tracking which rows need group cell
+    const flatRows = useMemo(() => {
+        const result: Array<{ row: CategoryRow; group: string; isFirstInGroup: boolean }> = [];
+        for (const g of categoryGroups) {
+            g.rows.forEach((row, i) => {
+                result.push({ row, group: g.group, isFirstInGroup: i === 0 });
+            });
         }
-    }, []);
+        return result;
+    }, [categoryGroups]);
 
-    const rowSummaries = useMemo(() => {
-        return rows.map(row => {
-            let pass = 0, fail = 0, na = 0;
-            for (const c of criterios) {
-                const val = row.values[c.columnName];
-                if (val === null || val === undefined || val === '') { na++; continue; }
-                const num = parseFloat(val);
-                if (!isNaN(num)) {
-                    if (num > 0) pass++; else fail++;
-                } else {
-                    const str = String(val).toLowerCase().trim();
-                    if (['sí', 'si', 'yes', 'cumple', 'ok'].includes(str)) pass++;
-                    else if (['no', 'no cumple', 'reprobado'].includes(str)) fail++;
-                    else na++;
-                }
+    // Filter visible months that have data
+    const activeMonths = useMemo(() => {
+        const dataMonths = new Set<number>();
+        for (const g of categoryGroups) {
+            for (const row of g.rows) {
+                Object.keys(row.months).forEach(m => dataMonths.add(parseInt(m)));
             }
-            const total = pass + fail;
-            const pct = total > 0 ? Math.round((pass / total) * 100) : 0;
-            return { pass, fail, na, pct };
-        });
-    }, [rows, criterios]);
+        }
+        return visibleMonths.filter(m => dataMonths.has(m));
+    }, [categoryGroups, visibleMonths]);
+
+    // Use activeMonths if any have data, otherwise show all visible months
+    const displayMonths = activeMonths.length > 0 ? activeMonths : visibleMonths;
 
     if (!sourceId) {
         return (
@@ -186,7 +177,7 @@ export const InocuidadCalor: React.FC<InocuidadCalorProps> = ({
         );
     }
 
-    if (rows.length === 0) {
+    if (flatRows.length === 0) {
         return (
             <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-500">
                 <p className="font-medium">No hay datos para el período seleccionado.</p>
@@ -196,149 +187,90 @@ export const InocuidadCalor: React.FC<InocuidadCalorProps> = ({
 
     return (
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-            <div className="overflow-x-auto" style={{ maxHeight: '80vh' }}>
-                <table style={{ borderCollapse: 'collapse', fontSize: '11px', width: '100%' }}>
-                    <thead>
+            <div className="p-4 sm:p-5 border-b border-gray-100">
+                <h3 className="text-base font-bold text-gray-800">Mapa de calor por categoría</h3>
+            </div>
+            <div className="overflow-auto">
+                <table className="min-w-full text-xs">
+                    <thead className="sticky top-0 z-10 bg-gray-50">
                         <tr>
-                            <th style={{
-                                position: 'sticky', left: 0, top: 0, zIndex: 30,
-                                background: '#f8fafc', borderBottom: '2px solid #cbd5e1', borderRight: '2px solid #cbd5e1',
-                                padding: '4px 8px', minWidth: '140px', textAlign: 'left',
-                                fontSize: '10px', fontWeight: 700, color: '#475569', textTransform: 'uppercase'
-                            }}>
-                                Restaurante
+                            <th className="px-3 py-2.5 text-left border-b-2 border-gray-200 border-r border-gray-200 min-w-[120px] text-xs font-bold text-gray-500 uppercase">
+                                Grupo
                             </th>
-                            <th style={{
-                                position: 'sticky', left: 140, top: 0, zIndex: 30,
-                                background: '#f8fafc', borderBottom: '2px solid #cbd5e1', borderRight: '1px solid #e2e8f0',
-                                padding: '4px 6px', minWidth: '70px', textAlign: 'center',
-                                fontSize: '10px', fontWeight: 700, color: '#475569', textTransform: 'uppercase'
-                            }}>
-                                Fecha
+                            <th className="px-3 py-2.5 text-left border-b-2 border-gray-200 border-r border-gray-200 min-w-[180px] text-xs font-bold text-gray-500 uppercase">
+                                Categoría
                             </th>
-                            <th style={{
-                                position: 'sticky', left: 210, top: 0, zIndex: 30,
-                                background: '#f8fafc', borderBottom: '2px solid #cbd5e1', borderRight: '2px solid #94a3b8',
-                                padding: '4px 6px', minWidth: '40px', textAlign: 'center',
-                                fontSize: '10px', fontWeight: 700, color: '#475569', textTransform: 'uppercase'
-                            }}>
-                                %
-                            </th>
-                            {criterios.map(c => (
-                                <th key={c.columnName} style={{
-                                    position: 'sticky', top: 0, zIndex: 20,
-                                    background: '#f8fafc', borderBottom: '2px solid #cbd5e1',
-                                    padding: '4px 1px', minWidth: '24px', maxWidth: '28px',
-                                    verticalAlign: 'bottom', height: '140px',
-                                    borderRight: '1px solid #e2e8f0'
-                                }}
-                                    title={c.shortName}
-                                >
-                                    <div style={{
-                                        writingMode: 'vertical-rl', transform: 'rotate(180deg)',
-                                        fontSize: '9px', fontWeight: 600, color: '#64748b',
-                                        maxHeight: '130px', overflow: 'hidden', textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap', lineHeight: 1.2
-                                    }}>
-                                        {c.shortName}
-                                    </div>
+                            {displayMonths.map(m => (
+                                <th key={m} className="px-2 py-2.5 text-center border-b-2 border-gray-200 border-r border-gray-100 min-w-[52px] text-xs font-bold text-gray-500 uppercase">
+                                    {MONTH_LABELS[m - 1]}
                                 </th>
                             ))}
+                            <th className="px-3 py-2.5 text-center border-b-2 border-gray-200 min-w-[60px] text-xs font-bold text-gray-500 uppercase">
+                                Prom.
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
-                        {rows.map((row, rowIdx) => {
-                            const summary = rowSummaries[rowIdx];
-                            const pctColor = summary.pct >= 80 ? '#16a34a' : summary.pct >= 60 ? '#ca8a04' : '#dc2626';
+                        {flatRows.map(({ row, group, isFirstInGroup }, idx) => {
+                            const avgColor = colorForScore(row.promedio > 0 ? row.promedio : null);
                             return (
-                                <tr key={rowIdx} style={{
-                                    borderBottom: '1px solid #e2e8f0',
-                                    background: rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc'
-                                }}>
-                                    <td style={{
-                                        position: 'sticky', left: 0, zIndex: 10,
-                                        background: rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc',
-                                        borderRight: '2px solid #cbd5e1',
-                                        padding: '3px 8px', fontSize: '11px', fontWeight: 600,
-                                        color: '#1e293b', whiteSpace: 'nowrap', maxWidth: '160px',
-                                        overflow: 'hidden', textOverflow: 'ellipsis'
-                                    }}
-                                        title={`${row.local}${row.evaluador ? ` — Eval: ${row.evaluador}` : ''}${row.adminTurno ? ` — Admin: ${row.adminTurno}` : ''}`}
-                                    >
-                                        {row.local}
+                                <tr key={`${group}-${row.columnName}`} className="bg-white hover:bg-gray-50/70 transition-colors">
+                                    {isFirstInGroup && (
+                                        <td
+                                            rowSpan={groupRowSpans[group]}
+                                            className="px-3 py-2.5 border-b border-gray-200 border-r border-gray-200 align-top font-semibold text-gray-700 bg-gray-50 text-xs"
+                                        >
+                                            {group}
+                                        </td>
+                                    )}
+                                    <td className="px-3 py-2.5 border-b border-gray-100 border-r border-gray-200 text-gray-700 text-xs">
+                                        {row.name}
                                     </td>
-                                    <td style={{
-                                        position: 'sticky', left: 140, zIndex: 10,
-                                        background: rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc',
-                                        borderRight: '1px solid #e2e8f0',
-                                        padding: '3px 6px', fontSize: '10px', color: '#64748b',
-                                        textAlign: 'center', whiteSpace: 'nowrap'
-                                    }}>
-                                        {formatDate(row.submittedAt)}
-                                    </td>
-                                    <td style={{
-                                        position: 'sticky', left: 210, zIndex: 10,
-                                        background: rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc',
-                                        borderRight: '2px solid #94a3b8',
-                                        padding: '3px 4px', fontSize: '11px', fontWeight: 700,
-                                        color: pctColor, textAlign: 'center'
-                                    }}>
-                                        {summary.pct}%
-                                    </td>
-                                    {criterios.map((c, colIdx) => {
-                                        const val = row.values[c.columnName];
-                                        const colors = getCellColor(val, c.dataType);
-                                        const isHovered = hoveredCell?.row === rowIdx && hoveredCell?.col === colIdx;
+                                    {displayMonths.map(m => {
+                                        const value = row.months[m];
+                                        const c = colorForScore(value != null ? value : null);
                                         return (
-                                            <td key={c.columnName}
-                                                style={{
-                                                    padding: '1px',
-                                                    borderRight: '1px solid rgba(255,255,255,0.3)',
-                                                }}
-                                                onMouseEnter={() => setHoveredCell({ row: rowIdx, col: colIdx })}
-                                                onMouseLeave={() => setHoveredCell(null)}
+                                            <td
+                                                key={m}
+                                                className="px-2 py-2.5 border-b border-gray-100 border-r border-gray-100 text-center font-medium text-xs"
+                                                style={{ backgroundColor: c.bg, color: c.fg }}
+                                                title={`${row.name} • ${MONTH_LABELS[m - 1]}: ${value != null ? value + '%' : 'Sin dato'}`}
                                             >
-                                                <div
-                                                    style={{
-                                                        width: '100%', height: '22px',
-                                                        backgroundColor: colors.bg,
-                                                        borderRadius: '2px',
-                                                        border: isHovered ? '2px solid #1e293b' : `1px solid ${colors.border}`,
-                                                        transition: 'border 0.1s ease',
-                                                        cursor: 'default'
-                                                    }}
-                                                    title={`${row.local} — ${c.shortName}: ${val ?? 'N/A'}`}
-                                                />
+                                                {value != null ? Math.round(value) : '—'}
                                             </td>
                                         );
                                     })}
+                                    <td
+                                        className="px-2 py-2.5 border-b border-gray-100 text-center font-bold text-xs"
+                                        style={{ backgroundColor: avgColor.bg, color: avgColor.fg }}
+                                    >
+                                        {row.promedio > 0 ? row.promedio.toFixed(1) : '—'}
+                                    </td>
                                 </tr>
                             );
                         })}
                     </tbody>
                 </table>
             </div>
-            <div style={{
-                padding: '10px 16px', borderTop: '1px solid #e2e8f0', background: '#f8fafc',
-                display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center',
-                fontSize: '12px', color: '#64748b'
-            }}>
-                <span style={{ fontWeight: 600 }}>
-                    {rows.length} evaluación(es) • {criterios.length} criterio(s)
+
+            {/* Legend */}
+            <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                <span className="font-semibold">Leyenda:</span>
+                <span className="inline-flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-sm" style={{ background: '#fee2e2' }} />
+                    &lt; 75%
                 </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 2, backgroundColor: '#22c55e', border: '1px solid #16a34a' }} />
-                        Cumple
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 2, backgroundColor: '#ef4444', border: '1px solid #dc2626' }} />
-                        No cumple
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 2, backgroundColor: '#e5e7eb', border: '1px solid #d1d5db' }} />
-                        Sin dato
-                    </span>
+                <span className="inline-flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-sm" style={{ background: '#fef3c7' }} />
+                    75% - 84.9%
+                </span>
+                <span className="inline-flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-sm" style={{ background: '#dcfce7' }} />
+                    85% - 91.9%
+                </span>
+                <span className="inline-flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-sm" style={{ background: '#bbf7d0' }} />
+                    ≥ 92%
                 </span>
             </div>
         </div>

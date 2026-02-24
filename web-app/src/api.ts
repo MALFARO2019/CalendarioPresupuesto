@@ -20,6 +20,7 @@ export interface User {
     accesoInventarios: boolean;
     accesoPersonal: boolean;
     accesoModeloPresupuesto: boolean;
+    accesoReportes: boolean;
     verConfigModelo: boolean;
     verConsolidadoMensual: boolean;
     verAjustePresupuesto: boolean;
@@ -30,6 +31,8 @@ export interface User {
     ejecutarRecalculo: boolean;
     ajustarCurva: boolean;
     restaurarVersiones: boolean;
+    accesoAsignaciones: boolean;
+    accesoGruposAlmacen: boolean;
     esAdmin: boolean;
     esProtegido: boolean;
     allowedStores: string[];
@@ -199,12 +202,14 @@ export async function createAdminUser(
     modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {},
     perfilId: number | null = null,
     cedula: string | null = null,
-    telefono: string | null = null
+    telefono: string | null = null,
+    accesoAsignaciones: boolean = false,
+    accesoGruposAlmacen: boolean = false
 ): Promise<{ success: boolean; userId: number; clave: string }> {
     const response = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, cedula, telefono, ...modeloPerms })
+        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, ...modeloPerms })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -237,12 +242,14 @@ export async function updateAdminUser(
     perfilId: number | null = null,
     modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {},
     cedula: string | null = null,
-    telefono: string | null = null
+    telefono: string | null = null,
+    accesoAsignaciones: boolean = false,
+    accesoGruposAlmacen: boolean = false
 ): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, cedula, telefono, ...modeloPerms })
+        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, ...modeloPerms })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -888,7 +895,8 @@ export interface Profile {
     apareceEnTituloAnual: boolean;
     apareceEnTituloTendencia: boolean;
     apareceEnTituloRangos: boolean;
-    gruposAlmacenIds: number[];
+    accesoAsignaciones: boolean;
+    accesoGruposAlmacen: boolean;
     usuariosAsignados: number;
     fechaCreacion: string;
     fechaModificacion: string | null;
@@ -939,7 +947,8 @@ export async function createProfile(data: {
         apareceEnTituloAnual?: boolean;
         apareceEnTituloTendencia?: boolean;
         apareceEnTituloRangos?: boolean;
-        gruposAlmacenIds?: number[];
+        accesoAsignaciones?: boolean;
+        accesoGruposAlmacen?: boolean;
     };
 }): Promise<{ success: boolean; profileId: number }> {
     const response = await fetch(`${API_BASE}/admin/profiles`, {
@@ -989,7 +998,8 @@ export async function updateProfile(
             apareceEnTituloAnual?: boolean;
             apareceEnTituloTendencia?: boolean;
             apareceEnTituloRangos?: boolean;
-            gruposAlmacenIds?: number[];
+            accesoAsignaciones?: boolean;
+            accesoGruposAlmacen?: boolean;
         };
     }
 ): Promise<{ success: boolean }> {
@@ -1046,28 +1056,6 @@ export async function syncProfilePermissions(profileId: number): Promise<{ succe
     return response.json();
 }
 
-// ==========================================
-// GRUPOS ALMACEN API (for profile selector)
-// ==========================================
-
-export interface GrupoAlmacen {
-    IDGRUPO: number;
-    DESCRIPCION: string;
-    CODVISIBLE: number;
-    Activo: boolean;
-    TotalMiembros: number;
-}
-
-export async function fetchGruposAlmacen(): Promise<GrupoAlmacen[]> {
-    const response = await fetch(`${API_BASE}/admin/grupos-almacen`, {
-        headers: authHeaders()
-    });
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Error fetching grupos' }));
-        throw new Error(error.error || 'Error fetching grupos de almacén');
-    }
-    return response.json();
-}
 
 // ==========================================
 // PERSONAL MODULE API
@@ -1806,5 +1794,174 @@ export async function fetchLoginAudit(desde?: string, hasta?: string, email?: st
     if (email) params.set('email', email);
     const response = await fetch(`${API_BASE}/admin/login-log?${params}`, { headers: authHeaders() });
     if (!response.ok) throw new Error('Error fetching login audit');
+    return response.json();
+}
+
+// ==========================================
+// REPORTS MODULE API
+// ==========================================
+
+export interface ReportColumn {
+    field: string;
+    label: string;
+    format: 'text' | 'currency' | 'number' | 'percent';
+}
+
+export interface Report {
+    ID: number;
+    Nombre: string;
+    Descripcion: string | null;
+    Icono: string;
+    Categoria: string;
+    QuerySQL: string;
+    columnas: ReportColumn[];
+    parametros: string[];
+    Frecuencia: string;
+    HoraEnvio: string;
+    DiaSemana: number | null;
+    DiaMes: number | null;
+    FormatoSalida: string;
+    TemplateAsunto: string | null;
+    TemplateEncabezado: string | null;
+    Activo: boolean;
+    Orden: number;
+    CreadoPor: string | null;
+    FechaCreacion: string;
+    TotalSuscriptores?: number;
+    Suscrito?: number;
+    SuscripcionActiva?: number;
+    SuscripcionID?: number;
+}
+
+export interface ReportSubscription {
+    ID: number;
+    ReporteID: number;
+    UsuarioID: number;
+    Activo: boolean;
+    EmailDestino: string | null;
+    FrecuenciaPersonal: string | null;
+    HoraEnvioPersonal: string | null;
+    DiaSemanaPersonal: number | null;
+    DiaMesPersonal: number | null;
+    ParametrosFijos: string | null;
+    UltimoEnvio: string | null;
+    TotalEnvios: number;
+    FechaSuscripcion: string;
+    Nombre: string;
+    Descripcion: string | null;
+    Icono: string;
+    Categoria: string;
+    FrecuenciaDefault: string;
+    HoraEnvioDefault: string;
+    DiaSemanaDefault: number | null;
+    DiaMesDefault: number | null;
+}
+
+export interface ReportAccess {
+    ID: number;
+    ReporteID: number;
+    PerfilID: number;
+    ReporteNombre: string;
+    PerfilNombre: string;
+}
+
+export interface ReportPreviewResult {
+    columns: ReportColumn[] | null;
+    data: Record<string, any>[];
+    rowCount: number;
+}
+
+// Catalog
+export async function fetchReports(): Promise<Report[]> {
+    const response = await fetch(`${API_BASE}/reports`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching reports');
+    return response.json();
+}
+
+export async function createReport(data: Partial<Report>): Promise<{ success: boolean; id: number }> {
+    const response = await fetch(`${API_BASE}/reports`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error creating report'); }
+    return response.json();
+}
+
+export async function updateReport(id: number, data: Partial<Report>): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/reports/${id}`, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify(data)
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error updating report'); }
+    return response.json();
+}
+
+export async function deleteReport(id: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/reports/${id}`, {
+        method: 'DELETE', headers: authHeaders()
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error deleting report'); }
+    return response.json();
+}
+
+// Preview
+export async function previewReport(id: number, params?: Record<string, string>): Promise<ReportPreviewResult> {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    const response = await fetch(`${API_BASE}/reports/${id}/preview${qs}`, { headers: authHeaders() });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error previewing report'); }
+    return response.json();
+}
+
+// Subscriptions
+export async function fetchReportSubscriptions(): Promise<ReportSubscription[]> {
+    const response = await fetch(`${API_BASE}/reports/subscriptions`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching subscriptions');
+    return response.json();
+}
+
+export async function subscribeToReport(id: number, config?: Record<string, any>): Promise<{ success: boolean; subscriptionId: number }> {
+    const response = await fetch(`${API_BASE}/reports/${id}/subscribe`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(config || {})
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error subscribing'); }
+    return response.json();
+}
+
+export async function unsubscribeFromReport(id: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/reports/${id}/subscribe`, {
+        method: 'DELETE', headers: authHeaders()
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error unsubscribing'); }
+    return response.json();
+}
+
+export async function updateReportSubscription(id: number, config: Record<string, any>): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/reports/${id}/subscribe`, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify(config)
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error updating subscription'); }
+    return response.json();
+}
+
+// Access Control
+export async function fetchReportAccess(): Promise<ReportAccess[]> {
+    const response = await fetch(`${API_BASE}/reports/access`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching report access');
+    return response.json();
+}
+
+export async function setReportAccess(reportId: number, perfilIds: number[]): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/reports/${reportId}/access`, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify({ perfilIds })
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error setting access'); }
+    return response.json();
+}
+
+// Generate Now
+export async function generateReport(id: number, params?: Record<string, string>, emailTo?: string): Promise<{ success: boolean; message: string; rowCount: number }> {
+    const response = await fetch(`${API_BASE}/reports/${id}/generate`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ params: params || {}, emailTo })
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error generating report'); }
     return response.json();
 }

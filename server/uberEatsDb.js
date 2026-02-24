@@ -86,25 +86,26 @@ async function ensureUberEatsTables() {
             )
         `);
 
-        // Seed default config keys if empty
-        await p.request().query(`
-            IF NOT EXISTS (SELECT 1 FROM UberEatsConfig)
-            BEGIN
-                INSERT INTO UberEatsConfig (ConfigKey, ConfigValue, Descripcion) VALUES
-                ('CLIENT_ID',      NULL,    'Uber Eats API Client ID'),
-                ('CLIENT_SECRET',  NULL,    'Uber Eats API Client Secret (encriptado)'),
-                ('SYNC_ENABLED',   'false', 'Activar sincronizacion automatica'),
-                ('SYNC_HOUR',      '3',     'Hora del dia para sync automatico (0-23)'),
-                ('DAYS_BACK',      '1',     'Cuantos dias atras sincronizar'),
-                ('LAST_SYNC',      NULL,    'Fecha y hora del ultimo sync exitoso'),
-                ('REPORT_TYPES',   'FINANCE_SUMMARY_REPORT', 'Tipos de reporte separados por coma')
-            END
-            ELSE BEGIN
-                IF NOT EXISTS (SELECT 1 FROM UberEatsConfig WHERE ConfigKey = 'REPORT_TYPES')
-                    INSERT INTO UberEatsConfig (ConfigKey, ConfigValue, Descripcion)
-                    VALUES ('REPORT_TYPES', 'FINANCE_SUMMARY_REPORT', 'Tipos de reporte separados por coma')
-            END
-        `);
+        // Seed default config keys — ensure each key exists individually
+        const defaultKeys = [
+            ['CLIENT_ID', null, 'Uber Eats API Client ID'],
+            ['CLIENT_SECRET', null, 'Uber Eats API Client Secret (encriptado)'],
+            ['SYNC_ENABLED', 'false', 'Activar sincronizacion automatica'],
+            ['SYNC_HOUR', '3', 'Hora del dia para sync automatico (0-23)'],
+            ['DAYS_BACK', '1', 'Cuantos dias atras sincronizar'],
+            ['LAST_SYNC', null, 'Fecha y hora del ultimo sync exitoso'],
+            ['REPORT_TYPES', 'FINANCE_SUMMARY_REPORT', 'Tipos de reporte separados por coma']
+        ];
+        for (const [key, val, desc] of defaultKeys) {
+            await p.request()
+                .input('k', mssql.NVarChar(100), key)
+                .input('v', mssql.NVarChar(mssql.MAX), val)
+                .input('d', mssql.NVarChar(255), desc)
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM UberEatsConfig WHERE ConfigKey = @k)
+                        INSERT INTO UberEatsConfig (ConfigKey, ConfigValue, Descripcion) VALUES (@k, @v, @d)
+                `);
+        }
 
         // Stores table
         await p.request().query(`

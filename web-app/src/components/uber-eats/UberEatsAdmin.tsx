@@ -70,7 +70,7 @@ export function UberEatsAdmin() {
     const [configLoading, setConfigLoading] = useState(false);
     const [configSaving, setConfigSaving] = useState(false);
     const [testLoading, setTestLoading] = useState(false);
-    const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [testResult, setTestResult] = useState<{ success: boolean; message: string; steps?: string[] } | null>(null);
     const [configMsg, setConfigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [tokenStatus, setTokenStatus] = useState<{ hasClientId: boolean; hasSecretInDb: boolean; canDecrypt: boolean; canGetToken: boolean; tokenError: string | null } | null>(null);
 
@@ -107,13 +107,17 @@ export function UberEatsAdmin() {
         setConfigLoading(true);
         try {
             const h = getHeaders();
+            console.log('[UberEats] Loading config...');
             const res = await fetch(`${API_BASE}/api/uber-eats/config`, { headers: h });
+            console.log('[UberEats] Config response status:', res.status);
             if (res.status === 401) {
                 setConfigMsg({ type: 'error', text: '⏳ Tu sesión expiró. Necesitas volver a iniciar sesión.' });
                 setConfigLoading(false);
                 return;
             }
             const data: UberConfig = await res.json();
+            console.log('[UberEats] Config data:', JSON.stringify(data));
+            console.log('[UberEats] CLIENT_SECRET value:', data.CLIENT_SECRET?.value, '| truthy:', !!data.CLIENT_SECRET?.value);
             setConfig(data);
             setClientId(data.CLIENT_ID?.value || '');
             setSyncEnabled(data.SYNC_ENABLED?.value === 'true');
@@ -122,6 +126,7 @@ export function UberEatsAdmin() {
             const rts = data.REPORT_TYPES?.value || 'FINANCE_SUMMARY_REPORT';
             setReportTypes(rts.split(',').map((t: string) => t.trim()).filter(Boolean));
         } catch (e: any) {
+            console.error('[UberEats] Config load error:', e);
             setConfigMsg({ type: 'error', text: e.message });
         } finally { setConfigLoading(false); }
     }, []);
@@ -453,9 +458,19 @@ export function UberEatsAdmin() {
 
                                 {/* Test result */}
                                 {testResult && (
-                                    <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${testResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                                        {testResult.success ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                                        {testResult.message}
+                                    <div className={`rounded-xl border-2 overflow-hidden ${testResult.success ? 'border-green-200' : 'border-red-200'}`}>
+                                        <div className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold ${testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                            {testResult.success ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                                            {testResult.message}
+                                        </div>
+                                        {testResult.steps && testResult.steps.length > 0 && (
+                                            <div className="px-4 py-3 bg-gray-50 space-y-1 border-t border-gray-100">
+                                                <p className="text-xs font-bold text-gray-500 uppercase mb-1">Diagnóstico paso a paso</p>
+                                                {testResult.steps.map((step, i) => (
+                                                    <p key={i} className="text-xs text-gray-600 font-mono">{step}</p>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>

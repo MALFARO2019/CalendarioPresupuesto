@@ -28,9 +28,10 @@ import { GroupMembersCard } from './components/GroupMembersCard';
 import { RangosView } from './components/RangosView';
 import { PreferencesView } from './components/PreferencesView';
 import { InocuidadView } from './components/inocuidad/InocuidadView';
+import { ReportsView } from './components/reports/ReportsView';
 
 type AppView = 'login' | 'dashboard' | 'admin' | 'preferencias';
-type DashboardTab = 'home' | 'mensual' | 'anual' | 'tendencia' | 'rangos' | 'inocuidad';
+type DashboardTab = 'home' | 'mensual' | 'anual' | 'tendencia' | 'rangos' | 'inocuidad' | 'reportes';
 
 function App() {
   const { showToast } = useToast();
@@ -658,12 +659,12 @@ function App() {
               </button>
             )}
 
-            {/* Admin/Events/Modelo button - for admin, eventos, or modelo users */}
-            {(user?.esAdmin || user?.accesoEventos || user?.accesoModeloPresupuesto || user?.ajustarCurva || user?.verAjustePresupuesto || user?.verConfigModelo || user?.verConsolidadoMensual || user?.verVersiones || user?.verBitacora || user?.verReferencias || user?.editarConsolidado || user?.ejecutarRecalculo || user?.restaurarVersiones) && (
+            {/* Admin/Events/Modelo/Config button - for admin, eventos, modelo, asignaciones, or grupos users */}
+            {(user?.esAdmin || user?.accesoEventos || user?.accesoAsignaciones || user?.accesoGruposAlmacen || user?.accesoModeloPresupuesto || user?.ajustarCurva || user?.verAjustePresupuesto || user?.verConfigModelo || user?.verConsolidadoMensual || user?.verVersiones || user?.verBitacora || user?.verReferencias || user?.editarConsolidado || user?.ejecutarRecalculo || user?.restaurarVersiones) && (
               <button
                 onClick={() => setView('admin')}
                 className="touch-target p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
-                title={user?.esAdmin ? "Configuración" : user?.accesoEventos ? "Eventos" : "Modelo Presupuesto"}
+                title={user?.esAdmin ? "Configuración" : user?.accesoEventos ? "Eventos" : user?.accesoAsignaciones || user?.accesoGruposAlmacen ? "Configuración" : "Modelo Presupuesto"}
               >
                 <Settings className="w-4 h-4" />
               </button>
@@ -797,7 +798,7 @@ function App() {
 
       <main id="dashboard-content" className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {/* Filters - Only show when in Presupuesto module (not in tendencia or rangos) */}
-        {dashboardTab !== 'home' && dashboardTab !== 'tendencia' && dashboardTab !== 'rangos' && dashboardTab !== 'inocuidad' && (
+        {dashboardTab !== 'home' && dashboardTab !== 'tendencia' && dashboardTab !== 'rangos' && dashboardTab !== 'inocuidad' && dashboardTab !== 'reportes' && (
           <FilterBar
             year={year}
             setYear={() => { }} // Year is read-only
@@ -898,6 +899,9 @@ function App() {
               }
               if (moduleId === 'evaluaciones' || moduleId === 'inocuidad') {
                 setDashboardTab('inocuidad');
+              }
+              if (moduleId === 'reportes') {
+                setDashboardTab('reportes');
               }
               // Future modules will be handled here
             }}
@@ -1154,6 +1158,10 @@ function App() {
               activeSubTab={inocuidadSubTab}
             />
           </div>
+        )}
+
+        {!loading && dashboardTab === 'reportes' && (
+          <ReportsView onBack={() => setDashboardTab('home')} />
         )}
       </main>
 

@@ -296,7 +296,8 @@ async function ensureSecurityTables() {
                     editarConsolidado = 1,
                     ejecutarRecalculo = 1,
                     ajustarCurva = 1,
-                    restaurarVersiones = 1
+                    restaurarVersiones = 1,
+                    AccesoReportes = 1
                 WHERE Email = 'soporte@rostipolloscr.com'
             `);
         }
@@ -491,23 +492,21 @@ IMPORTANTE:
             END
         `);
 
-        // Create APP_PERFIL_GRUPOALMACEN junction table (Profile <-> Warehouse Group)
-        await pool.request().query(`
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_PERFIL_GRUPOALMACEN' AND xtype='U')
-            BEGIN
-                CREATE TABLE APP_PERFIL_GRUPOALMACEN (
-                    Id INT IDENTITY(1,1) PRIMARY KEY,
-                    PerfilId INT NOT NULL,
-                    GrupoAlmacenId INT NOT NULL,
-                    CONSTRAINT FK_PerfilGrupo_Perfil FOREIGN KEY (PerfilId)
-                        REFERENCES APP_PERFILES(Id) ON DELETE CASCADE,
-                    CONSTRAINT FK_PerfilGrupo_Grupo FOREIGN KEY (GrupoAlmacenId)
-                        REFERENCES KpisRosti_GruposAlmacenCab(IDGRUPO) ON DELETE CASCADE,
-                    CONSTRAINT UQ_Perfil_GrupoAlmacen UNIQUE (PerfilId, GrupoAlmacenId)
-                );
-                CREATE INDEX IX_PerfilGrupo_PerfilId ON APP_PERFIL_GRUPOALMACEN(PerfilId);
-            END
-        `);
+        // Add AccesoAsignaciones, AccesoGruposAlmacen, AccesoReportes columns if missing
+        const configCols = [
+            { table: 'APP_USUARIOS', col: 'AccesoAsignaciones', def: '0' },
+            { table: 'APP_USUARIOS', col: 'AccesoGruposAlmacen', def: '0' },
+            { table: 'APP_USUARIOS', col: 'AccesoReportes', def: '0' },
+            { table: 'APP_PERFILES', col: 'AccesoAsignaciones', def: '0' },
+            { table: 'APP_PERFILES', col: 'AccesoGruposAlmacen', def: '0' },
+            { table: 'APP_PERFILES', col: 'AccesoReportes', def: '0' },
+        ];
+        for (const { table, col, def } of configCols) {
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${table}' AND COLUMN_NAME = '${col}')
+                ALTER TABLE ${table} ADD ${col} BIT NOT NULL DEFAULT ${def}
+            `);
+        }
 
         console.log('✅ Security tables verified/created');
     } catch (err) {
@@ -580,7 +579,7 @@ async function loginUser(email, clave, ip, userAgent) {
     const pool = await poolPromise;
     const result = await pool.request()
         .input('email', sql.NVarChar, email)
-        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(restaurarVersiones,0) as restaurarVersiones FROM APP_USUARIOS WHERE Email = @email');
+        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(restaurarVersiones,0) as restaurarVersiones, ISNULL(AccesoAsignaciones,0) as AccesoAsignaciones, ISNULL(AccesoGruposAlmacen,0) as AccesoGruposAlmacen, ISNULL(AccesoReportes,0) as AccesoReportes FROM APP_USUARIOS WHERE Email = @email');
 
     if (result.recordset.length === 0) {
         logLoginEvent(email, null, false, 'Usuario no encontrado', ip, userAgent);
@@ -654,6 +653,9 @@ async function loginUser(email, clave, ip, userAgent) {
             ejecutarRecalculo: user.ejecutarRecalculo,
             ajustarCurva: user.ajustarCurva,
             restaurarVersiones: user.restaurarVersiones,
+            accesoAsignaciones: user.AccesoAsignaciones,
+            accesoGruposAlmacen: user.AccesoGruposAlmacen,
+            accesoReportes: user.AccesoReportes,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido
         },
@@ -694,6 +696,9 @@ async function loginUser(email, clave, ip, userAgent) {
             ejecutarRecalculo: user.ejecutarRecalculo,
             ajustarCurva: user.ajustarCurva,
             restaurarVersiones: user.restaurarVersiones,
+            accesoAsignaciones: user.AccesoAsignaciones,
+            accesoGruposAlmacen: user.AccesoGruposAlmacen,
+            accesoReportes: user.AccesoReportes,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido,
             allowedStores,
@@ -784,6 +789,9 @@ async function getAllUsers() {
                ISNULL(u.ejecutarRecalculo, 0) as ejecutarRecalculo,
                ISNULL(u.ajustarCurva, 0) as ajustarCurva,
                ISNULL(u.restaurarVersiones, 0) as restaurarVersiones,
+               ISNULL(u.AccesoAsignaciones, 0) as AccesoAsignaciones,
+               ISNULL(u.AccesoGruposAlmacen, 0) as AccesoGruposAlmacen,
+               ISNULL(u.AccesoReportes, 0) as AccesoReportes,
                (SELECT STRING_AGG(a2.Local, ', ') FROM APP_USUARIO_ALMACEN a2 WHERE a2.UsuarioId = u.Id) AS Almacenes,
                (SELECT STRING_AGG(c2.Canal, ', ') FROM APP_USUARIO_CANAL c2 WHERE c2.UsuarioId = u.Id) AS Canales
         FROM APP_USUARIOS u
@@ -820,6 +828,9 @@ async function getAllUsers() {
         ejecutarRecalculo: user.ejecutarRecalculo,
         ajustarCurva: user.ajustarCurva,
         restaurarVersiones: user.restaurarVersiones,
+        accesoAsignaciones: user.AccesoAsignaciones,
+        accesoGruposAlmacen: user.AccesoGruposAlmacen,
+        accesoReportes: user.AccesoReportes,
         esAdmin: user.EsAdmin,
         esProtegido: user.EsProtegido,
         permitirEnvioClave: user.PermitirEnvioClave,
@@ -835,7 +846,7 @@ async function getAllUsers() {
 /**
  * Create a new user with store access and PIN
  */
-async function createUser(email, nombre, clave, stores, canales, accesoTendencia = false, accesoTactica = false, accesoEventos = false, accesoPresupuesto = true, accesoPresupuestoMensual = true, accesoPresupuestoAnual = true, accesoPresupuestoRangos = true, accesoTiempos = false, accesoEvaluaciones = false, accesoInventarios = false, accesoPersonal = false, esAdmin = false, modeloPresupuestoPerms = {}, perfilId = null, cedula = null, telefono = null) {
+async function createUser(email, nombre, clave, stores, canales, accesoTendencia = false, accesoTactica = false, accesoEventos = false, accesoPresupuesto = true, accesoPresupuestoMensual = true, accesoPresupuestoAnual = true, accesoPresupuestoRangos = true, accesoTiempos = false, accesoEvaluaciones = false, accesoInventarios = false, accesoPersonal = false, esAdmin = false, modeloPresupuestoPerms = {}, perfilId = null, cedula = null, telefono = null, accesoAsignaciones = false, accesoGruposAlmacen = false, accesoReportes = false) {
     const pool = await poolPromise;
 
     // Validate: at least one module permission must be active (unless admin)
@@ -881,10 +892,13 @@ async function createUser(email, nombre, clave, stores, canales, accesoTendencia
         .input('perfilId', sql.Int, perfilId)
         .input('cedula', sql.NVarChar, cedula || null)
         .input('telefono', sql.NVarChar, telefono || null)
+        .input('accesoAsignaciones', sql.Bit, accesoAsignaciones)
+        .input('accesoGruposAlmacen', sql.Bit, accesoGruposAlmacen)
+        .input('accesoReportes', sql.Bit, accesoReportes)
         .query(`
-            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, PerfilId, Cedula, Telefono) 
+            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, PerfilId, Cedula, Telefono, AccesoAsignaciones, AccesoGruposAlmacen, AccesoReportes) 
             OUTPUT INSERTED.Id, INSERTED.Clave
-            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @accesoPresupuesto, @accesoPresupuestoMensual, @accesoPresupuestoAnual, @accesoPresupuestoRangos, @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @accesoPersonal, @esAdmin, @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual, @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias, @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones, @perfilId, @cedula, @telefono)
+            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @accesoPresupuesto, @accesoPresupuestoMensual, @accesoPresupuestoAnual, @accesoPresupuestoRangos, @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @accesoPersonal, @esAdmin, @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual, @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias, @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones, @perfilId, @cedula, @telefono, @accesoAsignaciones, @accesoGruposAlmacen, @accesoReportes)
         `);
 
     const userId = userResult.recordset[0].Id;
@@ -914,7 +928,7 @@ async function createUser(email, nombre, clave, stores, canales, accesoTendencia
 /**
  * Update user (including PIN change)
  */
-async function updateUser(userId, email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId = null, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula = null, telefono = null) {
+async function updateUser(userId, email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId = null, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula = null, telefono = null, accesoAsignaciones = false, accesoGruposAlmacen = false, accesoReportes = false) {
     const pool = await poolPromise;
 
     // Protect superadmin user
@@ -957,6 +971,9 @@ async function updateUser(userId, email, nombre, activo, clave, stores, canales,
             ejecutarRecalculo = @ejecutarRecalculo,
             ajustarCurva = @ajustarCurva,
             restaurarVersiones = @restaurarVersiones,
+            AccesoAsignaciones = @accesoAsignaciones,
+            AccesoGruposAlmacen = @accesoGruposAlmacen,
+            AccesoReportes = @accesoReportes,
             FechaModificacion = GETDATE()
     `;
     const request = pool.request()
@@ -990,7 +1007,10 @@ async function updateUser(userId, email, nombre, activo, clave, stores, canales,
         .input('editarConsolidado', sql.Bit, editarConsolidado || false)
         .input('ejecutarRecalculo', sql.Bit, ejecutarRecalculo || false)
         .input('ajustarCurva', sql.Bit, ajustarCurva || false)
-        .input('restaurarVersiones', sql.Bit, restaurarVersiones || false);
+        .input('restaurarVersiones', sql.Bit, restaurarVersiones || false)
+        .input('accesoAsignaciones', sql.Bit, accesoAsignaciones || false)
+        .input('accesoGruposAlmacen', sql.Bit, accesoGruposAlmacen || false)
+        .input('accesoReportes', sql.Bit, accesoReportes || false);
 
     if (clave) {
         updateQuery += ', Clave = @clave';
@@ -1059,15 +1079,7 @@ async function getAllProfiles() {
         ORDER BY p.Nombre
     `);
 
-    // Fetch all profile-group associations in one query
-    const gruposResult = await pool.request().query(`
-        SELECT PerfilId, GrupoAlmacenId FROM APP_PERFIL_GRUPOALMACEN
-    `);
-    const gruposByPerfil = {};
-    for (const row of gruposResult.recordset) {
-        if (!gruposByPerfil[row.PerfilId]) gruposByPerfil[row.PerfilId] = [];
-        gruposByPerfil[row.PerfilId].push(row.GrupoAlmacenId);
-    }
+
 
     return result.recordset.map(p => ({
         id: p.Id,
@@ -1096,6 +1108,10 @@ async function getAllProfiles() {
         ejecutarRecalculo: p.ejecutarRecalculo || false,
         ajustarCurva: p.ajustarCurva || false,
         restaurarVersiones: p.restaurarVersiones || false,
+        // Configuración permissions
+        accesoAsignaciones: p.AccesoAsignaciones || false,
+        accesoGruposAlmacen: p.AccesoGruposAlmacen || false,
+        accesoReportes: p.AccesoReportes || false,
         esAdmin: p.EsAdmin,
         permitirEnvioClave: p.PermitirEnvioClave,
         apareceEnTituloAlcance: p.ApareceEnTituloAlcance ?? true,
@@ -1103,7 +1119,7 @@ async function getAllProfiles() {
         apareceEnTituloAnual: p.ApareceEnTituloAnual ?? true,
         apareceEnTituloTendencia: p.ApareceEnTituloTendencia ?? true,
         apareceEnTituloRangos: p.ApareceEnTituloRangos ?? true,
-        gruposAlmacenIds: gruposByPerfil[p.Id] || [],
+
         usuariosAsignados: p.UsuariosAsignados,
         fechaCreacion: p.FechaCreacion,
         fechaModificacion: p.FechaModificacion,
@@ -1159,6 +1175,9 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
         .input('apareceEnTituloAnual', sql.Bit, permisos.apareceEnTituloAnual !== undefined ? permisos.apareceEnTituloAnual : true)
         .input('apareceEnTituloTendencia', sql.Bit, permisos.apareceEnTituloTendencia !== undefined ? permisos.apareceEnTituloTendencia : true)
         .input('apareceEnTituloRangos', sql.Bit, permisos.apareceEnTituloRangos !== undefined ? permisos.apareceEnTituloRangos : true)
+        .input('accesoAsignaciones', sql.Bit, permisos.accesoAsignaciones || false)
+        .input('accesoGruposAlmacen', sql.Bit, permisos.accesoGruposAlmacen || false)
+        .input('accesoReportes', sql.Bit, permisos.accesoReportes || false)
         .query(`
             INSERT INTO APP_PERFILES (
                 Nombre, Descripcion, AccesoTendencia, AccesoTactica, AccesoEventos,
@@ -1169,7 +1188,8 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
                 verAjustePresupuesto, verVersiones, verBitacora, verReferencias,
                 editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones,
                 ApareceEnTituloAlcance, ApareceEnTituloMensual, ApareceEnTituloAnual,
-                ApareceEnTituloTendencia, ApareceEnTituloRangos
+                ApareceEnTituloTendencia, ApareceEnTituloRangos,
+                AccesoAsignaciones, AccesoGruposAlmacen, AccesoReportes
             )
             OUTPUT INSERTED.Id
             VALUES (
@@ -1181,21 +1201,14 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
                 @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias,
                 @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones,
                 @apareceEnTituloAlcance, @apareceEnTituloMensual, @apareceEnTituloAnual,
-                @apareceEnTituloTendencia, @apareceEnTituloRangos
+                @apareceEnTituloTendencia, @apareceEnTituloRangos,
+                @accesoAsignaciones, @accesoGruposAlmacen, @accesoReportes
             )
         `);
 
     const profileId = result.recordset[0].Id;
 
-    // Save Grupos de Almacén associations
-    if (permisos.gruposAlmacenIds && permisos.gruposAlmacenIds.length > 0) {
-        for (const grupoId of permisos.gruposAlmacenIds) {
-            await pool.request()
-                .input('perfilId', sql.Int, profileId)
-                .input('grupoId', sql.Int, grupoId)
-                .query('INSERT INTO APP_PERFIL_GRUPOALMACEN (PerfilId, GrupoAlmacenId) VALUES (@perfilId, @grupoId)');
-        }
-    }
+
 
     return profileId;
 }
@@ -1258,6 +1271,9 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
         .input('apareceEnTituloAnual', sql.Bit, permisos.apareceEnTituloAnual !== undefined ? permisos.apareceEnTituloAnual : true)
         .input('apareceEnTituloTendencia', sql.Bit, permisos.apareceEnTituloTendencia !== undefined ? permisos.apareceEnTituloTendencia : true)
         .input('apareceEnTituloRangos', sql.Bit, permisos.apareceEnTituloRangos !== undefined ? permisos.apareceEnTituloRangos : true)
+        .input('accesoAsignaciones', sql.Bit, permisos.accesoAsignaciones || false)
+        .input('accesoGruposAlmacen', sql.Bit, permisos.accesoGruposAlmacen || false)
+        .input('accesoReportes', sql.Bit, permisos.accesoReportes || false)
         .query(`
             UPDATE APP_PERFILES
             SET Nombre = @nombre,
@@ -1291,23 +1307,13 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
                 ApareceEnTituloAnual = @apareceEnTituloAnual,
                 ApareceEnTituloTendencia = @apareceEnTituloTendencia,
                 ApareceEnTituloRangos = @apareceEnTituloRangos,
+                AccesoAsignaciones = @accesoAsignaciones,
+                AccesoGruposAlmacen = @accesoGruposAlmacen,
+                AccesoReportes = @accesoReportes,
                 FechaModificacion = GETDATE()
             WHERE Id = @id
         `);
 
-    // Update Grupos de Almacén associations (delete + re-insert)
-    await pool.request()
-        .input('id', sql.Int, perfilId)
-        .query('DELETE FROM APP_PERFIL_GRUPOALMACEN WHERE PerfilId = @id');
-
-    if (permisos.gruposAlmacenIds && permisos.gruposAlmacenIds.length > 0) {
-        for (const grupoId of permisos.gruposAlmacenIds) {
-            await pool.request()
-                .input('perfilId', sql.Int, perfilId)
-                .input('grupoId', sql.Int, grupoId)
-                .query('INSERT INTO APP_PERFIL_GRUPOALMACEN (PerfilId, GrupoAlmacenId) VALUES (@perfilId, @grupoId)');
-        }
-    }
 }
 
 /**
@@ -1372,6 +1378,9 @@ async function assignProfileToUsers(perfilId, userIds, syncPermissions = true) {
                 .input('accesoPersonal', sql.Bit, profile.AccesoPersonal)
                 .input('esAdmin', sql.Bit, profile.EsAdmin)
                 .input('permitirEnvioClave', sql.Bit, profile.PermitirEnvioClave)
+                .input('accesoAsignaciones', sql.Bit, profile.AccesoAsignaciones || false)
+                .input('accesoGruposAlmacen', sql.Bit, profile.AccesoGruposAlmacen || false)
+                .input('accesoReportes', sql.Bit, profile.AccesoReportes || false)
                 .query(`
                     UPDATE APP_USUARIOS
                     SET AccesoTendencia = @accesoTendencia,
@@ -1387,55 +1396,18 @@ async function assignProfileToUsers(perfilId, userIds, syncPermissions = true) {
                         AccesoPersonal = @accesoPersonal,
                         EsAdmin = @esAdmin,
                         PermitirEnvioClave = @permitirEnvioClave,
+                        AccesoAsignaciones = @accesoAsignaciones,
+                        AccesoGruposAlmacen = @accesoGruposAlmacen,
+                        AccesoReportes = @accesoReportes,
                         FechaModificacion = GETDATE()
                     WHERE Id = @userId
                 `);
         }
 
-        // Sync stores from Grupos de Almacén
-        if (syncPermissions) {
-            await syncStoresFromProfileGroups(pool, perfilId, userId);
-        }
+
     }
 }
 
-/**
- * Helper: Resolve stores from a profile's Grupos de Almacén and update a user's APP_USUARIO_ALMACEN
- */
-async function syncStoresFromProfileGroups(pool, perfilId, userId) {
-    // Get all grupo IDs for this profile
-    const gruposResult = await pool.request()
-        .input('perfilId', sql.Int, perfilId)
-        .query('SELECT GrupoAlmacenId FROM APP_PERFIL_GRUPOALMACEN WHERE PerfilId = @perfilId');
-
-    if (gruposResult.recordset.length === 0) {
-        // No groups assigned to profile, don't touch user's stores
-        return;
-    }
-
-    // Get all stores from those groups
-    const grupoIds = gruposResult.recordset.map(r => r.GrupoAlmacenId);
-    const storesResult = await pool.request()
-        .query(`
-            SELECT DISTINCT CODALMACEN
-            FROM KpisRosti_GruposAlmacenLin
-            WHERE IDGRUPO IN (${grupoIds.join(',')}) AND Activo = 1
-        `);
-
-    const stores = storesResult.recordset.map(r => r.CODALMACEN);
-
-    // Replace user's stores
-    await pool.request()
-        .input('userId', sql.Int, userId)
-        .query('DELETE FROM APP_USUARIO_ALMACEN WHERE UsuarioId = @userId');
-
-    for (const store of stores) {
-        await pool.request()
-            .input('userId', sql.Int, userId)
-            .input('local', sql.NVarChar, store)
-            .query('INSERT INTO APP_USUARIO_ALMACEN (UsuarioId, Local) VALUES (@userId, @local)');
-    }
-}
 
 /**
  * Sync profile permissions to all assigned users
@@ -1481,6 +1453,9 @@ async function syncProfilePermissions(perfilId) {
         .input('ejecutarRecalculo', sql.Bit, profile.ejecutarRecalculo || false)
         .input('ajustarCurva', sql.Bit, profile.ajustarCurva || false)
         .input('restaurarVersiones', sql.Bit, profile.restaurarVersiones || false)
+        .input('accesoAsignaciones', sql.Bit, profile.AccesoAsignaciones || false)
+        .input('accesoGruposAlmacen', sql.Bit, profile.AccesoGruposAlmacen || false)
+        .input('accesoReportes', sql.Bit, profile.AccesoReportes || false)
         .query(`
             UPDATE APP_USUARIOS
             SET AccesoTendencia = @accesoTendencia,
@@ -1507,18 +1482,14 @@ async function syncProfilePermissions(perfilId) {
                 ejecutarRecalculo = @ejecutarRecalculo,
                 ajustarCurva = @ajustarCurva,
                 restaurarVersiones = @restaurarVersiones,
+                AccesoAsignaciones = @accesoAsignaciones,
+                AccesoGruposAlmacen = @accesoGruposAlmacen,
+                AccesoReportes = @accesoReportes,
                 FechaModificacion = GETDATE()
             WHERE PerfilId = @perfilId AND EsProtegido = 0
         `);
 
-    // Sync stores from Grupos de Almacén for all users with this profile
-    const usersWithProfile = await pool.request()
-        .input('perfilId', sql.Int, perfilId)
-        .query('SELECT Id FROM APP_USUARIOS WHERE PerfilId = @perfilId AND EsProtegido = 0');
 
-    for (const user of usersWithProfile.recordset) {
-        await syncStoresFromProfileGroups(pool, perfilId, user.Id);
-    }
 
     // Return count of updated users
     const countResult = await pool.request()

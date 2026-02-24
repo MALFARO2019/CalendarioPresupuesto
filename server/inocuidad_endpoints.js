@@ -79,6 +79,20 @@ module.exports = function registerInocuidadEndpoints(app, authMiddleware) {
         return map;
     }
 
+    // ─── Helper: resolve local names → codalmacen ───────────────────────────────
+    async function getCodesForNames(names) {
+        if (!names || names.length === 0) return [];
+        const localNames = await getLocalNames();
+        const codes = [];
+        const nameSet = new Set(names.map(n => n.toLowerCase()));
+        for (const [code, name] of Object.entries(localNames)) {
+            if (name && nameSet.has(name.toLowerCase())) {
+                codes.push(code);
+            }
+        }
+        return codes;
+    }
+
     // ─── Helper: get KPI config for color thresholds ────────────────────────────
     async function getKpiConfig(kpiName) {
         const mainPool = await poolPromise;
@@ -280,7 +294,9 @@ module.exports = function registerInocuidadEndpoints(app, authMiddleware) {
             // Determine which locales to filter
             let filterCodes = [];
             if (locales) {
-                filterCodes = locales.split(',').map(s => s.trim()).filter(Boolean);
+                const names = locales.split(',').map(s => s.trim()).filter(Boolean);
+                filterCodes = await getCodesForNames(names);
+                if (filterCodes.length === 0) filterCodes = names; // Fallback to raw codes if mapping failed
             } else if (grupo) {
                 filterCodes = await getGroupStores(grupo);
             }
@@ -466,7 +482,9 @@ module.exports = function registerInocuidadEndpoints(app, authMiddleware) {
             // Determine locales filter
             let filterCodes = [];
             if (locales) {
-                filterCodes = locales.split(',').map(s => s.trim()).filter(Boolean);
+                const names = locales.split(',').map(s => s.trim()).filter(Boolean);
+                filterCodes = await getCodesForNames(names);
+                if (filterCodes.length === 0) filterCodes = names; // Fallback to raw codes if mapping failed
             } else if (grupo) {
                 filterCodes = await getGroupStores(grupo);
             }
@@ -570,6 +588,396 @@ module.exports = function registerInocuidadEndpoints(app, authMiddleware) {
             });
         } catch (err) {
             console.error('❌ inocuidad/calor error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GET /api/inocuidad/calor-categorias — heat map grouped by category × month
+    // Params: sourceId, year, locales, grupo
+    // Returns groups with rows of category averages per month
+    // ═══════════════════════════════════════════════════════════════════════════
+    app.get('/api/inocuidad/calor-categorias', authMiddleware, async (req, res) => {
+        try {
+            const { sourceId, year, locales, grupo } = req.query;
+            if (!sourceId) return res.status(400).json({ error: 'sourceId required' });
+
+            const pool = await getFormsPool();
+            const src = await pool.request()
+                .input('id', fSql.Int, parseInt(sourceId))
+                .query('SELECT TableName FROM FormsSources WHERE SourceID = @id');
+
+            if (src.recordset.length === 0) return res.status(404).json({ error: 'Source not found' });
+            const tableName = src.recordset[0].TableName;
+            if (!tableName) return res.json({ groups: [], stats: {} });
+
+            // Get field config for short names + visibility + grouping
+            const fieldConfig = await getFieldConfig(parseInt(sourceId));
+            const configMap = {};
+            for (const fc of fieldConfig) {
+                configMap[fc.ColumnName] = fc;
+            }
+
+            // Get Puntos_* columns
+            const allCols = await pool.request()
+                .input('tbl', fSql.NVarChar, tableName)
+                .query(`
+                    SELECT COLUMN_NAME, DATA_TYPE
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = @tbl
+                    AND COLUMN_NAME NOT IN (
+                        'ID', 'ResponseID', 'RespondentEmail', 'RespondentName',
+                        'SubmittedAt', 'SyncedAt', '_CODALMACEN', '_PERSONAL_ID', '_PERSONAL_NOMBRE',
+                        'Q_Id', 'Total_de_puntos', 'Hora_de_inicio', 'Hora_de_finalizacion',
+                        'Correo_electronico', 'Nombre', 'Comentarios_del_cuestionario',
+                        'Hora_de_publicacion_de_la_calificacion', 'Restaurante',
+                        'Puntos_Restaurante', 'Comentarios_Restaurante',
+                        'Fecha_de_la_evaluacion', 'Puntos_Fecha_de_la_evaluacion', 'Comentarios_Fecha_de_la_evaluacion',
+                        'Nombre_del_administrativo_a_cargo_del_turno', 'Puntos_Nombre_del_administrativo_a_cargo_del_turno', 'Comentarios_Nombre_del_administrativo_a_cargo_del_turno',
+                        'Nombre_del_evaluador', 'Puntos_Nombre_del_evaluador', 'Comentarios_Nombre_del_evaluador',
+                        'COMENTARIOS_ADICIONALES', 'Puntos_COMENTARIOS_ADICIONALES', 'Comentarios_COMENTARIOS_ADICIONALES'
+                    )
+                    ORDER BY ORDINAL_POSITION
+                `);
+
+            const hasConfig = fieldConfig.length > 0;
+
+            // Filter to criteria columns (same logic as calor endpoint)
+            const criterios = allCols.recordset
+                .filter(col => {
+                    const name = col.COLUMN_NAME;
+                    if (name.startsWith('Comentarios_') || name.startsWith('Feedback_')) return false;
+                    const cfg = configMap[name];
+                    if (hasConfig) {
+                        return cfg && cfg.VisibleEnCalor;
+                    }
+                    return (name.startsWith('Puntos_') || name.startsWith('Points_'))
+                        && (col.DATA_TYPE === 'int' || col.DATA_TYPE === 'nvarchar');
+                })
+                .map(col => {
+                    const cfg = configMap[col.COLUMN_NAME];
+                    let shortName = cfg?.ShortName || col.COLUMN_NAME;
+                    if (!cfg?.ShortName) {
+                        shortName = shortName
+                            .replace(/^Puntos_/, '')
+                            .replace(/^Points_/, '')
+                            .replace(/_/g, ' ')
+                            .substring(0, 50);
+                    }
+                    // Derive group from field config or from naming pattern
+                    let groupName = cfg?.Grupo || 'General';
+                    if (groupName === 'General' && !cfg?.Grupo) {
+                        // Try to infer group from column name structure
+                        const parts = shortName.split(' ');
+                        if (parts.length >= 2) {
+                            groupName = 'General';
+                        }
+                    }
+                    return {
+                        columnName: col.COLUMN_NAME,
+                        shortName,
+                        dataType: col.DATA_TYPE,
+                        orden: cfg?.Orden || 0,
+                        group: groupName
+                    };
+                })
+                .sort((a, b) => a.orden - b.orden);
+
+            if (criterios.length === 0) {
+                return res.json({ groups: [], stats: { avgScore: 0, evaluaciones: 0, categoriasAbajo: 0, hallazgoRecurrente: null } });
+            }
+
+            // Determine locales filter
+            let filterCodes = [];
+            if (locales) {
+                const names = locales.split(',').map(s => s.trim()).filter(Boolean);
+                filterCodes = await getCodesForNames(names);
+                if (filterCodes.length === 0) filterCodes = names;
+            } else if (grupo) {
+                filterCodes = await getGroupStores(grupo);
+            }
+
+            const yearInt = parseInt(year) || new Date().getFullYear();
+            let whereClause = `WHERE YEAR(SubmittedAt) = @year AND _CODALMACEN IS NOT NULL`;
+            if (filterCodes.length > 0) {
+                whereClause += ` AND _CODALMACEN IN (${filterCodes.map((_, i) => `@loc${i}`).join(',')})`;
+            }
+
+            // Build query: for each criterio, get AVG per month
+            // We query ALL criteria columns at once and process in JS
+            const selectCols = criterios.map(c => `[${c.columnName}]`).join(', ');
+            const queryStr = `
+                SELECT MONTH(SubmittedAt) AS mes, ${selectCols}
+                FROM [${tableName}]
+                ${whereClause}
+            `;
+
+            const request = pool.request().input('year', fSql.Int, yearInt);
+            filterCodes.forEach((code, i) => {
+                request.input(`loc${i}`, fSql.NVarChar, code);
+            });
+
+            const result = await request.query(queryStr);
+            const rows = result.recordset;
+
+            // Aggregate: for each criterio, compute average per month
+            const categoryData = {};
+            for (const crit of criterios) {
+                categoryData[crit.columnName] = { months: {}, allValues: [] };
+                for (let m = 1; m <= 12; m++) {
+                    categoryData[crit.columnName].months[m] = { sum: 0, count: 0 };
+                }
+            }
+
+            const totalEvals = rows.length;
+
+            for (const row of rows) {
+                const mes = row.mes;
+                for (const crit of criterios) {
+                    const val = row[crit.columnName];
+                    if (val !== null && val !== undefined && val !== '') {
+                        const num = parseFloat(val);
+                        if (!isNaN(num)) {
+                            categoryData[crit.columnName].months[mes].sum += num;
+                            categoryData[crit.columnName].months[mes].count += 1;
+                            categoryData[crit.columnName].allValues.push(num);
+                        }
+                    }
+                }
+            }
+
+            // Build grouped response
+            const categoryRows = criterios.map(crit => {
+                const data = categoryData[crit.columnName];
+                const months = {};
+                for (let m = 1; m <= 12; m++) {
+                    const d = data.months[m];
+                    if (d.count > 0) {
+                        months[m] = Math.round((d.sum / d.count) * 10) / 10;
+                    }
+                }
+                const allAvg = data.allValues.length > 0
+                    ? data.allValues.reduce((a, b) => a + b, 0) / data.allValues.length
+                    : 0;
+                return {
+                    name: crit.shortName,
+                    columnName: crit.columnName,
+                    group: crit.group,
+                    months,
+                    promedio: Math.round(allAvg * 10) / 10
+                };
+            });
+
+            // Group by group name
+            const groupMap = {};
+            for (const row of categoryRows) {
+                if (!groupMap[row.group]) {
+                    groupMap[row.group] = [];
+                }
+                groupMap[row.group].push(row);
+            }
+            const groupedResult = Object.entries(groupMap).map(([group, items]) => ({
+                group,
+                rows: items
+            }));
+
+            // Stats
+            const allAvgValues = categoryRows.map(r => r.promedio).filter(v => v > 0);
+            const avgScore = allAvgValues.length > 0
+                ? Math.round((allAvgValues.reduce((a, b) => a + b, 0) / allAvgValues.length) * 10) / 10
+                : 0;
+
+            const kpiConfig = await getKpiConfig('Inocuidad');
+            const metaThreshold = kpiConfig?.Meta || 85;
+            const categoriasAbajo = categoryRows.filter(r => r.promedio > 0 && r.promedio < metaThreshold).length;
+
+            // Hallazgo recurrente: category with lowest average
+            const sorted = [...categoryRows].filter(r => r.promedio > 0).sort((a, b) => a.promedio - b.promedio);
+            const hallazgoRecurrente = sorted.length > 0 ? sorted[0].name : null;
+
+            // Top hallazgos (4 lowest)
+            const hallazgosTop = sorted.slice(0, 4).map(r => ({
+                categoria: r.name,
+                promedio: r.promedio
+            }));
+
+            res.json({
+                groups: groupedResult,
+                kpiConfig,
+                stats: {
+                    avgScore,
+                    evaluaciones: totalEvals,
+                    categoriasAbajo,
+                    hallazgoRecurrente,
+                    hallazgosTop
+                }
+            });
+        } catch (err) {
+            console.error('❌ inocuidad/calor-categorias error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GET /api/inocuidad/tendencia-dashboard — summary stats + monthly trend
+    // for the Tendencia dashboard view
+    // ═══════════════════════════════════════════════════════════════════════════
+    app.get('/api/inocuidad/tendencia-dashboard', authMiddleware, async (req, res) => {
+        try {
+            const { sourceId, year, locales, grupo } = req.query;
+            if (!sourceId) return res.status(400).json({ error: 'sourceId required' });
+
+            const pool = await getFormsPool();
+            const src = await pool.request()
+                .input('id', fSql.Int, parseInt(sourceId))
+                .query('SELECT TableName, Alias FROM FormsSources WHERE SourceID = @id');
+
+            if (src.recordset.length === 0) return res.status(404).json({ error: 'Source not found' });
+            const tableName = src.recordset[0].TableName;
+            if (!tableName) return res.json({ trend: [], stats: {} });
+
+            // Detect score column
+            const numCols = await pool.request()
+                .input('tbl', fSql.NVarChar, tableName)
+                .query(`
+                    SELECT COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = @tbl
+                    AND DATA_TYPE IN ('int', 'decimal', 'float', 'numeric')
+                    AND COLUMN_NAME NOT IN ('ID', '_PERSONAL_ID', 'Q_Id')
+                    ORDER BY ORDINAL_POSITION
+                `);
+            const allNumeric = numCols.recordset.map(r => r.COLUMN_NAME);
+            const scoreColumn = allNumeric.includes('Total_de_puntos')
+                ? 'Total_de_puntos'
+                : allNumeric.find(c => c.startsWith('Puntos_')) || allNumeric[0] || null;
+
+            if (!scoreColumn) return res.json({ trend: [], stats: { avgScore: 0, evaluaciones: 0 } });
+
+            // Determine locales filter
+            let filterCodes = [];
+            if (locales) {
+                const names = locales.split(',').map(s => s.trim()).filter(Boolean);
+                filterCodes = await getCodesForNames(names);
+                if (filterCodes.length === 0) filterCodes = names;
+            } else if (grupo) {
+                filterCodes = await getGroupStores(grupo);
+            }
+
+            const yearInt = parseInt(year) || new Date().getFullYear();
+            let whereClause = `WHERE YEAR(SubmittedAt) = @year AND _CODALMACEN IS NOT NULL`;
+            if (filterCodes.length > 0) {
+                whereClause += ` AND _CODALMACEN IN (${filterCodes.map((_, i) => `@loc${i}`).join(',')})`;
+            }
+
+            // Monthly trend
+            const queryStr = `
+                SELECT 
+                    MONTH(SubmittedAt) AS mes,
+                    COUNT(*) AS evaluaciones,
+                    AVG(CAST([${scoreColumn}] AS FLOAT)) AS promedio
+                FROM [${tableName}]
+                ${whereClause}
+                GROUP BY MONTH(SubmittedAt)
+                ORDER BY mes
+            `;
+
+            const request = pool.request().input('year', fSql.Int, yearInt);
+            filterCodes.forEach((code, i) => {
+                request.input(`loc${i}`, fSql.NVarChar, code);
+            });
+
+            const result = await request.query(queryStr);
+            const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            const trend = result.recordset.map(r => ({
+                periodo: monthLabels[r.mes - 1],
+                mes: r.mes,
+                puntaje: Math.round(r.promedio * 10) / 10,
+                evaluaciones: r.evaluaciones
+            }));
+
+            // Overall stats
+            const totalEvals = trend.reduce((s, t) => s + t.evaluaciones, 0);
+            const allScores = trend.map(t => t.puntaje);
+            const avgScore = allScores.length > 0
+                ? Math.round((allScores.reduce((a, b) => a + b, 0) / allScores.length) * 10) / 10
+                : 0;
+
+            const kpiConfig = await getKpiConfig('Inocuidad');
+
+            // Get category stats for hallazgos (reuse calor-categorias logic inline)
+            const fieldConfig = await getFieldConfig(parseInt(sourceId));
+            const configMap = {};
+            for (const fc of fieldConfig) configMap[fc.ColumnName] = fc;
+
+            const critCols = await pool.request()
+                .input('tbl', fSql.NVarChar, tableName)
+                .query(`
+                    SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = @tbl
+                    AND COLUMN_NAME NOT IN ('ID','ResponseID','RespondentEmail','RespondentName','SubmittedAt','SyncedAt','_CODALMACEN','_PERSONAL_ID','_PERSONAL_NOMBRE','Q_Id','Total_de_puntos','Hora_de_inicio','Hora_de_finalizacion','Correo_electronico','Nombre','Comentarios_del_cuestionario','Hora_de_publicacion_de_la_calificacion','Restaurante','Puntos_Restaurante','Comentarios_Restaurante','Fecha_de_la_evaluacion','Puntos_Fecha_de_la_evaluacion','Comentarios_Fecha_de_la_evaluacion','Nombre_del_administrativo_a_cargo_del_turno','Puntos_Nombre_del_administrativo_a_cargo_del_turno','Comentarios_Nombre_del_administrativo_a_cargo_del_turno','Nombre_del_evaluador','Puntos_Nombre_del_evaluador','Comentarios_Nombre_del_evaluador','COMENTARIOS_ADICIONALES','Puntos_COMENTARIOS_ADICIONALES','Comentarios_COMENTARIOS_ADICIONALES')
+                    ORDER BY ORDINAL_POSITION
+                `);
+
+            const hasConfig = fieldConfig.length > 0;
+            const criterios = critCols.recordset
+                .filter(col => {
+                    const name = col.COLUMN_NAME;
+                    if (name.startsWith('Comentarios_') || name.startsWith('Feedback_')) return false;
+                    const cfg = configMap[name];
+                    if (hasConfig) return cfg && cfg.VisibleEnCalor;
+                    return (name.startsWith('Puntos_') || name.startsWith('Points_'))
+                        && (col.DATA_TYPE === 'int' || col.DATA_TYPE === 'nvarchar');
+                })
+                .map(col => {
+                    const cfg = configMap[col.COLUMN_NAME];
+                    let shortName = cfg?.ShortName || col.COLUMN_NAME;
+                    if (!cfg?.ShortName) {
+                        shortName = shortName.replace(/^Puntos_/, '').replace(/^Points_/, '').replace(/_/g, ' ').substring(0, 50);
+                    }
+                    return { columnName: col.COLUMN_NAME, shortName, dataType: col.DATA_TYPE };
+                });
+
+            // Only compute hallazgos if there are criteria columns
+            let hallazgosTop = [];
+            let categoriasAbajo = 0;
+            let hallazgoRecurrente = null;
+
+            if (criterios.length > 0) {
+                const critSelect = criterios.map(c => `[${c.columnName}]`).join(', ');
+                const critQuery = `SELECT ${critSelect} FROM [${tableName}] ${whereClause}`;
+                const critReq = pool.request().input('year', fSql.Int, yearInt);
+                filterCodes.forEach((code, i) => critReq.input(`loc${i}`, fSql.NVarChar, code));
+                const critResult = await critReq.query(critQuery);
+
+                const critAvgs = criterios.map(crit => {
+                    let sum = 0, count = 0;
+                    for (const row of critResult.recordset) {
+                        const v = parseFloat(row[crit.columnName]);
+                        if (!isNaN(v)) { sum += v; count++; }
+                    }
+                    return { categoria: crit.shortName, promedio: count > 0 ? Math.round((sum / count) * 10) / 10 : 0 };
+                }).filter(c => c.promedio > 0).sort((a, b) => a.promedio - b.promedio);
+
+                hallazgosTop = critAvgs.slice(0, 4);
+                const metaThreshold = kpiConfig?.Meta || 85;
+                categoriasAbajo = critAvgs.filter(c => c.promedio < metaThreshold).length;
+                hallazgoRecurrente = critAvgs.length > 0 ? critAvgs[0].categoria : null;
+            }
+
+            res.json({
+                trend,
+                kpiConfig,
+                stats: {
+                    avgScore,
+                    evaluaciones: totalEvals,
+                    categoriasAbajo,
+                    hallazgoRecurrente,
+                    hallazgosTop
+                }
+            });
+        } catch (err) {
+            console.error('❌ inocuidad/tendencia-dashboard error:', err);
             res.status(500).json({ error: err.message });
         }
     });

@@ -1,18 +1,32 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { getToken, API_BASE, fetchAdminPorLocal, type PersonalAsignado } from '../../api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getToken, API_BASE } from '../../api';
+import {
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
+} from 'recharts';
 
-interface TendenciaRow {
-    codAlmacen: string;
-    local: string;
-    months: Record<number, { promedio: number; evaluaciones: number }>;
+interface TrendPoint {
+    periodo: string;
+    mes: number;
+    puntaje: number;
+    evaluaciones: number;
+}
+
+interface Hallazgo {
+    categoria: string;
+    promedio: number;
 }
 
 interface KpiConfig {
     Meta?: number;
     Advertencia?: number;
-    ColorMeta?: string;
-    ColorAdvertencia?: string;
-    ColorCritico?: string;
+}
+
+interface DashboardStats {
+    avgScore: number;
+    evaluaciones: number;
+    categoriasAbajo: number;
+    hallazgoRecurrente: string | null;
+    hallazgosTop: Hallazgo[];
 }
 
 type RangeType = 'anual' | 'semestre' | 'trimestre' | 'mes';
@@ -28,8 +42,6 @@ interface InocuidadTendenciaProps {
     sourceId: number | null;
 }
 
-const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-
 const SEMESTERS_MONTHS: Record<number, number[]> = {
     1: [1, 2, 3, 4, 5, 6],
     2: [7, 8, 9, 10, 11, 12],
@@ -43,46 +55,26 @@ const TRIMESTERS_MONTHS: Record<number, number[]> = {
 };
 
 export const InocuidadTendencia: React.FC<InocuidadTendenciaProps> = ({
-    year, rangeType, rangePeriod, groups, individualStores, filterLocal, onFilterLocalChange, sourceId
+    year, rangeType, rangePeriod, groups, filterLocal, sourceId
 }) => {
-    const [data, setData] = useState<TendenciaRow[]>([]);
+    const [trend, setTrend] = useState<TrendPoint[]>([]);
+    const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [kpiConfig, setKpiConfig] = useState<KpiConfig | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [kpiConfig, setKpiConfig] = useState<KpiConfig | null>(null);
-    const [personalAsignado, setPersonalAsignado] = useState<PersonalAsignado[]>([]);
-    const [sortCol, setSortCol] = useState<string>('local');
-    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-    // Determine visible months based on range type + period
+    // Determine visible months based on range
     const visibleMonths = useMemo(() => {
         switch (rangeType) {
-            case 'anual':
-                return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-            case 'semestre':
-                return SEMESTERS_MONTHS[rangePeriod] || [1, 2, 3, 4, 5, 6];
-            case 'trimestre':
-                return TRIMESTERS_MONTHS[rangePeriod] || [1, 2, 3];
-            case 'mes':
-                return [rangePeriod];
-            default:
-                return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+            case 'anual': return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+            case 'semestre': return SEMESTERS_MONTHS[rangePeriod] || [1, 2, 3, 4, 5, 6];
+            case 'trimestre': return TRIMESTERS_MONTHS[rangePeriod] || [1, 2, 3];
+            case 'mes': return [rangePeriod];
+            default: return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
         }
     }, [rangeType, rangePeriod]);
 
-    // Fetch personal for selected local
-    useEffect(() => {
-        if (!filterLocal || groups.includes(filterLocal) || filterLocal === 'Corporativo') {
-            setPersonalAsignado([]);
-            return;
-        }
-        let cancelled = false;
-        fetchAdminPorLocal(filterLocal).then(lista => {
-            if (!cancelled) setPersonalAsignado(lista);
-        });
-        return () => { cancelled = true; };
-    }, [filterLocal, groups]);
-
-    // Fetch data
+    // Fetch data from tendencia-dashboard endpoint
     useEffect(() => {
         if (!sourceId) return;
         const fetchData = async () => {
@@ -99,16 +91,16 @@ export const InocuidadTendencia: React.FC<InocuidadTendenciaProps> = ({
                     params.set('locales', filterLocal);
                 }
 
-                const response = await fetch(`${API_BASE}/inocuidad/tendencia?${params}`, {
+                const response = await fetch(`${API_BASE}/inocuidad/tendencia-dashboard?${params}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (response.status === 401) { localStorage.clear(); window.location.reload(); return; }
                 if (!response.ok) throw new Error(`Error ${response.status}`);
 
                 const result = await response.json();
-                setData(result.rows || []);
+                setTrend(result.trend || []);
+                setStats(result.stats || null);
                 setKpiConfig(result.kpiConfig || null);
-                if (result.personalAsignado) setPersonalAsignado(result.personalAsignado);
             } catch (err: any) {
                 setError(err.message);
             } finally {
@@ -118,50 +110,26 @@ export const InocuidadTendencia: React.FC<InocuidadTendenciaProps> = ({
         fetchData();
     }, [sourceId, year, filterLocal, groups]);
 
-    // Color function
-    const getScoreColor = useCallback((score: number) => {
-        const meta = kpiConfig?.Meta ?? 80;
-        const warn = kpiConfig?.Advertencia ?? 60;
-        if (score >= meta) return { bg: kpiConfig?.ColorMeta || '#dcfce7', text: kpiConfig?.ColorMeta ? '#fff' : '#166534' };
-        if (score >= warn) return { bg: kpiConfig?.ColorAdvertencia || '#fef9c3', text: kpiConfig?.ColorAdvertencia ? '#fff' : '#854d0e' };
-        return { bg: kpiConfig?.ColorCritico || '#fecaca', text: kpiConfig?.ColorCritico ? '#fff' : '#991b1b' };
-    }, [kpiConfig]);
+    // Filter trend data to visible months
+    const filteredTrend = useMemo(() => {
+        return trend.filter(t => visibleMonths.includes(t.mes));
+    }, [trend, visibleMonths]);
 
-    // Filter months that have data AND are in visible range
-    const filteredMonths = useMemo(() => {
-        const dataMonths = new Set<number>();
-        for (const row of data) {
-            Object.keys(row.months).forEach(m => dataMonths.add(parseInt(m)));
-        }
-        return visibleMonths.filter(m => dataMonths.has(m));
-    }, [data, visibleMonths]);
+    // Recalculate stats for visible range
+    const rangeStats = useMemo(() => {
+        if (!stats) return null;
+        if (rangeType === 'anual') return stats;
+        // Recalculate avg and evaluaciones for visible months
+        const visibleTrend = trend.filter(t => visibleMonths.includes(t.mes));
+        const totalEvals = visibleTrend.reduce((s, t) => s + t.evaluaciones, 0);
+        const scores = visibleTrend.map(t => t.puntaje);
+        const avgScore = scores.length > 0
+            ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+            : 0;
+        return { ...stats, avgScore, evaluaciones: totalEvals };
+    }, [stats, trend, visibleMonths, rangeType]);
 
-    // Sort data
-    const sortedData = useMemo(() => {
-        return [...data].sort((a, b) => {
-            let cmp: number;
-            if (sortCol === 'local') {
-                cmp = a.local.localeCompare(b.local);
-            } else if (sortCol === 'promedio') {
-                const avgA = filteredMonths.reduce((s, m) => s + (a.months[m]?.promedio || 0), 0) / (filteredMonths.length || 1);
-                const avgB = filteredMonths.reduce((s, m) => s + (b.months[m]?.promedio || 0), 0) / (filteredMonths.length || 1);
-                cmp = avgA - avgB;
-            } else {
-                const mNum = parseInt(sortCol);
-                cmp = (a.months[mNum]?.promedio || 0) - (b.months[mNum]?.promedio || 0);
-            }
-            return sortDir === 'asc' ? cmp : -cmp;
-        });
-    }, [data, sortCol, sortDir, filteredMonths]);
-
-    const handleSort = (col: string) => {
-        if (sortCol === col) {
-            setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-        } else {
-            setSortCol(col);
-            setSortDir(col === 'local' ? 'asc' : 'desc');
-        }
-    };
+    const metaValue = kpiConfig?.Meta || 95;
 
     if (!sourceId) {
         return (
@@ -183,7 +151,6 @@ export const InocuidadTendencia: React.FC<InocuidadTendenciaProps> = ({
         );
     }
 
-    // Loading state
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -196,95 +163,139 @@ export const InocuidadTendencia: React.FC<InocuidadTendenciaProps> = ({
         );
     }
 
-    // Personal info subtitle
-    const personalInfo = filterLocal && filterLocal !== 'Corporativo' && !groups.includes(filterLocal) && personalAsignado.length > 0
-        ? personalAsignado.map(p => `${p.nombre} (${p.perfil})`).join(', ')
-        : null;
-
-    // No data
-    if (data.length === 0) {
+    if (!rangeStats || filteredTrend.length === 0) {
         return (
             <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-500">
                 <p className="font-medium">No hay datos de inocuidad para el período seleccionado.</p>
-                <p className="text-sm mt-1">Verifique que existan evaluaciones sincronizadas con CodAlmacen mapeado.</p>
+                <p className="text-sm mt-1">Verifique que existan evaluaciones sincronizadas.</p>
             </div>
         );
     }
 
     return (
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-            {personalInfo && (
-                <div className="px-4 py-2 border-b border-gray-100 bg-teal-50 text-sm text-teal-700">
-                    <strong>{filterLocal}</strong> — {personalInfo}
+        <div className="space-y-4">
+            {/* ═══════ KPI Summary Cards ═══════ */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                {/* Puntaje promedio */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4">
+                    <div className="text-xs text-gray-500 font-medium">Puntaje promedio</div>
+                    <div className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1">{rangeStats.avgScore}%</div>
+                    <div className="text-xs text-gray-400 mt-1">Meta sugerida: {metaValue}%</div>
                 </div>
-            )}
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead>
-                        <tr className="border-b-2 border-gray-200 bg-gray-50">
-                            <th className="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:text-teal-600 select-none sticky left-0 bg-gray-50 z-10"
-                                onClick={() => handleSort('local')}>
-                                Restaurante {sortCol === 'local' && (sortDir === 'asc' ? '↑' : '↓')}
-                            </th>
-                            {(filteredMonths.length > 0 ? filteredMonths : visibleMonths).map(m => (
-                                <th key={m}
-                                    className="text-center py-3 px-2 text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:text-teal-600 select-none min-w-[70px]"
-                                    onClick={() => handleSort(String(m))}>
-                                    {MONTHS[m - 1]} {sortCol === String(m) && (sortDir === 'asc' ? '↑' : '↓')}
-                                </th>
-                            ))}
-                            <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:text-teal-600 select-none"
-                                onClick={() => handleSort('promedio')}>
-                                Prom. {sortCol === 'promedio' && (sortDir === 'asc' ? '↑' : '↓')}
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sortedData.map(row => {
-                            const displayMonths = filteredMonths.length > 0 ? filteredMonths : visibleMonths;
-                            const monthsWithData = displayMonths.filter(m => row.months[m]);
-                            const avg = monthsWithData.length > 0
-                                ? monthsWithData.reduce((s, m) => s + (row.months[m]?.promedio || 0), 0) / monthsWithData.length
-                                : 0;
-                            return (
-                                <tr key={row.codAlmacen} className="border-b border-gray-100 hover:bg-gray-50">
-                                    <td className="py-2.5 px-3 text-sm font-medium text-gray-800 sticky left-0 bg-white z-10 whitespace-nowrap">
-                                        {row.local}
-                                    </td>
-                                    {displayMonths.map(m => {
-                                        const val = row.months[m];
-                                        if (!val) return <td key={m} className="py-2.5 px-2 text-center text-gray-300 text-xs">—</td>;
-                                        const colors = getScoreColor(val.promedio);
-                                        return (
-                                            <td key={m} className="py-2.5 px-2 text-center">
-                                                <span
-                                                    className="inline-block px-2 py-1 rounded-md text-xs font-bold"
-                                                    style={{ backgroundColor: colors.bg, color: colors.text }}
-                                                    title={`${val.evaluaciones} evaluación(es)`}
-                                                >
-                                                    {val.promedio.toFixed(1)}
-                                                </span>
-                                            </td>
-                                        );
-                                    })}
-                                    <td className="py-2.5 px-3 text-center">
-                                        {monthsWithData.length > 0 ? (
-                                            <span className="inline-block px-2 py-1 rounded-md text-xs font-bold"
-                                                style={{ backgroundColor: getScoreColor(avg).bg, color: getScoreColor(avg).text }}>
-                                                {avg.toFixed(1)}
-                                            </span>
-                                        ) : '—'}
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+
+                {/* Evaluaciones */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4">
+                    <div className="text-xs text-gray-500 font-medium">Evaluaciones</div>
+                    <div className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1">{rangeStats.evaluaciones}</div>
+                    <div className="text-xs text-gray-400 mt-1">Según rango seleccionado</div>
+                </div>
+
+                {/* Categorías bajo meta */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4">
+                    <div className="text-xs text-gray-500 font-medium">Categorías bajo {kpiConfig?.Meta || 85}%</div>
+                    <div className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1">{rangeStats.categoriasAbajo}</div>
+                    <div className="text-xs text-gray-400 mt-1">Prioridad de mejora</div>
+                </div>
+
+                {/* Hallazgo recurrente */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 flex items-center gap-3">
+                    <div className="rounded-xl bg-amber-100 p-2.5 flex-shrink-0">
+                        <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                    </div>
+                    <div className="min-w-0">
+                        <div className="text-xs text-gray-500 font-medium">Hallazgo recurrente</div>
+                        <div className="text-sm font-semibold text-gray-900 truncate">{rangeStats.hallazgoRecurrente || '—'}</div>
+                    </div>
+                </div>
             </div>
-            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 flex flex-wrap gap-3">
-                <span>{data.length} restaurante(s)</span>
-                <span>Año {year}</span>
-                {kpiConfig && <span>Meta: ≥{kpiConfig.Meta} / Advertencia: ≥{kpiConfig.Advertencia}</span>}
+
+            {/* ═══════ Chart + Top Hallazgos Row ═══════ */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                {/* Tendencia Chart */}
+                <div className="xl:col-span-2 bg-white rounded-2xl shadow-lg border border-gray-100 p-4 sm:p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                        <svg className="w-4 h-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                        <h3 className="text-base font-bold text-gray-800">Tendencia de Inocuidad</h3>
+                    </div>
+                    <div className="h-[260px] sm:h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={filteredTrend} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                <XAxis
+                                    dataKey="periodo"
+                                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                                    axisLine={{ stroke: '#d1d5db' }}
+                                    tickLine={false}
+                                />
+                                <YAxis
+                                    domain={[65, 100]}
+                                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                                    axisLine={{ stroke: '#d1d5db' }}
+                                    tickLine={false}
+                                />
+                                <Tooltip
+                                    contentStyle={{
+                                        background: 'white',
+                                        border: '1px solid #e5e7eb',
+                                        borderRadius: '12px',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                        fontSize: '12px'
+                                    }}
+                                    formatter={(value: number) => [`${value}%`, 'Puntaje']}
+                                />
+                                <ReferenceLine
+                                    y={metaValue}
+                                    stroke="#ef4444"
+                                    strokeDasharray="4 4"
+                                    label={{ value: `Meta ${metaValue}%`, position: 'right', fontSize: 10, fill: '#ef4444' }}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="puntaje"
+                                    stroke="#0d9488"
+                                    strokeWidth={3}
+                                    dot={{ r: 3, fill: '#0d9488', strokeWidth: 0 }}
+                                    activeDot={{ r: 5, fill: '#0d9488', strokeWidth: 2, stroke: 'white' }}
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Top Hallazgos */}
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 sm:p-5">
+                    <h3 className="text-base font-bold text-gray-800 mb-3">Top hallazgos</h3>
+                    <div className="space-y-3">
+                        {(rangeStats.hallazgosTop || []).map((h, i) => (
+                            <div key={h.categoria} className="rounded-xl border border-gray-100 p-3 bg-white hover:shadow-sm transition-shadow">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="text-sm font-medium text-gray-800 leading-tight min-w-0 truncate">
+                                        {i + 1}. {h.categoria}
+                                    </div>
+                                    <span className="text-xs font-semibold rounded-md px-2 py-1 bg-gray-100 text-gray-700 flex-shrink-0">
+                                        {h.promedio}%
+                                    </span>
+                                </div>
+                                <div className="mt-2 h-2 rounded-full bg-gray-200 overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full transition-all duration-500"
+                                        style={{
+                                            width: `${Math.max(4, Math.min(100, h.promedio))}%`,
+                                            backgroundColor: h.promedio >= (kpiConfig?.Meta || 85) ? '#0d9488' : h.promedio >= (kpiConfig?.Advertencia || 75) ? '#f59e0b' : '#ef4444'
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                        {(!rangeStats.hallazgosTop || rangeStats.hallazgosTop.length === 0) && (
+                            <div className="text-center text-gray-400 text-sm py-4">Sin hallazgos</div>
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );

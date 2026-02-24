@@ -34,6 +34,7 @@ import { ModeloPresupuestoAdmin } from './presupuesto-modelo/ModeloPresupuestoAd
 import LoginAuditPanel from './LoginAuditPanel';
 import { StoreAliasAdmin } from './StoreAliasAdmin';
 import { GruposAlmacenAdmin } from './GruposAlmacenAdmin';
+import { ReportsAdminPanel } from './reports/ReportsAdminPanel';
 
 interface AdminPageProps {
     onBack: () => void;
@@ -46,9 +47,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const isOfflineAdmin = currentUser?.offlineAdmin === true;
     const canAccessEvents = currentUser?.accesoEventos || currentUser?.esAdmin;
     const canAccessUsers = currentUser?.esAdmin;
+    const canAccessAsignaciones = currentUser?.esAdmin || currentUser?.accesoAsignaciones;
+    const canAccessGruposAlmacen = currentUser?.esAdmin || currentUser?.accesoGruposAlmacen;
     const canAccessModelo = currentUser?.accesoModeloPresupuesto || currentUser?.ajustarCurva || currentUser?.verAjustePresupuesto || currentUser?.verConfigModelo || currentUser?.verConsolidadoMensual || currentUser?.verVersiones || currentUser?.verBitacora || currentUser?.verReferencias || currentUser?.editarConsolidado || currentUser?.ejecutarRecalculo || currentUser?.restaurarVersiones;
 
-    if (!currentUser || (!canAccessUsers && !canAccessEvents && !canAccessModelo)) {
+    if (!currentUser || (!canAccessUsers && !canAccessEvents && !canAccessModelo && !canAccessAsignaciones && !canAccessGruposAlmacen)) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 p-6">
                 <div className="max-w-4xl mx-auto">
@@ -83,8 +86,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     }
 
     // Auto-select tab based on permissions: admin->users, modelo->modelo-presupuesto, eventos->events
-    const defaultTab = isOfflineAdmin ? 'database' : (canAccessUsers ? 'users' : (canAccessModelo ? 'modelo-presupuesto' : 'events'));
-    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit' | 'store-aliases' | 'grupos-almacen'>(defaultTab);
+    const defaultTab = isOfflineAdmin ? 'database' : (canAccessUsers ? 'users' : (canAccessModelo ? 'modelo-presupuesto' : (canAccessEvents ? 'events' : (canAccessAsignaciones ? 'personal' : (canAccessGruposAlmacen ? 'grupos-almacen' : 'events')))));
+    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit' | 'store-aliases' | 'grupos-almacen' | 'reportes-admin'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [allStores, setAllStores] = useState<string[]>([]);
@@ -117,6 +120,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [newPerfilId, setNewPerfilId] = useState<number | null>(null);
     const [newCedula, setNewCedula] = useState('');
     const [newTelefono, setNewTelefono] = useState('');
+    const [newAccesoAsignaciones, setNewAccesoAsignaciones] = useState(false);
+    const [newAccesoGruposAlmacen, setNewAccesoGruposAlmacen] = useState(false);
     const [formError, setFormError] = useState('');
     const [formSuccess, setFormSuccess] = useState('');
 
@@ -150,6 +155,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editPerfilId, setEditPerfilId] = useState<number | null>(null);
     const [editCedula, setEditCedula] = useState('');
     const [editTelefono, setEditTelefono] = useState('');
+    const [editAccesoAsignaciones, setEditAccesoAsignaciones] = useState(false);
+    const [editAccesoGruposAlmacen, setEditAccesoGruposAlmacen] = useState(false);
 
     // Search functionality
     const [searchTerm, setSearchTerm] = useState('');
@@ -336,6 +343,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                     ajustarCurva: p.ajustarCurva || false,
                     restaurarVersiones: p.restaurarVersiones || false,
                 });
+                setNewAccesoAsignaciones(p.accesoAsignaciones || false);
+                setNewAccesoGruposAlmacen(p.accesoGruposAlmacen || false);
             }
         }
     };
@@ -377,7 +386,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 newModeloPerms,
                 newPerfilId,
                 newCedula || null,
-                newTelefono || null
+                newTelefono || null,
+                newAccesoAsignaciones,
+                newAccesoGruposAlmacen
             );
             setFormSuccess(`Usuario ${newEmail} creado. Clave: ${result.clave}`);
             setNewEmail('');
@@ -405,6 +416,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             setNewPerfilId(null);
             setNewCedula('');
             setNewTelefono('');
+            setNewAccesoAsignaciones(false);
+            setNewAccesoGruposAlmacen(false);
             setShowForm(false);
             loadData();
         } catch (err: any) {
@@ -450,6 +463,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setEditPerfilId(user.perfilId ?? null);
         setEditCedula(user.cedula || '');
         setEditTelefono(user.telefono || '');
+        setEditAccesoAsignaciones(user.accesoAsignaciones || false);
+        setEditAccesoGruposAlmacen(user.accesoGruposAlmacen || false);
     };
 
     const handleUpdateUser = async () => {
@@ -486,7 +501,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 editPerfilId,
                 editModeloPerms,
                 editCedula || null,
-                editTelefono || null
+                editTelefono || null,
+                editAccesoAsignaciones,
+                editAccesoGruposAlmacen
             );
             setFormSuccess(`Usuario ${editEmail} actualizado exitosamente`);
             setEditingUser(null);
@@ -581,7 +598,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                         >
                             {canAccessUsers && <option value="users">👤 Usuarios</option>}
                             {canAccessUsers && <option value="profiles">🛡️ Perfiles</option>}
-                            {canAccessUsers && <option value="personal">👥 Asignaciones</option>}
+                            {canAccessAsignaciones && <option value="personal">👥 Asignaciones</option>}
                             {canAccessEvents && <option value="events">📅 Eventos Ajuste</option>}
                             {canAccessUsers && <option value="ia">🤖 IA Táctica</option>}
                             {canAccessUsers && <option value="general">⚙️ General</option>}
@@ -593,7 +610,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             {canAccessUsers && <option value="kpi-admin">📊 Admin KPIs</option>}
                             {canAccessUsers && <option value="deploy">🚀 Publicación</option>}
                             {canAccessUsers && <option value="store-aliases">🏪 Alias Locales</option>}
-                            {canAccessUsers && <option value="grupos-almacen">📦 Grupos Almacén</option>}
+                            {canAccessGruposAlmacen && <option value="grupos-almacen">📦 Grupos Almacén</option>}
+                            {canAccessUsers && <option value="reportes-admin">📊 Reportes</option>}
 
                         </select>
                     </div>
@@ -615,7 +633,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                 <Shield className="w-4 h-4 flex-shrink-0" /> Perfiles
                             </button>
                         )}
-                        {canAccessUsers && (
+                        {canAccessAsignaciones && (
                             <button onClick={() => setActiveTab('personal')}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'personal' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
                                 <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -706,11 +724,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                 <Store className="w-4 h-4 flex-shrink-0" /> Alias Locales
                             </button>
                         )}
-                        {canAccessUsers && (
+                        {canAccessGruposAlmacen && (
                             <button onClick={() => setActiveTab('grupos-almacen')}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'grupos-almacen' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
                                 <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                                 Grupos Almacén
+                            </button>
+                        )}
+                        {canAccessUsers && (
+                            <button onClick={() => setActiveTab('reportes-admin')}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'reportes-admin' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                Reportes
                             </button>
                         )}
                     </nav>
@@ -1015,6 +1040,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             <span className="font-medium text-gray-700">{label}</span>
                                                         </label>
                                                     ))}
+                                                </div>
+                                            </div>
+                                            {/* Configuración Permissions */}
+                                            <div>
+                                                <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1 mb-2">
+                                                    ⚙️ Configuración (Panel Admin)
+                                                </label>
+                                                <div className="grid grid-cols-2 gap-2 border-2 border-orange-100 rounded-xl p-3">
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-orange-50 p-2 rounded-lg border border-orange-200">
+                                                        <input type="checkbox" checked={newAccesoAsignaciones}
+                                                            onChange={e => setNewAccesoAsignaciones(e.target.checked)}
+                                                            className="w-4 h-4 text-orange-600 rounded" />
+                                                        <span className="text-sm font-medium text-gray-700">Asignaciones</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-orange-50 p-2 rounded-lg border border-orange-200">
+                                                        <input type="checkbox" checked={newAccesoGruposAlmacen}
+                                                            onChange={e => setNewAccesoGruposAlmacen(e.target.checked)}
+                                                            className="w-4 h-4 text-orange-600 rounded" />
+                                                        <span className="text-sm font-medium text-gray-700">Grupos de Almacén</span>
+                                                    </label>
                                                 </div>
                                             </div>
                                             <div>
@@ -1628,6 +1673,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             ))}
                                                         </div>
                                                     </div>
+                                                    {/* Configuración Permissions */}
+                                                    <div>
+                                                        <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1 mb-2">
+                                                            ⚙️ Configuración (Panel Admin)
+                                                        </label>
+                                                        <div className="grid grid-cols-2 gap-2 border-2 border-orange-100 rounded-xl p-3">
+                                                            <label className="flex items-center gap-2 cursor-pointer bg-orange-50 p-2 rounded-lg border border-orange-200">
+                                                                <input type="checkbox" checked={editAccesoAsignaciones}
+                                                                    onChange={e => setEditAccesoAsignaciones(e.target.checked)}
+                                                                    className="w-4 h-4 text-orange-600 rounded" />
+                                                                <span className="text-sm font-medium text-gray-700">Asignaciones</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-2 cursor-pointer bg-orange-50 p-2 rounded-lg border border-orange-200">
+                                                                <input type="checkbox" checked={editAccesoGruposAlmacen}
+                                                                    onChange={e => setEditAccesoGruposAlmacen(e.target.checked)}
+                                                                    className="w-4 h-4 text-orange-600 rounded" />
+                                                                <span className="text-sm font-medium text-gray-700">Grupos de Almacén</span>
+                                                            </label>
+                                                        </div>
+                                                    </div>
                                                     <div>
                                                         <div className="flex items-center justify-between mb-2">
                                                             <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1">
@@ -1772,6 +1837,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             <StoreAliasAdmin />
                         ) : activeTab === 'grupos-almacen' ? (
                             <GruposAlmacenAdmin />
+                        ) : activeTab === 'reportes-admin' ? (
+                            <ReportsAdminPanel />
                         ) : (
                             /* T&E (Táctica y Estrategia) Tab */
                             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">

@@ -86,25 +86,38 @@ class UberEatsService {
     }
 
     // ─── OAuth2 token ─────────────────────────────────────
-    async getAccessToken() {
-        if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry - 60000) {
+    async getAccessToken(retryScope = null) {
+        if (!retryScope && this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry - 60000) {
             return this.accessToken;
         }
-        console.log('🔑 Requesting Uber Eats OAuth token...');
+
+        const scopeToUse = retryScope || 'eats.report';
+        console.log(`🔑 Requesting Uber Eats OAuth token with scope: ${scopeToUse}...`);
+
         const params = new URLSearchParams({
             grant_type: 'client_credentials',
             client_id: this.clientId,
             client_secret: this.clientSecret,
-            scope: 'eats.report'
+            scope: scopeToUse
         });
-        const { data } = await axios.post(UBER_AUTH_URL, params.toString(), {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 15000
-        });
-        this.accessToken = data.access_token;
-        this.tokenExpiry = Date.now() + ((data.expires_in || 3600) * 1000);
-        console.log('✅ Uber Eats token obtained, expires in', data.expires_in, 's');
-        return this.accessToken;
+
+        try {
+            const { data } = await axios.post(UBER_AUTH_URL, params.toString(), {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                timeout: 15000
+            });
+            this.accessToken = data.access_token;
+            this.tokenExpiry = Date.now() + ((data.expires_in || 3600) * 1000);
+            console.log('✅ Uber Eats token obtained, expires in', data.expires_in, 's');
+            return this.accessToken;
+        } catch (err) {
+            const errMsg = err.response?.data?.error_description || err.message;
+            if (errMsg.includes('scope(s) are invalid') && !retryScope) {
+                console.warn('⚠️ Uber API rejected "eats.report" scope. Retrying with "eats.store" fallback...');
+                return await this.getAccessToken('eats.store');
+            }
+            throw err;
+        }
     }
 
     // ─── Step 1: Request report ───────────────────────────
@@ -376,17 +389,82 @@ class UberEatsService {
 
     // ─── Test connection ──────────────────────────────────
     async testConnection() {
+        const steps = [];
         try {
-            await this.initialize();
-            if (!this.initialized) {
-                return { success: false, message: 'API no configurada. Guarda CLIENT_ID y CLIENT_SECRET primero.' };
+            // Step 1: Read from DB
+            const pool = await getUberEatsPool();
+            const result = await pool.request().query(
+                `SELECT ConfigKey, ConfigValue FROM UberEatsConfig WHERE ConfigKey IN ('CLIENT_ID', 'CLIENT_SECRET')`
+            );
+            const cfg = {};
+            result.recordset.forEach(r => { cfg[r.ConfigKey] = r.ConfigValue; });
+
+            const hasClientId = !!(cfg.CLIENT_ID && cfg.CLIENT_ID.trim());
+            const hasSecretInDb = !!(cfg.CLIENT_SECRET && cfg.CLIENT_SECRET.trim());
+
+            steps.push(`📋 CLIENT_ID: ${hasClientId ? '✅ ' + cfg.CLIENT_ID.substring(0, 8) + '... (' + cfg.CLIENT_ID.length + ' chars)' : '❌ No configurado'}`);
+            steps.push(`📋 CLIENT_SECRET: ${hasSecretInDb ? '✅ Encriptado (' + cfg.CLIENT_SECRET.length + ' chars)' : '❌ No configurado'}`);
+
+            if (!hasClientId || !hasSecretInDb) {
+                return {
+                    success: false,
+                    message: 'Faltan credenciales. Guarda CLIENT_ID y CLIENT_SECRET primero.',
+                    steps
+                };
             }
+
+            // Step 2: Decrypt
+            let decrypted = null;
+            try {
+                decrypted = decryptValue(cfg.CLIENT_SECRET);
+                steps.push(`🔓 Desencriptar: ✅ OK (${decrypted.length} chars)`);
+            } catch (decErr) {
+                steps.push(`🔓 Desencriptar: ❌ FALLÓ — ${decErr.message}`);
+                return {
+                    success: false,
+                    message: 'No se pudo desencriptar el CLIENT_SECRET. Guarda uno nuevo.',
+                    steps
+                };
+            }
+
+            // Step 3: Initialize service
+            this.clientId = cfg.CLIENT_ID.trim();
+            this.clientSecret = decrypted;
+            this.initialized = true;
             this.accessToken = null;
             this.tokenExpiry = null;
-            await this.getAccessToken();
-            return { success: true, message: '✅ Conexión exitosa con Uber Eats API (token obtenido)' };
+
+            // Step 4: Request token
+            try {
+                await this.getAccessToken();
+                steps.push('🔑 Token OAuth: ✅ Obtenido correctamente');
+                return {
+                    success: true,
+                    message: '✅ Conexión exitosa con Uber Eats API',
+                    steps
+                };
+            } catch (tokenErr) {
+                const errMsg = tokenErr.response?.data?.error_description || tokenErr.message;
+                steps.push(`🔑 Token OAuth: ❌ ${errMsg}`);
+
+                // Provide specific guidance based on error
+                let hint = '';
+                if (errMsg.includes('secret mismatch')) {
+                    hint = ' → El client_secret guardado no coincide. Verifica que pegaste el secret correcto (no el Store ID ni el Client ID).';
+                } else if (errMsg.includes('invalid_client')) {
+                    hint = ' → El CLIENT_ID es inválido en Uber Eats.';
+                } else if (tokenErr.code === 'ENOTFOUND' || tokenErr.code === 'ECONNREFUSED') {
+                    hint = ' → No se pudo conectar a Uber (verifica tu conexión a internet).';
+                }
+
+                return {
+                    success: false,
+                    message: `Error al obtener token: ${errMsg}${hint}`,
+                    steps
+                };
+            }
         } catch (err) {
-            return { success: false, message: err.message };
+            return { success: false, message: err.message, steps };
         }
     }
 

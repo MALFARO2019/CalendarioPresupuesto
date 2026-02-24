@@ -20,6 +20,7 @@ export interface ModulePermissions {
     tiempos: boolean;
     evaluaciones: boolean;
     inventarios: boolean;
+    reportes: boolean;
 }
 
 export interface UserWithModuleAccess {
@@ -34,6 +35,7 @@ export interface UserWithModuleAccess {
     accesoTiempos?: boolean;
     accesoEvaluaciones?: boolean;
     accesoInventarios?: boolean;
+    accesoReportes?: boolean;
 }
 
 export interface ModuleRoute {

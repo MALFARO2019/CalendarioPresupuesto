@@ -56,6 +56,16 @@ export const MODULES: ModuleConfig[] = [
         gradient: 'linear-gradient(135deg, #E67E22 0%, #F39C12 100%)',
         route: '/inventarios',
         permissionKey: 'inventarios'
+    },
+    {
+        id: 'reportes',
+        name: 'Reportes',
+        description: 'Catálogo, Suscripciones',
+        icon: '📊',
+        color: '#6366F1',
+        gradient: 'linear-gradient(135deg, #6366F1 0%, #818CF8 100%)',
+        route: '/reportes',
+        permissionKey: 'reportes'
     }
 ];
 
