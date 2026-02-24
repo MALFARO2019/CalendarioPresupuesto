@@ -60,17 +60,10 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ data, month, year, c
     }
 
     // Days of month
-    console.log('🗓️ Creating calendar cells for', totalDays, 'days');
-    console.log('📊 Month data available:', monthData.length, 'records');
-    if (monthData.length > 0) {
-        console.log('📝 Sample month record:', monthData[0]);
-    }
 
     for (let d = 1; d <= totalDays; d++) {
         const dayRecord = monthData.find(r => r.Dia === d);
-        if (d <= 3) {
-            console.log(`Day ${d}: found record?`, dayRecord ? 'YES' : 'NO', dayRecord);
-        }
+
         // Build date key for events
         const pad = (n: number) => String(n).padStart(2, '0');
         const dateKey = `${year}-${pad(month + 1)}-${pad(d)}`;

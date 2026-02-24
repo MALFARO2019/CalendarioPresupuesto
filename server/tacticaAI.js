@@ -9,11 +9,13 @@ const { sql, poolPromise } = require('./db');
 const SUPPORTED_MODELS = [
     'gemini-2.5-flash-lite',
     'gemini-2.0-flash',
-    'gemini-1.5-pro',
+    'gemini-2.5-flash',
     'gemini-2.5-pro',
+    'gemini-3-flash',
+    'gemini-3-pro',
 ];
 
-const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 async function generateTacticaAnalysis(data, customPrompt = null, model = null) {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -29,7 +31,8 @@ async function generateTacticaAnalysis(data, customPrompt = null, model = null) 
     const selectedModel = model && SUPPORTED_MODELS.includes(model) ? model : DEFAULT_MODEL;
     console.log(`🤖 Calling Gemini for tactical analysis... Model: ${selectedModel}`);
 
-    const url = `https://generativelanguage.googleapis.com/v1/models/${selectedModel}:generateContent?key=${apiKey}`;
+    // Use v1beta endpoint for latest model support (Gemini 3 series)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
         method: 'POST',
@@ -38,7 +41,7 @@ async function generateTacticaAnalysis(data, customPrompt = null, model = null) 
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
                 temperature: 0.7,
-                maxOutputTokens: 2048,
+                maxOutputTokens: 8192,
             }
         })
     });

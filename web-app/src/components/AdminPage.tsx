@@ -187,16 +187,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     type KpiKey = 'Global' | 'Ventas' | 'Transacciones' | 'TQP';
     const KPI_TABS: KpiKey[] = ['Global', 'Ventas', 'Transacciones', 'TQP'];
     const GEMINI_MODELS = [
-        { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite (más rápido)' },
+        { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite (económico)' },
         { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-        { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro (más preciso)' },
-        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (Premium)' },
+        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (recomendado)' },
+        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (premium)' },
+        { value: 'gemini-3-flash', label: 'Gemini 3 Flash ⚡ (nuevo)' },
+        { value: 'gemini-3-pro', label: 'Gemini 3 Pro 🧠 (más potente)' },
     ];
     const [activeKpiTab, setActiveKpiTab] = useState<KpiKey>('Global');
     const [promptValues, setPromptValues] = useState<Record<KpiKey, string>>({ Global: '', Ventas: '', Transacciones: '', TQP: '' });
     const [promptOriginals, setPromptOriginals] = useState<Record<KpiKey, string>>({ Global: '', Ventas: '', Transacciones: '', TQP: '' });
-    const [modelValues, setModelValues] = useState<Record<KpiKey, string>>({ Global: 'gemini-2.5-flash-lite', Ventas: '', Transacciones: '', TQP: '' });
-    const [modelOriginals, setModelOriginals] = useState<Record<KpiKey, string>>({ Global: 'gemini-2.5-flash-lite', Ventas: '', Transacciones: '', TQP: '' });
+    const [modelValues, setModelValues] = useState<Record<KpiKey, string>>({ Global: 'gemini-2.5-flash', Ventas: '', Transacciones: '', TQP: '' });
+    const [modelOriginals, setModelOriginals] = useState<Record<KpiKey, string>>({ Global: 'gemini-2.5-flash', Ventas: '', Transacciones: '', TQP: '' });
     const [promptMetas, setPromptMetas] = useState<Record<KpiKey, { fecha: string | null; usuario: string | null }>>({ Global: { fecha: null, usuario: null }, Ventas: { fecha: null, usuario: null }, Transacciones: { fecha: null, usuario: null }, TQP: { fecha: null, usuario: null } });
     const [promptLoading, setPromptLoading] = useState(false);
     const [promptSaving, setPromptSaving] = useState(false);
@@ -228,7 +230,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 ])
             );
             const newPrompts: Record<KpiKey, string> = { Global: '', Ventas: '', Transacciones: '', TQP: '' };
-            const newModels: Record<KpiKey, string> = { Global: 'gemini-2.5-flash-lite', Ventas: '', Transacciones: '', TQP: '' };
+            const newModels: Record<KpiKey, string> = { Global: 'gemini-2.5-flash', Ventas: '', Transacciones: '', TQP: '' };
             const newMetas: Record<KpiKey, { fecha: string | null; usuario: string | null }> = { Global: { fecha: null, usuario: null }, Ventas: { fecha: null, usuario: null }, Transacciones: { fecha: null, usuario: null }, TQP: { fecha: null, usuario: null } };
             const kpis: KpiKey[] = ['Global', 'Ventas', 'Transacciones', 'TQP'];
             kpis.forEach((kpi, i) => {

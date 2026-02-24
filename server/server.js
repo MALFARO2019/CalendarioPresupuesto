@@ -4379,6 +4379,22 @@ app.get('/api/sp-eventos/debug-fields', authMiddleware, async (req, res) => {
     }
 });
 
+// GET /api/sp-eventos/debug-dates?year=2026&month=1 - Show stored dates for verification
+app.get('/api/sp-eventos/debug-dates', authMiddleware, async (req, res) => {
+    try {
+        if (!req.user.esAdmin) {
+            return res.status(403).json({ error: 'Solo administradores' });
+        }
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+        const result = await spEventsService.debugStoredDates(year, month);
+        res.json({ year, month, events: result });
+    } catch (err) {
+        console.error('Error in /api/sp-eventos/debug-dates:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ==========================================
 // SERVE FRONTEND STATIC FILES
 // ==========================================

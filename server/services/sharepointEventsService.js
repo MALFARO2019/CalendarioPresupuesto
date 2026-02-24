@@ -10,16 +10,32 @@ const axios = require('axios');
 const formsService = require('./formsService');
 const { sql, poolPromise } = require('../db');
 
+// Costa Rica is UTC-6 year-round (no DST)
+const CR_OFFSET_MS = -6 * 60 * 60 * 1000;
+
 /**
- * Format a Date as YYYY-MM-DD using LOCAL timezone (avoids UTC shift).
- * Using toISOString() would convert to UTC, which can shift dates by ±1 day
- * for timezones like Costa Rica (UTC-6).
+ * Format a YYYY-MM-DD string from various date representations.
+ * Converts UTC to Costa Rica local time (UTC-6) before extracting the date.
  */
-function localDateStr(d) {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+function toDateStr(val) {
+    if (!val) return null;
+    if (typeof val === 'string') {
+        // If already a date-only string (no 'T'), return it trimmed
+        if (!val.includes('T')) {
+            return val.substring(0, 10);
+        }
+        // Full ISO datetime: parse and convert to CR timezone
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return null;
+        const crTime = new Date(d.getTime() + CR_OFFSET_MS);
+        return `${crTime.getUTCFullYear()}-${String(crTime.getUTCMonth() + 1).padStart(2, '0')}-${String(crTime.getUTCDate()).padStart(2, '0')}`;
+    }
+    if (val instanceof Date) {
+        if (isNaN(val.getTime())) return null;
+        const crTime = new Date(val.getTime() + CR_OFFSET_MS);
+        return `${crTime.getUTCFullYear()}-${String(crTime.getUTCMonth() + 1).padStart(2, '0')}-${String(crTime.getUTCDate()).padStart(2, '0')}`;
+    }
+    return null;
 }
 
 // SharePoint site and list identifiers
@@ -87,6 +103,9 @@ async function fetchSharePointEvents() {
  * Actual Eventos Rosti fields (discovered via debug):
  *   Title, Start, End, Tipo_x0020_Evento, Duraci_x00f3_n_x0020_Evento,
  *   Ubicaci_x00f3_n (array), id
+ *
+ * DATES: Returns fechaInicio/fechaFin as 'YYYY-MM-DD' strings (Costa Rica local date).
+ * This avoids any timezone ambiguity when storing to SQL.
  */
 function mapSharePointItem(item) {
     const f = item.fields || {};
@@ -95,20 +114,9 @@ function mapSharePointItem(item) {
     const rawStart = f.Start || f.EventDate || f.FechaDeInicio || f.StartDate || null;
     const rawEnd = f.End || f.EndDate || f.FechaDeFin || null;
 
-    // Parse dates: strip time/timezone to treat as local date (avoid UTC shift)
-    function parseLocalDate(val) {
-        if (!val) return null;
-        // If string, take just the YYYY-MM-DD part to avoid timezone shifts
-        if (typeof val === 'string') {
-            const dateOnly = val.substring(0, 10); // 'YYYY-MM-DD'
-            const [y, m, d] = dateOnly.split('-').map(Number);
-            return new Date(y, m - 1, d); // local midnight
-        }
-        return new Date(val);
-    }
-
-    const fechaInicio = parseLocalDate(rawStart);
-    const fechaFin = parseLocalDate(rawEnd);
+    // Convert UTC dates from Graph API to Costa Rica local date strings
+    const fechaInicio = toDateStr(rawStart);
+    const fechaFin = toDateStr(rawEnd);
 
     // Ubicación is an array of location names
     let ubicacion = null;
@@ -123,8 +131,8 @@ function mapSharePointItem(item) {
     return {
         sharePointItemId: String(item.id),
         titulo: f.Title || f.Titulo || '(Sin título)',
-        fechaInicio: fechaInicio,
-        fechaFin: fechaFin,
+        fechaInicio: fechaInicio,   // 'YYYY-MM-DD' string or null
+        fechaFin: fechaFin,         // 'YYYY-MM-DD' string or null
         ubicacion: ubicacion,
         categoria: f['Tipo_x0020_Evento'] || f.Category || null,
         todoElDia: (f['Duraci_x00f3_n_x0020_Evento'] === 'Todo el día') || f.fAllDayEvent === true || false,
@@ -134,7 +142,10 @@ function mapSharePointItem(item) {
 
 /**
  * Sync events from SharePoint to SQL cache table SP_EVENTOS_ROSTI.
- * Uses MERGE strategy: insert new, update existing, leave orphans.
+ * Uses MERGE strategy: insert new, update existing, delete stale.
+ *
+ * FechaInicio/FechaFin are stored as DATE (not DATETIME) to avoid timezone issues.
+ * The mapSharePointItem function returns them as 'YYYY-MM-DD' strings in CR timezone.
  */
 async function syncEventos() {
     console.log('🔄 Starting SharePoint Eventos Rosti sync...');
@@ -142,7 +153,7 @@ async function syncEventos() {
     const spItems = await fetchSharePointEvents();
     const pool = await poolPromise;
 
-    // Ensure table exists
+    // Ensure table exists — use DATE type (not DATETIME) for clean date storage
     await pool.request().query(`
         IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'SP_EVENTOS_ROSTI')
         BEGIN
@@ -150,8 +161,8 @@ async function syncEventos() {
                 Id INT IDENTITY(1,1) PRIMARY KEY,
                 SharePointItemId NVARCHAR(100) NOT NULL,
                 Titulo NVARCHAR(500) NOT NULL,
-                FechaInicio DATETIME NOT NULL,
-                FechaFin DATETIME NULL,
+                FechaInicio DATE NOT NULL,
+                FechaFin DATE NULL,
                 Ubicacion NVARCHAR(500) NULL,
                 Categoria NVARCHAR(200) NULL,
                 TodoElDia BIT DEFAULT 0,
@@ -164,15 +175,40 @@ async function syncEventos() {
         END
     `);
 
+    // Migrate existing DATETIME columns to DATE if they exist as DATETIME
+    try {
+        await pool.request().query(`
+            IF EXISTS (
+                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'SP_EVENTOS_ROSTI' AND COLUMN_NAME = 'FechaInicio' AND DATA_TYPE = 'datetime'
+            )
+            BEGIN
+                -- Drop indexes that reference these columns first
+                IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SP_EVENTOS_FechaInicio' AND object_id = OBJECT_ID('SP_EVENTOS_ROSTI'))
+                    DROP INDEX IX_SP_EVENTOS_FechaInicio ON SP_EVENTOS_ROSTI;
+                IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SP_EVENTOS_FechaFin' AND object_id = OBJECT_ID('SP_EVENTOS_ROSTI'))
+                    DROP INDEX IX_SP_EVENTOS_FechaFin ON SP_EVENTOS_ROSTI;
+                -- Alter columns from DATETIME to DATE
+                ALTER TABLE SP_EVENTOS_ROSTI ALTER COLUMN FechaInicio DATE NOT NULL;
+                ALTER TABLE SP_EVENTOS_ROSTI ALTER COLUMN FechaFin DATE NULL;
+                -- Recreate indexes
+                CREATE INDEX IX_SP_EVENTOS_FechaInicio ON SP_EVENTOS_ROSTI(FechaInicio);
+                CREATE INDEX IX_SP_EVENTOS_FechaFin ON SP_EVENTOS_ROSTI(FechaFin);
+                PRINT 'Migrated SP_EVENTOS_ROSTI date columns from DATETIME to DATE';
+            END
+        `);
+    } catch (migErr) {
+        console.warn('⚠️ Could not migrate date columns (may already be DATE):', migErr.message);
+    }
+
     let inserted = 0;
-    let updated = 0;
     let skipped = 0;
 
     for (const spItem of spItems) {
         const mapped = mapSharePointItem(spItem);
 
-        // Skip items without a valid start date
-        if (!mapped.fechaInicio || isNaN(mapped.fechaInicio.getTime())) {
+        // Skip items without a valid start date string
+        if (!mapped.fechaInicio) {
             skipped++;
             continue;
         }
@@ -181,8 +217,8 @@ async function syncEventos() {
             await pool.request()
                 .input('spItemId', sql.NVarChar(100), mapped.sharePointItemId)
                 .input('titulo', sql.NVarChar(500), mapped.titulo)
-                .input('fechaInicio', sql.DateTime, mapped.fechaInicio)
-                .input('fechaFin', sql.DateTime, mapped.fechaFin)
+                .input('fechaInicio', sql.Date, mapped.fechaInicio)
+                .input('fechaFin', sql.Date, mapped.fechaFin)
                 .input('ubicacion', sql.NVarChar(500), mapped.ubicacion)
                 .input('categoria', sql.NVarChar(200), mapped.categoria)
                 .input('todoElDia', sql.Bit, mapped.todoElDia ? 1 : 0)
@@ -206,7 +242,6 @@ async function syncEventos() {
                         VALUES (@spItemId, @titulo, @fechaInicio, @fechaFin, @ubicacion, @categoria, @todoElDia, @descripcion, GETDATE());
                 `);
 
-            // We can't easily tell if MERGE did insert or update, just count total
             inserted++;
         } catch (err) {
             console.error(`❌ Error syncing SP item ${mapped.sharePointItemId}:`, err.message);
@@ -217,7 +252,6 @@ async function syncEventos() {
     // Delete items that no longer exist in SharePoint
     const spIds = spItems.map(i => String(i.id)).filter(Boolean);
     if (spIds.length > 0) {
-        // Build comma-separated quoted list for IN clause
         const idList = spIds.map(id => `'${id.replace(/'/g, "''")}'`).join(',');
         const deleteResult = await pool.request()
             .query(`DELETE FROM SP_EVENTOS_ROSTI WHERE SharePointItemId NOT IN (${idList})`);
@@ -234,83 +268,29 @@ async function syncEventos() {
 /**
  * Get cached events for a specific month, grouped by date (EventosByDate format).
  * Returns events whose date range overlaps with the given month.
+ *
+ * All date handling uses strings ('YYYY-MM-DD') to avoid timezone ambiguity.
  */
 async function getEventosPorMes(year, month) {
     const pool = await poolPromise;
 
-    // First day of month and first day of next month
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 1); // exclusive upper bound
+    // String date boundaries — timezone-safe
+    const mm = String(month).padStart(2, '0');
+    const startStr = `${year}-${mm}-01`;
+    const endStr = month === 12
+        ? `${year + 1}-01-01`
+        : `${year}-${String(month + 1).padStart(2, '0')}-01`;
 
     const result = await pool.request()
-        .input('startDate', sql.DateTime, startDate)
-        .input('endDate', sql.DateTime, endDate)
+        .input('startDate', sql.VarChar(10), startStr)
+        .input('endDate', sql.VarChar(10), endStr)
         .query(`
-            SELECT Id, SharePointItemId, Titulo, FechaInicio, FechaFin, 
+            SELECT Id, SharePointItemId, Titulo,
+                   CONVERT(VARCHAR(10), FechaInicio, 120) AS FechaInicioStr,
+                   CONVERT(VARCHAR(10), FechaFin, 120) AS FechaFinStr,
                    Ubicacion, Categoria, TodoElDia, Descripcion
             FROM SP_EVENTOS_ROSTI
-            WHERE FechaInicio < @endDate 
-              AND (FechaFin >= @startDate OR (FechaFin IS NULL AND FechaInicio >= @startDate))
-            ORDER BY FechaInicio
-        `);
-
-    // Group by date in YYYY-MM-DD format (EventosByDate)
-    const byDate = {};
-
-    for (const row of result.recordset) {
-        // Extract local date components to avoid UTC timezone shift
-        // SQL DATETIME comes as JS Date in UTC; use getUTC* to get the stored date correctly
-        const si = row.FechaInicio;
-        const eventStart = new Date(si.getUTCFullYear(), si.getUTCMonth(), si.getUTCDate());
-        let eventEnd;
-        if (row.FechaFin) {
-            const ei = row.FechaFin;
-            eventEnd = new Date(ei.getUTCFullYear(), ei.getUTCMonth(), ei.getUTCDate());
-        } else {
-            eventEnd = eventStart;
-        }
-
-        // For multi-day events, create an entry for each day in the month
-        const loopStart = new Date(Math.max(eventStart.getTime(), startDate.getTime()));
-        const loopEnd = new Date(Math.min(eventEnd.getTime(), endDate.getTime() - 1));
-
-        for (let d = new Date(loopStart); d <= loopEnd; d.setDate(d.getDate() + 1)) {
-            // Use local date string to avoid UTC timezone shift
-            const dateStr = localDateStr(d);
-
-            if (!byDate[dateStr]) byDate[dateStr] = [];
-            byDate[dateStr].push({
-                id: row.Id,
-                evento: row.Titulo,
-                esFeriado: false, // SharePoint events are not feriados
-                esInterno: false,
-                ubicacion: row.Ubicacion,
-                categoria: row.Categoria,
-                todoElDia: row.TodoElDia
-            });
-        }
-    }
-
-    return byDate;
-}
-
-/**
- * Get cached events for an entire year, grouped by date (EventosByDate format).
- */
-async function getEventosPorAno(year) {
-    const pool = await poolPromise;
-
-    const startDate = new Date(year, 0, 1);
-    const endDate = new Date(year + 1, 0, 1);
-
-    const result = await pool.request()
-        .input('startDate', sql.DateTime, startDate)
-        .input('endDate', sql.DateTime, endDate)
-        .query(`
-            SELECT Id, SharePointItemId, Titulo, FechaInicio, FechaFin, 
-                   Ubicacion, Categoria, TodoElDia, Descripcion
-            FROM SP_EVENTOS_ROSTI
-            WHERE FechaInicio < @endDate 
+            WHERE FechaInicio < @endDate
               AND (FechaFin >= @startDate OR (FechaFin IS NULL AND FechaInicio >= @startDate))
             ORDER BY FechaInicio
         `);
@@ -318,26 +298,21 @@ async function getEventosPorAno(year) {
     const byDate = {};
 
     for (const row of result.recordset) {
-        // Extract local date components to avoid UTC timezone shift
-        const si = row.FechaInicio;
-        const eventStart = new Date(si.getUTCFullYear(), si.getUTCMonth(), si.getUTCDate());
-        let eventEnd;
-        if (row.FechaFin) {
-            const ei = row.FechaFin;
-            eventEnd = new Date(ei.getUTCFullYear(), ei.getUTCMonth(), ei.getUTCDate());
-        } else {
-            eventEnd = eventStart;
-        }
+        const eventStartStr = row.FechaInicioStr; // 'YYYY-MM-DD'
+        const eventEndStr = row.FechaFinStr || eventStartStr;
 
-        const loopStart = new Date(Math.max(eventStart.getTime(), startDate.getTime()));
-        const loopEnd = new Date(Math.min(eventEnd.getTime(), endDate.getTime() - 1));
+        // Determine the loop range within the requested month
+        const loopStartStr = eventStartStr < startStr ? startStr : eventStartStr;
+        // endStr is exclusive — the last valid day is the day before endStr
+        const loopEndStr = eventEndStr >= endStr
+            ? subtractOneDay(endStr)
+            : eventEndStr;
 
-        for (let d = new Date(loopStart); d <= loopEnd; d.setDate(d.getDate() + 1)) {
-            // Use local date string to avoid UTC timezone shift
-            const dateStr = localDateStr(d);
-
-            if (!byDate[dateStr]) byDate[dateStr] = [];
-            byDate[dateStr].push({
+        // Iterate day by day using simple string arithmetic
+        let currentStr = loopStartStr;
+        while (currentStr <= loopEndStr) {
+            if (!byDate[currentStr]) byDate[currentStr] = [];
+            byDate[currentStr].push({
                 id: row.Id,
                 evento: row.Titulo,
                 esFeriado: false,
@@ -346,6 +321,61 @@ async function getEventosPorAno(year) {
                 categoria: row.Categoria,
                 todoElDia: row.TodoElDia
             });
+            currentStr = addOneDay(currentStr);
+        }
+    }
+
+    return byDate;
+}
+
+/**
+ * Get cached events for an entire year, grouped by date (EventosByDate format).
+ * All date handling uses strings to avoid timezone ambiguity.
+ */
+async function getEventosPorAno(year) {
+    const pool = await poolPromise;
+
+    const startStr = `${year}-01-01`;
+    const endStr = `${year + 1}-01-01`;
+
+    const result = await pool.request()
+        .input('startDate', sql.VarChar(10), startStr)
+        .input('endDate', sql.VarChar(10), endStr)
+        .query(`
+            SELECT Id, SharePointItemId, Titulo,
+                   CONVERT(VARCHAR(10), FechaInicio, 120) AS FechaInicioStr,
+                   CONVERT(VARCHAR(10), FechaFin, 120) AS FechaFinStr,
+                   Ubicacion, Categoria, TodoElDia, Descripcion
+            FROM SP_EVENTOS_ROSTI
+            WHERE FechaInicio < @endDate
+              AND (FechaFin >= @startDate OR (FechaFin IS NULL AND FechaInicio >= @startDate))
+            ORDER BY FechaInicio
+        `);
+
+    const byDate = {};
+
+    for (const row of result.recordset) {
+        const eventStartStr = row.FechaInicioStr;
+        const eventEndStr = row.FechaFinStr || eventStartStr;
+
+        const loopStartStr = eventStartStr < startStr ? startStr : eventStartStr;
+        const loopEndStr = eventEndStr >= endStr
+            ? subtractOneDay(endStr)
+            : eventEndStr;
+
+        let currentStr = loopStartStr;
+        while (currentStr <= loopEndStr) {
+            if (!byDate[currentStr]) byDate[currentStr] = [];
+            byDate[currentStr].push({
+                id: row.Id,
+                evento: row.Titulo,
+                esFeriado: false,
+                esInterno: false,
+                ubicacion: row.Ubicacion,
+                categoria: row.Categoria,
+                todoElDia: row.TodoElDia
+            });
+            currentStr = addOneDay(currentStr);
         }
     }
 
@@ -373,10 +403,56 @@ async function debugListFields() {
     return { fields: [], sample: null };
 }
 
+/**
+ * Helper: add one day to a 'YYYY-MM-DD' string.
+ */
+function addOneDay(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d + 1));
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Helper: subtract one day from a 'YYYY-MM-DD' string.
+ */
+function subtractOneDay(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d - 1));
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Debug: get stored dates for a month to compare with SharePoint.
+ */
+async function debugStoredDates(year, month) {
+    const pool = await poolPromise;
+    const mm = String(month).padStart(2, '0');
+    const startStr = `${year}-${mm}-01`;
+    const endStr = month === 12
+        ? `${year + 1}-01-01`
+        : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+
+    const result = await pool.request()
+        .input('startDate', sql.VarChar(10), startStr)
+        .input('endDate', sql.VarChar(10), endStr)
+        .query(`
+            SELECT SharePointItemId, Titulo,
+                   CONVERT(VARCHAR(10), FechaInicio, 120) AS FechaInicio,
+                   CONVERT(VARCHAR(10), FechaFin, 120) AS FechaFin,
+                   Categoria, TodoElDia
+            FROM SP_EVENTOS_ROSTI
+            WHERE FechaInicio < @endDate
+              AND (FechaFin >= @startDate OR (FechaFin IS NULL AND FechaInicio >= @startDate))
+            ORDER BY FechaInicio
+        `);
+    return result.recordset;
+}
+
 module.exports = {
     syncEventos,
     getEventosPorMes,
     getEventosPorAno,
     debugListFields,
+    debugStoredDates,
     fetchSharePointEvents
 };
