@@ -435,15 +435,19 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
     }
 
     // Step 4a: Copy web.config to dist (build wipes dist/, IIS needs web.config for URL Rewrite proxy)
+    // CRITICAL FIX: If web.config doesn't exist, the whole deploy must fail to prevent a 404 outage in IIS
+    steps.push({ step: 'Verificando web.config', status: 'running' });
     try {
-        await runPowerShell(
+        const wcResult = await runPowerShell(
             `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
             `$wcSrc = Join-Path '${appDir}' 'web-app\\web.config'; ` +
             `$wcDst = Join-Path '${appDir}' 'web-app\\dist\\web.config'; ` +
-            `if (Test-Path $wcSrc) { Copy-Item $wcSrc $wcDst -Force; 'OK' } else { 'NO_SRC' } }`
+            `if (Test-Path $wcSrc) { Copy-Item $wcSrc $wcDst -Force; Write-Output 'OK' } else { throw 'Configuración web.config no encontrada en el código fuente. Despliegue abortado para prevenir caída de la aplicación.' } }`
         );
+        steps[steps.length - 1] = { step: 'Verificando web.config', status: 'success', detail: 'Configuración IIS aplicada' };
     } catch (e) {
-        // Non-fatal but important — infra step below also attempts this
+        steps[steps.length - 1] = { step: 'Verificando web.config', status: 'error', detail: e.message };
+        return { success: false, steps, timing: buildTiming(startTime) };
     }
 
     // Step 4b: Ensure PORT=3000 in server .env (critical: IIS proxies to port 3000)
@@ -538,10 +542,11 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
     } catch (e) {
         steps[steps.length - 1] = {
             step: 'Configurando infraestructura',
-            status: 'warning',
-            detail: `No se pudo validar infraestructura: ${e.message.substring(0, 200)}`
+            status: 'error',
+            detail: `Falló la configuración de infraestructura: ${e.message.substring(0, 200)}`
         };
-        // Non-fatal — continue with deploy
+        // Fatal — without proper infra, the server won't respond anyway
+        return { success: false, steps, timing: buildTiming(startTime) };
     }
 
     // Step 5: Restart service
@@ -552,11 +557,12 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
             `$output = @(); ` +
             `$svc = Get-Service 'CalendarioPresupuesto-API' -ErrorAction SilentlyContinue; ` +
             `if ($svc) { ` +
-            `Stop-Service 'CalendarioPresupuesto-API' -Force -ErrorAction SilentlyContinue; ` +
-            `Start-Sleep -Seconds 2; ` +
+            `  Stop-Service 'CalendarioPresupuesto-API' -Force -ErrorAction SilentlyContinue; ` +
+            `  Start-Sleep -Seconds 2; ` +
             `} ` +
-            `taskkill /F /IM node.exe 2>$null; ` +
-            `Start-Sleep -Seconds 2; ` +
+            `# SAFELY KILL ONLY OUR NODE PROCESSES ` +
+            `Get-WmiObject Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like "*${appDir.replace(/\\/g, '\\\\')}*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; ` +
+            `Start-Sleep -Seconds 1; ` +
             `$iisPool = & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' list apppool /name:DefaultAppPool 2>$null; ` +
             `if ($iisPool) { ` +
             `& 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' stop apppool DefaultAppPool 2>$null; ` +
