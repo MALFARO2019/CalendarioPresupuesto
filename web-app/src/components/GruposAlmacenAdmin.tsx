@@ -5,7 +5,7 @@ import { Loader2, Plus, Trash2, Edit2, X, Check, Search, Download, ChevronDown, 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 function getToken() {
-    return localStorage.getItem('token') || '';
+    return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || '';
 }
 
 async function apiFetch(path: string, options: RequestInit = {}) {

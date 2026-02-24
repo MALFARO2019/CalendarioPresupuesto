@@ -33,8 +33,8 @@ try {
         param($dir)
         $env:Path += ';C:\Program Files\Git\cmd;C:\Program Files (x86)\Git\cmd'
         Set-Location $dir
-        git fetch origin production 2>&1
-        git reset --hard origin/production 2>&1
+        git fetch origin main 2>&1
+        git reset --hard origin/main 2>&1
     } -ArgumentList $AppDir
     Write-Host "  [OK] $($gitResult | Select-Object -Last 1)" -ForegroundColor Green
 } catch {

@@ -109,9 +109,14 @@ function getDeployLog() {
 }
 
 function getCurrentVersion() {
+    // Primary: use package.json version (always present and reliable)
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+        if (pkg.version) return `v${pkg.version}`;
+    } catch (e) { /* fallback below */ }
+    // Fallback: deploy-log
     const log = readDeployLog();
     if (log.entries.length === 0) return 'v1.0';
-    // Sort by date descending and return the latest version
     log.entries.sort((a, b) => new Date(b.date) - new Date(a.date));
     return log.entries[0].version || 'v1.0';
 }

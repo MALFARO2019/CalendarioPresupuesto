@@ -1063,6 +1063,8 @@ export interface Asignacion {
     USUARIO_NOMBRE: string;
     LOCAL: string;
     PERFIL: string;
+    PERFIL_ID: number | null;
+    PERFIL_ACTUAL: string;
     FECHA_INICIO: string;
     FECHA_FIN: string | null;
     NOTAS: string | null;
@@ -1090,11 +1092,11 @@ export async function fetchAsignaciones(usuarioId?: number, month?: number, year
     return response.json();
 }
 
-export async function createAsignacion(usuarioId: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string): Promise<Asignacion> {
+export async function createAsignacion(usuarioId: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string, perfilId?: number): Promise<Asignacion> {
     const response = await fetch(`${API_BASE}/personal/asignaciones`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ usuarioId, local, perfil, fechaInicio, fechaFin, notas })
+        body: JSON.stringify({ usuarioId, local, perfil, fechaInicio, fechaFin, notas, perfilId })
     });
     if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -1103,11 +1105,11 @@ export async function createAsignacion(usuarioId: number, local: string, perfil:
     return response.json();
 }
 
-export async function updateAsignacion(id: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string): Promise<Asignacion> {
+export async function updateAsignacion(id: number, local: string, perfil: string, fechaInicio: string, fechaFin?: string, notas?: string, perfilId?: number): Promise<Asignacion> {
     const response = await fetch(`${API_BASE}/personal/asignaciones/${id}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ local, perfil, fechaInicio, fechaFin, notas })
+        body: JSON.stringify({ local, perfil, fechaInicio, fechaFin, notas, perfilId })
     });
     if (!response.ok) {
         const data = await response.json().catch(() => ({}));

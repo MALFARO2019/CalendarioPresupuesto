@@ -10,6 +10,7 @@ import {
     XCircle, Loader2, Plus, Trash2, Eye, EyeOff, AlertTriangle,
     TrendingUp, ShoppingBag, DollarSign, Percent, Clock
 } from 'lucide-react';
+import { getToken } from '../../api';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -97,7 +98,7 @@ export function UberEatsAdmin() {
     const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
 
     const getHeaders = () => {
-        const t = localStorage.getItem('authToken');
+        const t = getToken();
         return { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` };
     };
 
@@ -123,13 +124,6 @@ export function UberEatsAdmin() {
         } catch (e: any) {
             setConfigMsg({ type: 'error', text: e.message });
         } finally { setConfigLoading(false); }
-
-        // Also check token status
-        try {
-            const h = getHeaders();
-            const tsRes = await fetch(`${API_BASE}/api/uber-eats/token-status`, { headers: h });
-            if (tsRes.ok) setTokenStatus(await tsRes.json());
-        } catch { }
     }, []);
 
     const handleSessionExpired = () => {

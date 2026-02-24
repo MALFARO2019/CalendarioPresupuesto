@@ -293,16 +293,16 @@ app.get('/api/personal/asignaciones', authMiddleware, async (req, res) => {
 
 app.post('/api/personal/asignaciones', authMiddleware, async (req, res) => {
     try {
-        const { usuarioId, local, perfil, fechaInicio, fechaFin, notas } = req.body;
+        const { usuarioId, local, perfil, fechaInicio, fechaFin, notas, perfilId } = req.body;
         if (!usuarioId || !local || !perfil || !fechaInicio) return res.status(400).json({ error: 'usuarioId, local, perfil y fechaInicio son requeridos' });
-        res.status(201).json(await personalModule.createAsignacion(usuarioId, local, perfil, fechaInicio, fechaFin, notas));
+        res.status(201).json(await personalModule.createAsignacion(usuarioId, local, perfil, fechaInicio, fechaFin, notas, perfilId || null));
     } catch (e) { console.error('❌ Error creating asignacion:', e.message); res.status(400).json({ error: e.message }); }
 });
 
 app.put('/api/personal/asignaciones/:id', authMiddleware, async (req, res) => {
     try {
-        const { local, perfil, fechaInicio, fechaFin, notas } = req.body;
-        res.json(await personalModule.updateAsignacion(parseInt(req.params.id), local, perfil, fechaInicio, fechaFin, notas));
+        const { local, perfil, fechaInicio, fechaFin, notas, perfilId } = req.body;
+        res.json(await personalModule.updateAsignacion(parseInt(req.params.id), local, perfil, fechaInicio, fechaFin, notas, perfilId || null));
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

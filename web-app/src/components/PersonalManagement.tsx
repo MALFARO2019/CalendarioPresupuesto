@@ -49,7 +49,7 @@ export const PersonalManagement: React.FC = () => {
     // Memoized options for SearchableSelect
     const usuarioOptions = useMemo(() => usuarios.filter(u => u.ACTIVO).map(u => ({ value: u.ID.toString(), label: u.NOMBRE })), [usuarios]);
     const localOptions = useMemo(() => allStores.map(l => ({ value: l, label: l })), [allStores]);
-    const perfilOptions = useMemo(() => activeProfileNames.map(p => ({ value: p, label: p })), [activeProfileNames]);
+    const perfilOptions = useMemo(() => profiles.map(p => ({ value: p.id.toString(), label: p.nombre })), [profiles]);
 
     // ─── Load ─────────────────────────────────────────────────────────────────
 
@@ -132,7 +132,7 @@ export const PersonalManagement: React.FC = () => {
         setEditAsig(a || null);
         setAUsuarioId(a?.USUARIO_ID?.toString() || '');
         setALocal(a?.LOCAL || '');
-        setAPerfil(a?.PERFIL || '');
+        setAPerfil(a?.PERFIL_ID?.toString() || '');
         setAFechaInicio(a?.FECHA_INICIO?.split('T')[0] || '');
         setAFechaFin(a?.FECHA_FIN?.split('T')[0] || '');
         setANotas(a?.NOTAS || '');
@@ -143,11 +143,14 @@ export const PersonalManagement: React.FC = () => {
         if (!aUsuarioId || !aLocal || !aPerfil || !aFechaInicio) { setError('Usuario, local, perfil y fecha inicio son requeridos'); return; }
         setSavingAsig(true);
         setError(null);
+        const perfilId = parseInt(aPerfil);
+        const perfilObj = profiles.find(p => p.id === perfilId);
+        const perfilNombre = perfilObj?.nombre || '';
         try {
             if (editAsig) {
-                await updateAsignacion(editAsig.ID, aLocal, aPerfil, aFechaInicio, aFechaFin || undefined, aNotas || undefined);
+                await updateAsignacion(editAsig.ID, aLocal, perfilNombre, aFechaInicio, aFechaFin || undefined, aNotas || undefined, perfilId);
             } else {
-                await createAsignacion(parseInt(aUsuarioId), aLocal, aPerfil, aFechaInicio, aFechaFin || undefined, aNotas || undefined);
+                await createAsignacion(parseInt(aUsuarioId), aLocal, perfilNombre, aFechaInicio, aFechaFin || undefined, aNotas || undefined, perfilId);
             }
             setShowAsigForm(false);
             await loadAsignaciones(); await loadUsuarios();
@@ -425,8 +428,8 @@ export const PersonalManagement: React.FC = () => {
                                                         onClick={() => toggleCargoVisibility(cargo.ID, field, value)}
                                                         disabled={savingCargo === cargo.ID}
                                                         className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center transition-all ${value
-                                                                ? 'bg-indigo-500 border-indigo-500 text-white hover:bg-indigo-600'
-                                                                : 'bg-white border-gray-300 text-transparent hover:border-indigo-300'
+                                                            ? 'bg-indigo-500 border-indigo-500 text-white hover:bg-indigo-600'
+                                                            : 'bg-white border-gray-300 text-transparent hover:border-indigo-300'
                                                             } ${savingCargo === cargo.ID ? 'opacity-50' : ''}`}
                                                     >
                                                         {value && <span className="text-xs font-bold">✓</span>}

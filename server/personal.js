@@ -57,6 +57,22 @@ async function ensurePersonalTable() {
             END
         `);
 
+        // Migration: Add PERFIL_ID column for ID-based profile lookup
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERSONAL_ASIGNACIONES') AND name = 'PERFIL_ID')
+            BEGIN
+                ALTER TABLE DIM_PERSONAL_ASIGNACIONES ADD PERFIL_ID INT NULL;
+            END
+        `);
+
+        // Populate PERFIL_ID from existing PERFIL name matching APP_PERFILES
+        await pool.request().query(`
+            UPDATE a SET a.PERFIL_ID = p.Id
+            FROM DIM_PERSONAL_ASIGNACIONES a
+            INNER JOIN APP_PERFILES p ON p.Nombre = a.PERFIL
+            WHERE a.PERFIL_ID IS NULL AND a.ACTIVO = 1;
+        `);
+
 
         // 2. DIM_PERSONAL_CARGOS
         await pool.request().query(`
@@ -145,9 +161,12 @@ async function getAsignaciones(usuarioId = null, month = null, year = null) {
     const pool = await poolPromise;
     let query = `
         SELECT a.ID, a.USUARIO_ID, u.Nombre as USUARIO_NOMBRE,
-               a.LOCAL, a.PERFIL, a.FECHA_INICIO, a.FECHA_FIN, a.NOTAS, a.ACTIVO
+               a.LOCAL, a.PERFIL, a.PERFIL_ID,
+               COALESCE(p.Nombre, a.PERFIL) as PERFIL_ACTUAL,
+               a.FECHA_INICIO, a.FECHA_FIN, a.NOTAS, a.ACTIVO
         FROM DIM_PERSONAL_ASIGNACIONES a
-        INNER JOIN APP_USUARIOS u ON u.Id = a.USUARIO_ID
+        LEFT JOIN APP_USUARIOS u ON u.Id = a.USUARIO_ID
+        LEFT JOIN APP_PERFILES p ON p.Id = a.PERFIL_ID
         WHERE a.ACTIVO = 1
     `;
     const request = pool.request();
@@ -168,54 +187,87 @@ async function getAsignaciones(usuarioId = null, month = null, year = null) {
     return result.recordset;
 }
 
-async function createAsignacion(usuarioId, local, perfil, fechaInicio, fechaFin, notas) {
+async function createAsignacion(usuarioId, local, perfil, fechaInicio, fechaFin, notas, perfilId = null) {
     const pool = await poolPromise;
     // Verify user exists
     const userCheck = await pool.request().input('uid', sql.Int, usuarioId)
         .query('SELECT Id, Nombre FROM APP_USUARIOS WHERE Id = @uid');
     if (userCheck.recordset.length === 0) throw new Error('Usuario no encontrado');
 
+    // Resolve perfilId from profile name if not provided
+    if (!perfilId && perfil) {
+        const pResult = await pool.request().input('pn', sql.NVarChar, perfil)
+            .query('SELECT Id FROM APP_PERFILES WHERE Nombre = @pn');
+        if (pResult.recordset.length > 0) perfilId = pResult.recordset[0].Id;
+    }
+
+    // Resolve current profile name from perfilId (in case name changed)
+    let perfilNombre = perfil;
+    if (perfilId) {
+        const nameResult = await pool.request().input('pid', sql.Int, perfilId)
+            .query('SELECT Nombre FROM APP_PERFILES WHERE Id = @pid');
+        if (nameResult.recordset.length > 0) perfilNombre = nameResult.recordset[0].Nombre;
+    }
+
     // Check for duplicate active assignment
     const dupCheck = await pool.request()
         .input('uid', sql.Int, usuarioId)
         .input('local', sql.NVarChar, local)
-        .input('perfil', sql.NVarChar, perfil)
+        .input('perfilId', sql.Int, perfilId || 0)
         .query(`
             SELECT COUNT(*) as cnt FROM DIM_PERSONAL_ASIGNACIONES
-            WHERE USUARIO_ID = @uid AND LOCAL = @local AND PERFIL = @perfil AND ACTIVO = 1
+            WHERE USUARIO_ID = @uid AND LOCAL = @local AND (PERFIL_ID = @perfilId OR (@perfilId = 0 AND PERFIL_ID IS NULL)) AND ACTIVO = 1
         `);
     if (dupCheck.recordset[0].cnt > 0) throw new Error('Ya existe una asignación activa para este usuario en ese local con ese perfil');
 
     const result = await pool.request()
         .input('uid', sql.Int, usuarioId)
         .input('local', sql.NVarChar, local)
-        .input('perfil', sql.NVarChar, perfil)
+        .input('perfil', sql.NVarChar, perfilNombre)
+        .input('perfilId', sql.Int, perfilId)
         .input('fi', sql.Date, fechaInicio)
         .input('ff', sql.Date, fechaFin || null)
         .input('notas', sql.NVarChar, notas || null)
         .query(`
-            INSERT INTO DIM_PERSONAL_ASIGNACIONES (USUARIO_ID, LOCAL, PERFIL, FECHA_INICIO, FECHA_FIN, NOTAS)
+            INSERT INTO DIM_PERSONAL_ASIGNACIONES (USUARIO_ID, LOCAL, PERFIL, PERFIL_ID, FECHA_INICIO, FECHA_FIN, NOTAS)
             OUTPUT INSERTED.*
-            VALUES (@uid, @local, @perfil, @fi, @ff, @notas)
+            VALUES (@uid, @local, @perfil, @perfilId, @fi, @ff, @notas)
         `);
     const row = result.recordset[0];
     return { ...row, USUARIO_NOMBRE: userCheck.recordset[0].Nombre };
 }
 
-async function updateAsignacion(id, local, perfil, fechaInicio, fechaFin, notas) {
+async function updateAsignacion(id, local, perfil, fechaInicio, fechaFin, notas, perfilId = null) {
     const pool = await poolPromise;
+
+    // Resolve perfilId from profile name if not provided
+    if (!perfilId && perfil) {
+        const pResult = await pool.request().input('pn', sql.NVarChar, perfil)
+            .query('SELECT Id FROM APP_PERFILES WHERE Nombre = @pn');
+        if (pResult.recordset.length > 0) perfilId = pResult.recordset[0].Id;
+    }
+
+    // Resolve current profile name from perfilId
+    let perfilNombre = perfil;
+    if (perfilId) {
+        const nameResult = await pool.request().input('pid', sql.Int, perfilId)
+            .query('SELECT Nombre FROM APP_PERFILES WHERE Id = @pid');
+        if (nameResult.recordset.length > 0) perfilNombre = nameResult.recordset[0].Nombre;
+    }
+
     const result = await pool.request()
         .input('id', sql.Int, id)
         .input('local', sql.NVarChar, local)
-        .input('perfil', sql.NVarChar, perfil)
+        .input('perfil', sql.NVarChar, perfilNombre)
+        .input('perfilId', sql.Int, perfilId)
         .input('fi', sql.Date, fechaInicio)
         .input('ff', sql.Date, fechaFin || null)
         .input('notas', sql.NVarChar, notas || null)
         .query(`
-            UPDATE DIM_PERSONAL_ASIGNACIONES SET LOCAL=@local, PERFIL=@perfil, FECHA_INICIO=@fi, FECHA_FIN=@ff, NOTAS=@notas WHERE ID=@id;
+            UPDATE DIM_PERSONAL_ASIGNACIONES SET LOCAL=@local, PERFIL=@perfil, PERFIL_ID=@perfilId, FECHA_INICIO=@fi, FECHA_FIN=@ff, NOTAS=@notas WHERE ID=@id;
             SELECT a.*, u.Nombre as USUARIO_NOMBRE
             FROM DIM_PERSONAL_ASIGNACIONES a
-            INNER JOIN APP_USUARIOS u ON u.Id = a.USUARIO_ID
+            LEFT JOIN APP_USUARIOS u ON u.Id = a.USUARIO_ID
             WHERE a.ID = @id
         `);
     return result.recordset[0];
@@ -400,15 +452,16 @@ async function getPersonalPorLocal(local, vista = null) {
     const result = await pool.request()
         .input('local', sql.NVarChar, local)
         .query(`
-            SELECT a.ID, a.USUARIO_ID, u.Nombre as USUARIO_NOMBRE,
-                   a.LOCAL, a.PERFIL, a.FECHA_INICIO, a.FECHA_FIN
+            SELECT a.ID, a.USUARIO_ID, COALESCE(u.Nombre, '(Sin asignar)') as USUARIO_NOMBRE,
+                   a.LOCAL, COALESCE(p.Nombre, a.PERFIL) as PERFIL,
+                   a.FECHA_INICIO, a.FECHA_FIN
             FROM DIM_PERSONAL_ASIGNACIONES a
-            INNER JOIN APP_USUARIOS u ON u.Id = a.USUARIO_ID
-            LEFT JOIN APP_PERFILES p ON p.Nombre = a.PERFIL
+            LEFT JOIN APP_USUARIOS u ON u.Id = a.USUARIO_ID
+            LEFT JOIN APP_PERFILES p ON p.Id = a.PERFIL_ID
             WHERE a.LOCAL = @local AND a.ACTIVO = 1
               AND (a.FECHA_FIN IS NULL OR a.FECHA_FIN >= CAST(GETDATE() AS DATE))
               ${vistaFilter}
-            ORDER BY a.PERFIL, u.Nombre
+            ORDER BY COALESCE(p.Nombre, a.PERFIL), u.Nombre
         `);
     return result.recordset;
 }
