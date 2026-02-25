@@ -143,12 +143,19 @@ class FormsService {
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
         const seconds = totalSeconds % 60;
-        return new Date(Date.UTC(
+
+        // El número serial asume que las fechas están en tiempo local. Obtenemos un pseudo-UTC y lo arreglamos con el offset
+        const d = new Date(Date.UTC(
             dateInfo.getUTCFullYear(),
             dateInfo.getUTCMonth(),
             dateInfo.getUTCDate(),
             hours, minutes, seconds
         ));
+
+        // Sumamos 6 horas porque los datos en Excel vienen en Timezone Costa Rica (UTC-6) 
+        // y queremos su equivalente real en tiempo absoluto (UTC)
+        d.setUTCHours(d.getUTCHours() + 6);
+        return d;
     }
 
     /**
@@ -158,7 +165,13 @@ class FormsService {
         if (!value && value !== 0) return null;
         if (typeof value === 'number') return this.excelDateToJSDate(value);
         if (typeof value === 'string' && value.trim()) {
-            const d = new Date(value);
+            // Intentar forzar el timezone local (Costa Rica) si el string no especifica uno
+            // Microsoft Forms exporta en tiempo local
+            let stringVal = value;
+            if (!stringVal.includes('Z') && !stringVal.includes('+') && !stringVal.includes('-0')) {
+                stringVal = stringVal + ' GMT-0600';
+            }
+            const d = new Date(stringVal);
             return isNaN(d.getTime()) ? null : d;
         }
         return null;
