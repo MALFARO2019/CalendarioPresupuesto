@@ -332,7 +332,7 @@ function normalizeVersion(v) {
     return v.replace(/\.0$/, '');
 }
 
-async function deployToServer(serverIp, user, password, appDir, deployVersion, branch) {
+async function deployToServer(serverIp, user, password, appDir, deployVersion, branch, scenario = 'standard') {
     branch = branch || 'main';
     const steps = [];
     const startTime = new Date();
@@ -351,17 +351,21 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
     }
 
     // Step 2: Git pull
-    // WinRM sessions don't inherit the full user PATH, so we must add Git's directory explicitly
-    const gitPathFix = `$env:Path += ';C:\\Program Files\\Git\\cmd;C:\\Program Files (x86)\\Git\\cmd'`;
-    steps.push({ step: 'Descargando código (git)', status: 'running' });
-    try {
-        const gitResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; Set-Location '${appDir}'; git fetch origin ${branch} 2>&1; git reset --hard origin/${branch} 2>&1 }`
-        );
-        steps[steps.length - 1] = { step: 'Descargando código (git)', status: 'success', detail: gitResult.substring(0, 200) };
-    } catch (e) {
-        steps[steps.length - 1] = { step: 'Descargando código (git)', status: 'error', detail: e.message };
-        return { success: false, steps, timing: buildTiming(startTime) };
+    if (scenario !== 'restart-only') {
+        const gitPathFix = `$env:Path += ';C:\\Program Files\\Git\\cmd;C:\\Program Files (x86)\\Git\\cmd'`;
+        steps.push({ step: 'Descargando código (git)', status: 'running' });
+        try {
+            const cleanCmd = scenario === 'hard-reset' ? 'git clean -xfd 2>&1; ' : '';
+            const gitResult = await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; Set-Location '${appDir}'; git fetch origin ${branch} 2>&1; ${cleanCmd}git reset --hard origin/${branch} 2>&1 }`
+            );
+            steps[steps.length - 1] = { step: 'Descargando código (git)', status: 'success', detail: gitResult.substring(0, 200) };
+        } catch (e) {
+            steps[steps.length - 1] = { step: 'Descargando código (git)', status: 'error', detail: e.message };
+            return { success: false, steps, timing: buildTiming(startTime) };
+        }
+    } else {
+        steps.push({ step: 'Descargando código (git)', status: 'success', detail: 'Omitido (solo reinicio)' });
     }
 
     // Step 2b: Write version to remote deploy-log.json (so the server shows the correct version)
@@ -389,7 +393,7 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
 
 
     // Step 2c: Update package.json version on remote server (primary source for version-check)
-    if (deployVersion) {
+    if (deployVersion && scenario !== 'restart-only') {
         try {
             const semverVersion = deployVersion.replace(/^v/, '');
             // Ensure it has 3 parts (e.g. 1.2 -> 1.2.0)
@@ -411,176 +415,171 @@ async function deployToServer(serverIp, user, password, appDir, deployVersion, b
 
     // Step 3: Install server dependencies
     const nodePathFix = `$env:Path += ';C:\\Program Files\\nodejs;C:\\Users\\Administrador\\AppData\\Roaming\\npm'`;
-    steps.push({ step: 'Instalando dependencias backend', status: 'running' });
-    try {
-        const npmResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; ${nodePathFix}; Set-Location '${appDir}\\server'; npm install --production --no-audit 2>&1 }`
-        );
-        steps[steps.length - 1] = { step: 'Instalando dependencias backend', status: 'success', detail: 'Dependencias instaladas' };
-    } catch (e) {
-        steps[steps.length - 1] = { step: 'Instalando dependencias backend', status: 'error', detail: e.message };
-        return { success: false, steps, timing: buildTiming(startTime) };
+    const gitPathFix = `$env:Path += ';C:\\Program Files\\Git\\cmd;C:\\Program Files (x86)\\Git\\cmd'`;
+    if (scenario !== 'flash-frontend' && scenario !== 'restart-only') {
+        steps.push({ step: 'Instalando dependencias backend', status: 'running' });
+        try {
+            const cleanNodeModules = scenario === 'hard-reset' ? `Remove-Item -Recurse -Force 'node_modules' -ErrorAction SilentlyContinue; ` : '';
+            const npmResult = await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; ${nodePathFix}; Set-Location '${appDir}\\server'; ${cleanNodeModules}npm install --production --no-audit 2>&1 }`
+            );
+            steps[steps.length - 1] = { step: 'Instalando dependencias backend', status: 'success', detail: 'Dependencias instaladas' };
+        } catch (e) {
+            steps[steps.length - 1] = { step: 'Instalando dependencias backend', status: 'error', detail: e.message };
+            return { success: false, steps, timing: buildTiming(startTime) };
+        }
+    } else {
+        steps.push({ step: 'Instalando dependencias backend', status: 'success', detail: `Omitido (${scenario})` });
     }
 
     // Step 4: Build frontend
-    steps.push({ step: 'Construyendo frontend', status: 'running' });
-    try {
-        const buildResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; ${nodePathFix}; Set-Location '${appDir}\\web-app'; npm install --no-audit 2>&1; npm run build 2>&1 }`
-        );
-        steps[steps.length - 1] = { step: 'Construyendo frontend', status: 'success', detail: 'Build completado' };
-    } catch (e) {
-        steps[steps.length - 1] = { step: 'Construyendo frontend', status: 'error', detail: e.message };
-        return { success: false, steps, timing: buildTiming(startTime) };
-    }
+    if (scenario !== 'flash-backend' && scenario !== 'restart-only') {
+        steps.push({ step: 'Construyendo frontend', status: 'running' });
+        try {
+            const cleanNodeModules = scenario === 'hard-reset' ? `Remove-Item -Recurse -Force 'node_modules' -ErrorAction SilentlyContinue; ` : '';
+            const buildResult = await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ${gitPathFix}; ${nodePathFix}; Set-Location '${appDir}\\web-app'; ${cleanNodeModules}npm install --no-audit 2>&1; npm run build 2>&1 }`
+            );
+            steps[steps.length - 1] = { step: 'Construyendo frontend', status: 'success', detail: 'Build completado' };
+        } catch (e) {
+            steps[steps.length - 1] = { step: 'Construyendo frontend', status: 'error', detail: e.message };
+            return { success: false, steps, timing: buildTiming(startTime) };
+        }
 
-    // Step 4a: Copy web.config to dist (build wipes dist/, IIS needs web.config for URL Rewrite proxy)
-    // CRITICAL FIX: If web.config doesn't exist, the whole deploy must fail to prevent a 404 outage in IIS
-    steps.push({ step: 'Verificando web.config', status: 'running' });
-    try {
-        const wcResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
-            `$wcSrc = Join-Path '${appDir}' 'web-app\\web.config'; ` +
-            `$wcDst = Join-Path '${appDir}' 'web-app\\dist\\web.config'; ` +
-            `if (Test-Path $wcSrc) { Copy-Item $wcSrc $wcDst -Force; Write-Output 'OK' } else { throw 'Configuración web.config no encontrada en el código fuente. Despliegue abortado para prevenir caída de la aplicación.' } }`
-        );
-        steps[steps.length - 1] = { step: 'Verificando web.config', status: 'success', detail: 'Configuración IIS aplicada' };
-    } catch (e) {
-        steps[steps.length - 1] = { step: 'Verificando web.config', status: 'error', detail: e.message };
-        return { success: false, steps, timing: buildTiming(startTime) };
+        // Step 4a: Copy web.config to dist (build wipes dist/, IIS needs web.config for URL Rewrite proxy)
+        // CRITICAL FIX: If web.config doesn't exist, the whole deploy must fail to prevent a 404 outage in IIS
+        steps.push({ step: 'Verificando web.config', status: 'running' });
+        try {
+            const wcResult = await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+                `$wcSrc = Join-Path '${appDir}' 'web-app\\web.config'; ` +
+                `$wcDst = Join-Path '${appDir}' 'web-app\\dist\\web.config'; ` +
+                `if (Test-Path $wcSrc) { Copy-Item $wcSrc $wcDst -Force; Write-Output 'OK' } else { throw 'Configuración web.config no encontrada en el código fuente. Despliegue abortado para prevenir caída de la aplicación.' } }`
+            );
+            steps[steps.length - 1] = { step: 'Verificando web.config', status: 'success', detail: 'Configuración IIS aplicada' };
+        } catch (e) {
+            steps[steps.length - 1] = { step: 'Verificando web.config', status: 'error', detail: e.message };
+            return { success: false, steps, timing: buildTiming(startTime) };
+        }
+    } else {
+        steps.push({ step: 'Construyendo frontend', status: 'success', detail: `Omitido (${scenario})` });
     }
 
     // Step 4b: Ensure PORT=3000 in server .env (critical: IIS proxies to port 3000)
-    steps.push({ step: 'Garantizando PORT=3000', status: 'running' });
-    try {
-        const portResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock {` +
-            ` $envPath = Join-Path '${appDir}' 'server\\.env';` +
-            ` if (Test-Path $envPath) {` +
-            `   $content = Get-Content $envPath -Raw;` +
-            `   if ($content -match '(?m)^PORT=') {` +
-            `     if ($content -notmatch '(?m)^PORT=3000') {` +
-            `       $content = $content -replace '(?m)^PORT=.*', 'PORT=3000';` +
-            `       [System.IO.File]::WriteAllText($envPath, $content);` +
-            `       Write-Output 'PORT corregido a 3000';` +
-            `     } else { Write-Output 'PORT=3000 ya configurado' }` +
-            `   } else {` +
-            `     Add-Content -Path $envPath -Value 'PORT=3000';` +
-            `     Write-Output 'PORT=3000 agregado al .env';` +
-            `   }` +
-            ` } else {` +
-            `   [System.IO.File]::WriteAllText($envPath, 'PORT=3000');` +
-            `   Write-Output '.env creado con PORT=3000';` +
-            ` } }`
-        );
-        steps[steps.length - 1] = { step: 'Garantizando PORT=3000', status: 'success', detail: portResult.trim() };
-    } catch (e) {
-        steps[steps.length - 1] = { step: 'Garantizando PORT=3000', status: 'warning', detail: `Error: ${e.message.substring(0, 200)}` };
-    }
+    if (scenario !== 'restart-only') {
+        steps.push({ step: 'Garantizando PORT=3000', status: 'running' });
+        try {
+            const portResult = await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock {` +
+                ` $envPath = Join-Path '${appDir}' 'server\\.env';` +
+                ` if (Test-Path $envPath) {` +
+                `   $content = Get-Content $envPath -Raw;` +
+                `   if ($content -match '(?m)^PORT=') {` +
+                `     if ($content -notmatch '(?m)^PORT=3000') {` +
+                `       $content = $content -replace '(?m)^PORT=.*', 'PORT=3000';` +
+                `       [System.IO.File]::WriteAllText($envPath, $content);` +
+                `       Write-Output 'PORT corregido a 3000';` +
+                `     } else { Write-Output 'PORT=3000 ya configurado' }` +
+                `   } else {` +
+                `     Add-Content -Path $envPath -Value 'PORT=3000';` +
+                `     Write-Output 'PORT=3000 agregado al .env';` +
+                `   }` +
+                ` } else {` +
+                `   [System.IO.File]::WriteAllText($envPath, 'PORT=3000');` +
+                `   Write-Output '.env creado con PORT=3000';` +
+                ` } }`
+            );
+            steps[steps.length - 1] = { step: 'Garantizando PORT=3000', status: 'success', detail: portResult.trim() };
+        } catch (e) {
+            steps[steps.length - 1] = { step: 'Garantizando PORT=3000', status: 'warning', detail: `Error: ${e.message.substring(0, 200)}` };
+        }
 
-    // Step 4c: Validate and auto-fix server infrastructure (NSSM paths + IIS VDir + web.config)
-    steps.push({ step: 'Configurando infraestructura', status: 'running' });
-    try {
-        const infraResult = await runPowerShell(
-            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock {` +
-            ` $fixes = @();` +
-            ` $appDir = '${appDir}';` +
-            ` $serverDir = Join-Path $appDir 'server';` +
-            ` $distDir = Join-Path $appDir 'web-app\\dist';` +
-
-            // --- NSSM AppDirectory ---
-            ` $regPath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\CalendarioPresupuesto-API\\Parameters';` +
-            ` $reg = Get-ItemProperty $regPath -ErrorAction SilentlyContinue;` +
-            ` if ($reg) {` +
-            `   if ($reg.AppDirectory -ne $serverDir) {` +
-            `     Set-ItemProperty $regPath -Name 'AppDirectory' -Value $serverDir;` +
-            `     $fixes += "NSSM AppDirectory: $($reg.AppDirectory) -> $serverDir";` +
-            `   }` +
-
-            // --- NSSM AppParameters ---
-            `   $expectedParams = Join-Path $serverDir 'server.js';` +
-            `   if ($reg.AppParameters -and $reg.AppParameters -ne $expectedParams) {` +
-            `     Set-ItemProperty $regPath -Name 'AppParameters' -Value $expectedParams;` +
-            `     $fixes += "NSSM AppParams: $($reg.AppParameters) -> $expectedParams";` +
-            `   }` +
-            ` } else { $fixes += 'NSSM: no service found (OK if not using NSSM)' };` +
-
-            // --- IIS VDir ---
-            ` $vdir = & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' list vdir 'CalendarioPresupuesto/' /text:physicalPath 2>$null;` +
-            ` if ($vdir -and $vdir.Trim() -ne $distDir) {` +
-            `   & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' set vdir 'CalendarioPresupuesto/' /physicalPath:$distDir 2>$null;` +
-            `   $fixes += "IIS VDir: $($vdir.Trim()) -> $distDir";` +
-            ` };` +
-
-            // --- web.config in dist ---
-            ` $wcSrc = Join-Path $appDir 'web-app\\web.config';` +
-            ` $wcDst = Join-Path $distDir 'web.config';` +
-            ` if ((Test-Path $wcSrc) -and -not (Test-Path $wcDst)) {` +
-            `   Copy-Item $wcSrc $wcDst -Force;` +
-            `   $fixes += 'web.config copiado a dist';` +
-            ` } elseif ((Test-Path $wcSrc) -and (Test-Path $wcDst)) {` +
-            `   $srcHash = (Get-FileHash $wcSrc).Hash;` +
-            `   $dstHash = (Get-FileHash $wcDst).Hash;` +
-            `   if ($srcHash -ne $dstHash) {` +
-            `     Copy-Item $wcSrc $wcDst -Force;` +
-            `     $fixes += 'web.config actualizado en dist';` +
-            `   }` +
-            ` };` +
-
-            // --- Output ---
-            ` if ($fixes.Count -eq 0) { Write-Output 'Sin cambios necesarios' }` +
-            ` else { Write-Output ($fixes -join '; ') }` +
-            ` }`
-        );
-        const detail = infraResult.trim();
-        const hasChanges = detail !== 'Sin cambios necesarios';
-        steps[steps.length - 1] = {
-            step: 'Configurando infraestructura',
-            status: hasChanges ? 'success' : 'success',
-            detail: hasChanges ? `✅ ${detail}` : '✓ Rutas NSSM, IIS y web.config correctas'
-        };
-    } catch (e) {
-        steps[steps.length - 1] = {
-            step: 'Configurando infraestructura',
-            status: 'error',
-            detail: `Falló la configuración de infraestructura: ${e.message.substring(0, 200)}`
-        };
-        // Fatal — without proper infra, the server won't respond anyway
-        return { success: false, steps, timing: buildTiming(startTime) };
+        // Step 4c: Validate and auto-fix server infrastructure (NSSM paths + IIS VDir + web.config)
+        steps.push({ step: 'Configurando infraestructura', status: 'running' });
+        try {
+            const infraResult = await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock {` +
+                ` $fixes = @();` +
+                ` $appDir = '${appDir}';` +
+                ` $serverDir = Join-Path $appDir 'server';` +
+                ` $distDir = Join-Path $appDir 'web-app\\dist';` +
+                // --- NSSM AppDirectory ---
+                ` $regPath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\CalendarioPresupuesto-API\\Parameters';` +
+                ` $reg = Get-ItemProperty $regPath -ErrorAction SilentlyContinue;` +
+                ` if ($reg) {` +
+                `   if ($reg.AppDirectory -ne $serverDir) {` +
+                `     Set-ItemProperty $regPath -Name 'AppDirectory' -Value $serverDir;` +
+                `     $fixes += "NSSM AppDirectory: $($reg.AppDirectory) -> $serverDir";` +
+                `   }` +
+                `   $expectedParams = Join-Path $serverDir 'server.js';` +
+                `   if ($reg.AppParameters -and $reg.AppParameters -ne $expectedParams) {` +
+                `     Set-ItemProperty $regPath -Name 'AppParameters' -Value $expectedParams;` +
+                `     $fixes += "NSSM AppParams: $($reg.AppParameters) -> $expectedParams";` +
+                `   }` +
+                ` } else { $fixes += 'NSSM: no service found (OK if not using NSSM)' };` +
+                // --- IIS VDir ---
+                ` $vdir = & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' list vdir 'CalendarioPresupuesto/' /text:physicalPath 2>$null;` +
+                ` if ($vdir -and $vdir.Trim() -ne $distDir) {` +
+                `   & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' set vdir 'CalendarioPresupuesto/' /physicalPath:$distDir 2>$null;` +
+                `   $fixes += "IIS VDir: $($vdir.Trim()) -> $distDir";` +
+                ` };` +
+                // --- web.config in dist ---
+                ` $wcSrc = Join-Path $appDir 'web-app\\web.config';` +
+                ` $wcDst = Join-Path $distDir 'web.config';` +
+                ` if ((Test-Path $wcSrc) -and -not (Test-Path $wcDst)) {` +
+                `   Copy-Item $wcSrc $wcDst -Force;` +
+                `   $fixes += 'web.config copiado a dist';` +
+                ` } elseif ((Test-Path $wcSrc) -and (Test-Path $wcDst)) {` +
+                `   $srcHash = (Get-FileHash $wcSrc).Hash;` +
+                `   $dstHash = (Get-FileHash $wcDst).Hash;` +
+                `   if ($srcHash -ne $dstHash) {` +
+                `     Copy-Item $wcSrc $wcDst -Force;` +
+                `     $fixes += 'web.config actualizado en dist';` +
+                `   }` +
+                ` };` +
+                ` if ($fixes.Count -eq 0) { Write-Output 'Sin cambios necesarios' }` +
+                ` else { Write-Output ($fixes -join '; ') }` +
+                ` }`
+            );
+            const detail = infraResult.trim();
+            const hasChanges = detail !== 'Sin cambios necesarios';
+            steps[steps.length - 1] = { step: 'Configurando infraestructura', status: 'success', detail: hasChanges ? `✅ ${detail}` : '✓ Rutas NSSM, IIS y web.config correctas' };
+        } catch (e) {
+            steps[steps.length - 1] = {
+                step: 'Configurando infraestructura',
+                status: 'error',
+                detail: `Falló la configuración de infraestructura: ${e.message.substring(0, 200)}`
+            };
+            // Fatal — without proper infra, the server won't respond anyway
+            return { success: false, steps, timing: buildTiming(startTime) };
+        }
     }
 
     // Step 5: Restart service
     steps.push({ step: 'Reiniciando servicio', status: 'running' });
     try {
+        const skipNode = scenario === 'flash-frontend';
+        const skipIIS = scenario === 'flash-backend';
         const restartResult = await runPowerShell(
             `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
             `$output = @(); ` +
-            `$svc = Get-Service 'CalendarioPresupuesto-API' -ErrorAction SilentlyContinue; ` +
-            `if ($svc) { ` +
-            `  Stop-Service 'CalendarioPresupuesto-API' -Force -ErrorAction SilentlyContinue; ` +
-            `  Start-Sleep -Seconds 2; ` +
+            `if (-not $${skipNode}) { ` +
+            `  $svc = Get-Service 'CalendarioPresupuesto-API' -ErrorAction SilentlyContinue; ` +
+            `  if ($svc) { Stop-Service 'CalendarioPresupuesto-API' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; } ` +
+            `  Get-WmiObject Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like "*${appDir.replace(/\\/g, '\\\\')}*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; ` +
+            `  Start-Sleep -Seconds 1; ` +
             `} ` +
-            `# SAFELY KILL ONLY OUR NODE PROCESSES ` +
-            `Get-WmiObject Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like "*${appDir.replace(/\\/g, '\\\\')}*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; ` +
-            `Start-Sleep -Seconds 1; ` +
-            `$iisPool = & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' list apppool /name:DefaultAppPool 2>$null; ` +
-            `if ($iisPool) { ` +
-            `& 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' stop apppool DefaultAppPool 2>$null; ` +
-            `Start-Sleep -Seconds 2; ` +
-            `& 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' start apppool DefaultAppPool 2>$null; ` +
-            `$output += 'IIS AppPool reciclado'; ` +
+            `if (-not $${skipIIS}) { ` +
+            `  $iisPool = & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' list apppool /name:DefaultAppPool 2>$null; ` +
+            `  if ($iisPool) { & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' stop apppool DefaultAppPool 2>$null; Start-Sleep -Seconds 2; & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' start apppool DefaultAppPool 2>$null; $output += 'IIS AppPool reciclado'; } ` +
             `} ` +
-            `if ($svc) { ` +
-            `Start-Service 'CalendarioPresupuesto-API' -ErrorAction SilentlyContinue; ` +
-            `$output += 'Servicio NSSM reiniciado'; ` +
-            `} ` +
-            `if ($output.Count -eq 0) { ` +
-            `Start-Process cmd -ArgumentList '/c cd /d ${appDir}\\\\server && node server.js' -WindowStyle Hidden; ` +
-            `$output += 'Node.js reiniciado manualmente'; ` +
+            `if (-not $${skipNode}) { ` +
+            `  if ($svc) { Start-Service 'CalendarioPresupuesto-API' -ErrorAction SilentlyContinue; $output += 'Servicio NSSM API reiniciado'; } ` +
+            `  if ($output.Count -eq 0) { Start-Process cmd -ArgumentList '/c cd /d ${appDir}\\\\server && node server.js' -WindowStyle Hidden; $output += 'Node.js reiniciado manual'; } ` +
             `} ` +
             `Write-Output ($output -join '. ') }`
         );
-        steps[steps.length - 1] = { step: 'Reiniciando servicio', status: 'success', detail: restartResult.trim() };
+        steps[steps.length - 1] = { step: 'Reiniciando servicio', status: 'success', detail: restartResult.trim() || 'Servicios reiniciados' };
     } catch (e) {
         steps[steps.length - 1] = { step: 'Reiniciando servicio', status: 'error', detail: e.message };
         return { success: false, steps, timing: buildTiming(startTime) };

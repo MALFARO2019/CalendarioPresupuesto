@@ -1430,12 +1430,13 @@ export async function deployToServer(
     appDir: string,
     version: string,
     notes: string,
-    branch?: string
+    branch?: string,
+    scenario?: string
 ): Promise<{ success: boolean; steps: { step: string; status: string; detail?: string }[]; entryId: number; timing?: { startTime: string; endTime: string; durationMinutes: number } }> {
     const response = await fetch(`${API_BASE}/deploy/publish`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ serverIp, user, password, appDir, version, notes, branch: branch || 'main' })
+        body: JSON.stringify({ serverIp, user, password, appDir, version, notes, branch: branch || 'main', scenario: scenario || 'standard' })
     });
     if (!response.ok) {
         const err = await response.json();

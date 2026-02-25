@@ -122,6 +122,7 @@ export function DeployManagement() {
     // Git branch & status state
     const [branches, setBranches] = useState<string[]>(['main']);
     const [selectedBranch, setSelectedBranch] = useState('main');
+    const [scenario, setScenario] = useState('standard');
     const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
     const [gitStatusLoading, setGitStatusLoading] = useState(false);
     const [newServers, setNewServers] = useState('10.29.1.25');
@@ -316,7 +317,7 @@ export function DeployManagement() {
             }
 
             // Remote deploy
-            const result = await deployToServer(selectedServer.ip, selectedServer.user, selectedServer.password, selectedServer.appDir, version, notes, selectedBranch);
+            const result = await deployToServer(selectedServer.ip, selectedServer.user, selectedServer.password, selectedServer.appDir, version, notes, selectedBranch, scenario);
 
             // Merge steps: keep the push step (if any), replace the rest
             if (hasPendingChanges) {
@@ -736,8 +737,8 @@ export function DeployManagement() {
                             )}
                         </div>
 
-                        {/* Version, Branch & Notes */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Version, Branch & Scenario */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5">Versión *</label>
                                 <select value={version} onChange={e => setVersion(e.target.value)}
@@ -757,6 +758,18 @@ export function DeployManagement() {
                                     {branches.map(b => (
                                         <option key={b} value={b}>{b}{b === gitStatus?.currentBranch ? ' ← actual' : ''}</option>
                                     ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5" title="Define la estrategia de despliegue">Escenario</label>
+                                <select value={scenario} onChange={e => setScenario(e.target.value)}
+                                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm font-mono transition-all bg-white appearance-none"
+                                    disabled={deploying}>
+                                    <option value="standard">Estándar (Completo)</option>
+                                    <option value="flash-backend">Flash Backend (Solo API ⚡)</option>
+                                    <option value="flash-frontend">Flash Frontend (Sin downtime ⚡)</option>
+                                    <option value="hard-reset">Hard Reset (Asegurar ⚠️)</option>
+                                    <option value="restart-only">Reiniciar Servicios (🔌)</option>
                                 </select>
                             </div>
                         </div>

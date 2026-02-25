@@ -191,7 +191,7 @@ app.post('/api/deploy/log', authMiddleware, (req, res) => {
 app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
     if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
     try {
-        const { serverIp, user, password, appDir, version, notes, branch } = req.body;
+        const { serverIp, user, password, appDir, version, notes, branch, scenario = 'standard' } = req.body;
         if (!serverIp || !user || !password || !appDir) {
             return res.status(400).json({ error: 'Faltan parámetros: serverIp, user, password, appDir' });
         }
@@ -219,7 +219,7 @@ app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
         );
 
         // Execute deploy
-        const result = await deployModule.deployToServer(serverIp, user, password, appDir, version, branch);
+        const result = await deployModule.deployToServer(serverIp, user, password, appDir, version, branch, scenario);
 
         // Update log entry with result
         deployModule.updateDeployEntry(entry.id, {
