@@ -170,7 +170,12 @@ function updateDeployEntry(id, updates) {
 
 function runPowerShell(script) {
     return new Promise((resolve, reject) => {
-        const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "${script.replace(/"/g, '\\"')}"`;
+        // Use -EncodedCommand to avoid escaping issues with complex characters or long commands
+        // This requires a Base64 string of the UTF-16LE bytes of the script
+        const buffer = Buffer.from(script, 'utf16le');
+        const encodedCmd = buffer.toString('base64');
+        const psCmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encodedCmd}`;
+
         exec(psCmd, { maxBuffer: 1024 * 1024, timeout: 300000 }, (error, stdout, stderr) => {
             if (error) {
                 reject(new Error(`${error.message}\nStderr: ${stderr}\nStdout: ${stdout}`));

@@ -1341,6 +1341,59 @@
           "detail": "API responde v1.3 ✓"
         }
       ]
+    },
+    {
+      "id": 1772121446518,
+      "version": "v1.4",
+      "date": "2026-02-26T15:57:26.518Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "error",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 5aab732 Mejoras en sistema de notificaciones, reportes y scripts de verificaci��n"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.4 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Verificando web.config",
+          "status": "success",
+          "detail": "Configuración IIS aplicada"
+        },
+        {
+          "step": "Garantizando PORT=3000",
+          "status": "success",
+          "detail": "PORT=3000 ya configurado"
+        },
+        {
+          "step": "Configurando infraestructura",
+          "status": "error",
+          "detail": "Falló la configuración de infraestructura: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Management.Automation.PSCredential('Administrador', (ConvertTo-SecureString 'R0st1p017' -AsPlainText -"
+        }
+      ]
     }
   ]
 }
