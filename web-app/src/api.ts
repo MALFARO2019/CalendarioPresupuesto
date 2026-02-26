@@ -1990,6 +1990,13 @@ export interface ReportAccess {
     PerfilNombre: string;
 }
 
+export interface ReportUserAccess {
+    ReporteID: number;
+    UsuarioID: number;
+    UsuarioNombre: string;
+    UsuarioEmail: string;
+}
+
 export interface ReportPreviewResult {
     columns: ReportColumn[] | null;
     data: Record<string, any>[];
@@ -2078,6 +2085,20 @@ export async function setReportAccess(reportId: number, perfilIds: number[]): Pr
         method: 'PUT', headers: authHeaders(), body: JSON.stringify({ perfilIds })
     });
     if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error setting access'); }
+    return response.json();
+}
+
+export async function fetchReportUserAccess(): Promise<ReportUserAccess[]> {
+    const response = await fetch(`${API_BASE}/reports/user-access`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching report user access');
+    return response.json();
+}
+
+export async function updateReportUserAccess(reportId: number, userIds: number[]): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/reports/${reportId}/user-access`, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify({ userIds })
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error setting user-specific access'); }
     return response.json();
 }
 
@@ -2207,6 +2228,15 @@ export async function saveNotificacionAdmin(data: Partial<NotificacionAdmin> & {
 
 export async function deleteNotificacionAdmin(id: number): Promise<void> {
     const r = await fetch(`${API_BASE}/notificaciones/${id}`, { method: 'DELETE', headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+}
+
+export async function toggleNotificacionActivaAdmin(id: number, activo: boolean): Promise<void> {
+    const r = await fetch(`${API_BASE}/notificaciones/${id}/toggle-activo`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ activo })
+    });
     if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
 }
 

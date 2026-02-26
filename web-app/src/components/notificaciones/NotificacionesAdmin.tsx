@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     fetchNotificacionesAdmin, saveNotificacionAdmin, deleteNotificacionAdmin,
+    toggleNotificacionActivaAdmin, // Agregado
     fetchClasificaciones, fetchNotifReporteLineal, fetchNotifReporteAgrupado,
+    getUser, // Agregado para verificar esAdmin
     type NotificacionAdmin, type ClasificacionNotif,
     type NotifLogEntry, type NotifReporteAgrupado
 } from '../../api';
@@ -29,6 +31,7 @@ export const NotificacionesAdmin: React.FC = () => {
     const [guardando, setGuardando] = useState(false);
     const [error, setError] = useState('');
     const [uploadingImg, setUploadingImg] = useState(false);
+    const user = getUser(); // Usuario actual
 
     // Reportes
     const [reporteTipo, setReporteTipo] = useState<'lineal' | 'agrupado'>('lineal');
@@ -90,9 +93,20 @@ export const NotificacionesAdmin: React.FC = () => {
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('¿Desactivar esta notificación?')) return;
-        try { await deleteNotificacionAdmin(id); await loadData(); }
-        catch (e: any) { setError(e.message); }
+        if (!confirm('¿ESTÁ SEGURO DE ELIMINAR ESTA NOTIFICACIÓN? Esta acción es permanente y se borrará de la base de datos.')) return;
+        try {
+            await deleteNotificacionAdmin(id);
+            await loadData();
+            setError('');
+        } catch (e: any) { setError(e.message); }
+    };
+
+    const handleToggleActivo = async (id: number, currentStatus: boolean) => {
+        try {
+            await toggleNotificacionActivaAdmin(id, !currentStatus);
+            await loadData();
+            setError('');
+        } catch (e: any) { setError(e.message); }
     };
 
     const buscarReporte = async () => {
@@ -179,8 +193,10 @@ export const NotificacionesAdmin: React.FC = () => {
                                                 <div className="flex gap-2 justify-end">
                                                     <button onClick={() => editarNotif(n)}
                                                         className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">Editar</button>
-                                                    <button onClick={() => handleDelete(n.Id)}
-                                                        className="text-xs text-red-500 hover:text-red-700 font-medium">Desactivar</button>
+                                                    <button onClick={() => handleToggleActivo(n.Id, !!n.Activo)}
+                                                        className={`text-xs font-medium ${n.Activo ? 'text-amber-600 hover:text-amber-800' : 'text-green-600 hover:text-green-800'}`}>
+                                                        {n.Activo ? 'Desactivar' : 'Activar'}
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -405,20 +421,13 @@ export const NotificacionesAdmin: React.FC = () => {
                         </div>
 
                         <div className="px-5 py-4 border-t border-gray-100 flex gap-3">
-                            {editItem.id && (
+                            {editItem.id && user?.esAdmin && (
                                 <button
-                                    onClick={async () => {
-                                        if (!confirm('¿Desactivar esta notificación?')) return;
-                                        try {
-                                            await deleteNotificacionAdmin(editItem.id!);
-                                            await loadData();
-                                            setEditItem(null);
-                                        } catch (e: any) { setError(e.message); }
-                                    }}
+                                    onClick={() => handleDelete(editItem.id!)}
                                     className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors"
-                                    title="Desactivar notificación"
+                                    title="Eliminar permanentemente"
                                 >
-                                    🗑️ Borrar
+                                    🗑️ Eliminar
                                 </button>
                             )}
                             <button onClick={() => { setEditItem(null); setError(''); }}

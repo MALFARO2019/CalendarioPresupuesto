@@ -25,6 +25,7 @@ export const NotificacionesBell: React.FC<Props> = ({ versionActual }) => {
     const [modalCodigo, setModalCodigo] = useState('');
     const [modalError, setModalError] = useState('');
     const [confirmando, setConfirmando] = useState(false);
+    const [zoomImagen, setZoomImagen] = useState<string | null>(null);
 
     // Versión expandida
     const [versionDetalle, setVersionDetalle] = useState<string | null>(null);
@@ -85,8 +86,8 @@ export const NotificacionesBell: React.FC<Props> = ({ versionActual }) => {
         try {
             setConfirmando(true);
             await revisarNotificacion(modalNotif.Id, modalComentario || undefined, modalCodigo || undefined);
-            setModalNotif(null);
-            await loadPendientes();
+            setModalNotif(null); // Cerrar inmediatamente después de éxito
+            loadPendientes(); // No esperar a que cargue para cerrar
         } catch (e: any) {
             setModalError(e.message || 'Error al confirmar');
         } finally {
@@ -220,7 +221,12 @@ export const NotificacionesBell: React.FC<Props> = ({ versionActual }) => {
                         <div className="p-5 space-y-4">
                             {/* Imagen opcional */}
                             {modalNotif.ImagenUrl && (
-                                <img src={modalNotif.ImagenUrl} alt="" className="w-full rounded-xl object-cover max-h-40" />
+                                <div className="relative group cursor-zoom-in" onClick={() => setZoomImagen(modalNotif.ImagenUrl!)}>
+                                    <img src={modalNotif.ImagenUrl} alt="" className="w-full rounded-xl object-cover max-h-48 border border-gray-100 shadow-sm transition-transform active:scale-[0.98]" />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                        <span className="bg-white/90 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-sm uppercase tracking-wider">Ampliar vista</span>
+                                    </div>
+                                </div>
                             )}
 
                             {/* Texto */}
@@ -317,6 +323,29 @@ export const NotificacionesBell: React.FC<Props> = ({ versionActual }) => {
                                 ✅ Marcar como leída
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* Modal Zoom Imagen */}
+            {zoomImagen && (
+                <div
+                    className="fixed inset-0 z-[10000] flex items-center justify-center p-2 bg-black/90 backdrop-blur-md cursor-zoom-out"
+                    onClick={() => setZoomImagen(null)}
+                >
+                    <div className="relative max-w-full max-h-full flex items-center justify-center">
+                        <img
+                            src={zoomImagen}
+                            alt="Zoom"
+                            className="max-w-[95vw] max-h-[95vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200"
+                        />
+                        <button
+                            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border border-white/20"
+                            onClick={(e) => { e.stopPropagation(); setZoomImagen(null); }}
+                        >
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             )}

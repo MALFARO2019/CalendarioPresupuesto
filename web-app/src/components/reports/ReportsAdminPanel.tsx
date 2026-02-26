@@ -7,24 +7,31 @@ import {
     deleteReport as apiDeleteReport,
     fetchReportAccess,
     setReportAccess,
+    fetchReportUserAccess,
+    updateReportUserAccess,
     fetchProfiles,
+    fetchAdminUsers,
     previewReport,
     type Report,
     type ReportAccess,
+    type ReportUserAccess,
     type Profile,
+    type User,
     type ReportPreviewResult
 } from '../../api';
 import {
-    Plus, Edit2, Trash2, Save, X, Loader2, Eye, Shield, AlertCircle, Check, Database
+    Plus, Edit2, Trash2, Save, X, Loader2, Eye, Shield, AlertCircle, Check, Database, Users, User as UserIcon
 } from 'lucide-react';
 
 export function ReportsAdminPanel() {
     const { showToast } = useToast();
     const [reports, setReports] = useState<Report[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
     const [access, setAccess] = useState<ReportAccess[]>([]);
+    const [userAccess, setUserAccess] = useState<ReportUserAccess[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeSubTab, setActiveSubTab] = useState<'config' | 'access'>('config');
+    const [activeSubTab, setActiveSubTab] = useState<'config' | 'access-profiles' | 'access-users'>('config');
 
     // Edit/Create form
     const [editReport, setEditReport] = useState<Partial<Report> | null>(null);
@@ -42,14 +49,18 @@ export function ReportsAdminPanel() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [reps, profs, acc] = await Promise.all([
+            const [reps, profs, acc, uAcc, allUsers] = await Promise.all([
                 fetchReports(),
                 fetchProfiles(),
-                fetchReportAccess().catch(() => [])
+                fetchReportAccess().catch(() => []),
+                fetchReportUserAccess().catch(() => []),
+                fetchAdminUsers().catch(() => [])
             ]);
             setReports(reps);
             setProfiles(profs);
             setAccess(acc);
+            setUserAccess(uAcc);
+            setUsers(allUsers);
         } catch (err: any) {
             showToast('Error: ' + err.message, 'error');
         } finally {
@@ -125,6 +136,20 @@ export function ReportsAdminPanel() {
         }
     };
 
+    const handleToggleUserAccess = async (reporteId: number, userId: number, hasAccess: boolean) => {
+        const currentUserIds = userAccess.filter(a => a.ReporteID === reporteId).map(a => a.UsuarioID);
+        const newUserIds = hasAccess
+            ? currentUserIds.filter(id => id !== userId)
+            : [...currentUserIds, userId];
+        try {
+            await updateReportUserAccess(reporteId, newUserIds);
+            showToast('Acceso de usuario actualizado', 'success');
+            loadData();
+        } catch (err: any) {
+            showToast('Error: ' + err.message, 'error');
+        }
+    };
+
     const handlePreview = async (reportId: number) => {
         setPreviewLoading(true);
         setPreviewData(null);
@@ -148,14 +173,18 @@ export function ReportsAdminPanel() {
     return (
         <div>
             {/* Sub-tabs */}
-            <div className="flex gap-2 mb-6">
+            <div className="flex flex-wrap gap-2 mb-6">
                 <button onClick={() => setActiveSubTab('config')}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeSubTab === 'config' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                    <Database className="w-3.5 h-3.5 inline mr-1.5" />Configurar Reportes
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'config' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                    <Database className="w-4 h-4" /> Configurar Reportes
                 </button>
-                <button onClick={() => setActiveSubTab('access')}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeSubTab === 'access' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                    <Shield className="w-3.5 h-3.5 inline mr-1.5" />Control de Acceso
+                <button onClick={() => setActiveSubTab('access-profiles')}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'access-profiles' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                    <Users className="w-4 h-4" /> Por Perfil
+                </button>
+                <button onClick={() => setActiveSubTab('access-users')}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'access-users' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                    <UserIcon className="w-4 h-4" /> Por Usuario
                 </button>
             </div>
 
@@ -366,8 +395,8 @@ export function ReportsAdminPanel() {
                     )}
                     {previewLoading && <div className="mt-4 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-indigo-500" /></div>}
                 </>
-            ) : (
-                /* ACCESS CONTROL TAB */
+            ) : activeSubTab === 'access-profiles' ? (
+                /* PROFILES ACCESS TAB */
                 <>
                     {reports.length === 0 || profiles.length === 0 ? (
                         <div className="text-center py-12">
@@ -411,7 +440,55 @@ export function ReportsAdminPanel() {
                         </div>
                     )}
                 </>
+            ) : (
+                /* USER ACCESS TAB */
+                <>
+                    {reports.length === 0 || users.length === 0 ? (
+                        <div className="text-center py-12">
+                            <AlertCircle className="w-8 h-8 mx-auto mb-3 text-amber-400" />
+                            <p className="text-gray-500">Se necesitan reportes y usuarios para gestionar acceso individual</p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr>
+                                        <th className="px-3 py-2 bg-gray-50 text-left font-bold text-gray-600 text-xs border-b-2 border-gray-200 sticky left-0 bg-gray-50 z-10">Usuario</th>
+                                        {reports.map(r => (
+                                            <th key={r.ID} className="px-3 py-2 bg-gray-50 text-center font-bold text-gray-600 text-xs border-b-2 border-gray-200 whitespace-nowrap">
+                                                {r.Icono} {r.Nombre}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {users.filter(u => u.activo).map(usr => (
+                                        <tr key={usr.id} className="hover:bg-indigo-50/30">
+                                            <td className="px-3 py-2.5 border-b border-gray-100 sticky left-0 bg-white z-10 min-w-[200px]">
+                                                <div className="flex flex-col">
+                                                    <span className="font-semibold text-gray-800 text-xs">{usr.nombre}</span>
+                                                    <span className="text-[10px] text-gray-400">{usr.email}</span>
+                                                </div>
+                                            </td>
+                                            {reports.map(report => {
+                                                const hasAccess = userAccess.some(a => a.ReporteID === report.ID && a.UsuarioID === usr.id);
+                                                return (
+                                                    <td key={report.ID} className="px-3 py-2.5 text-center border-b border-gray-100">
+                                                        <button onClick={() => handleToggleUserAccess(report.ID, usr.id, hasAccess)}
+                                                            className={`w-7 h-7 rounded-lg transition-all inline-flex items-center justify-center ${hasAccess ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200' : 'bg-gray-100 text-gray-300 hover:bg-gray-200'}`}>
+                                                            {hasAccess ? <Check className="w-4 h-4" /> : <X className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </>
             )}
-        </div>
+        </div >
     );
 }

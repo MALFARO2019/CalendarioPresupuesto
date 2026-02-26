@@ -63,7 +63,8 @@ async function ensureReportsTables() {
             CREATE TABLE DIM_REPORTE_ACCESO (
                 ID INT IDENTITY(1,1) PRIMARY KEY,
                 ReporteID INT NOT NULL,
-                PerfilID INT NOT NULL,
+                PerfilID INT NULL,
+                UsuarioID INT NULL,
                 FechaAsignacion DATETIME DEFAULT GETDATE(),
                 AsignadoPor NVARCHAR(200) NULL,
                 CONSTRAINT FK_Acceso_Reporte FOREIGN KEY (ReporteID) REFERENCES DIM_REPORTES(ID) ON DELETE CASCADE
@@ -73,12 +74,12 @@ async function ensureReportsTables() {
         // Add permission columns if missing
         try {
             await pool.request().query(`
-                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('DIM_USUARIOS') AND name = 'AccesoReportes')
-                ALTER TABLE DIM_USUARIOS ADD AccesoReportes BIT DEFAULT 0
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AccesoReportes')
+                ALTER TABLE APP_USUARIOS ADD AccesoReportes BIT DEFAULT 0
             `);
             await pool.request().query(`
-                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('DIM_PERFILES') AND name = 'AccesoReportes')
-                ALTER TABLE DIM_PERFILES ADD AccesoReportes BIT DEFAULT 0
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_PERFILES') AND name = 'AccesoReportes')
+                ALTER TABLE APP_PERFILES ADD AccesoReportes BIT DEFAULT 0
             `);
         } catch (e) {
             console.warn('⚠️ Reports: Could not add permission columns:', e.message);
@@ -106,6 +107,19 @@ async function ensureReportsTables() {
             `);
         } catch (e) {
             console.warn('⚠️ Reports: Could not add new config columns:', e.message);
+        }
+
+        // Add UsuarioID to DIM_REPORTE_ACCESO and make PerfilID nullable if missing
+        try {
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('DIM_REPORTE_ACCESO') AND name = 'UsuarioID')
+                ALTER TABLE DIM_REPORTE_ACCESO ADD UsuarioID INT NULL
+            `);
+            await pool.request().query(`
+                ALTER TABLE DIM_REPORTE_ACCESO ALTER COLUMN PerfilID INT NULL
+            `);
+        } catch (e) {
+            console.warn('⚠️ Reports: Could not update DIM_REPORTE_ACCESO columns:', e.message);
         }
 
 
@@ -168,12 +182,12 @@ async function getReportsForUser(userId, perfilId) {
                 s.Activo AS SuscripcionActiva,
                 s.ID AS SuscripcionID
             FROM DIM_REPORTES r
-            LEFT JOIN DIM_REPORTE_ACCESO a ON a.ReporteID = r.ID AND a.PerfilID = @perfilId
             LEFT JOIN DIM_REPORTE_SUSCRIPCIONES s ON s.ReporteID = r.ID AND s.UsuarioID = @userId
             WHERE r.Activo = 1
-              AND (a.PerfilID IS NOT NULL OR EXISTS (
-                  SELECT 1 FROM DIM_USUARIOS WHERE ID = @userId AND (EsAdmin = 1 OR AccesoReportes = 1)
-              ))
+              AND (
+                  EXISTS (SELECT 1 FROM DIM_REPORTE_ACCESO a WHERE a.ReporteID = r.ID AND (a.PerfilID = @perfilId OR a.UsuarioID = @userId))
+                  OR EXISTS (SELECT 1 FROM APP_USUARIOS WHERE Id = @userId AND (EsAdmin = 1 OR AccesoReportes = 1))
+              )
             ORDER BY r.Orden, r.Nombre
         `);
     return result.recordset;
@@ -480,7 +494,7 @@ async function getDueSubscriptions(currentHour, currentMinute, dayOfWeek, dayOfM
                 u.Email, u.Nombre AS UsuarioNombre
             FROM DIM_REPORTE_SUSCRIPCIONES s
             JOIN DIM_REPORTES r ON r.ID = s.ReporteID AND r.Activo = 1
-            JOIN DIM_USUARIOS u ON u.ID = s.UsuarioID AND u.Activo = 1
+            JOIN APP_USUARIOS u ON u.Id = s.UsuarioID AND u.Activo = 1
             WHERE s.Activo = 1
               AND COALESCE(s.HoraEnvioPersonal, r.HoraEnvio) = @timeStr
               AND (

@@ -101,8 +101,17 @@ async function saveNotificacion(data, usuario) {
 
 async function deleteNotificacion(id) {
     const p = await pool();
+    // Borrado real (físico) de la tabla
     await p.request().input('id', sql.Int, id)
-        .query('UPDATE APP_Notificaciones SET Activo=0 WHERE Id=@id');
+        .query('DELETE FROM APP_Notificaciones WHERE Id=@id');
+}
+
+async function toggleNotificacionStatus(id, activo) {
+    const p = await pool();
+    await p.request()
+        .input('id', sql.Int, id)
+        .input('activo', sql.Bit, activo ? 1 : 0)
+        .query('UPDATE APP_Notificaciones SET Activo=@activo, FechaModificacion=GETDATE() WHERE Id=@id');
 }
 
 // ─── Notificaciones Pendientes para usuario ───
@@ -342,6 +351,7 @@ module.exports = {
     getNotificacionById,
     saveNotificacion,
     deleteNotificacion,
+    toggleNotificacionStatus,
     getNotificacionesPendientes,
     revisarNotificacion,
     getNotificacionesVersiones,

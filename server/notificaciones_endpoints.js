@@ -152,12 +152,27 @@ function registerNotificacionesEndpoints(app, authMiddleware) {
     app.delete('/api/notificaciones/:id', authMiddleware, async (req, res) => {
         try {
             if (!req.user.esAdmin) {
-                return res.status(403).json({ error: 'Solo administradores pueden eliminar notificaciones' });
+                return res.status(403).json({ error: 'Solo administradores pueden eliminar permanentemente notificaciones' });
             }
             await notificaciones.deleteNotificacion(parseInt(req.params.id));
-            res.json({ success: true });
+            res.json({ success: true, message: 'Notificación eliminada permanentemente' });
         } catch (err) {
             console.error('DELETE /api/notificaciones/:id:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Cambiar estado activo/inactivo
+    app.patch('/api/notificaciones/:id/toggle-activo', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin && !req.user.crearNotificaciones) {
+                return res.status(403).json({ error: 'No tiene permiso para cambiar el estado de notificaciones' });
+            }
+            const { activo } = req.body;
+            await notificaciones.toggleNotificacionStatus(parseInt(req.params.id), activo);
+            res.json({ success: true });
+        } catch (err) {
+            console.error('PATCH /api/notificaciones/:id/toggle-activo:', err);
             res.status(500).json({ error: err.message });
         }
     });

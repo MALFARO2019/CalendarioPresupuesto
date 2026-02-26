@@ -12,7 +12,7 @@ function registerReportsEndpoints(app, authMiddleware) {
     // GET /api/reports — get reports available to current user
     app.get('/api/reports', authMiddleware, async (req, res) => {
         try {
-            const userId = req.user.id;
+            const userId = req.user.userId;
             const perfilId = req.user.perfilId || 0;
             const isAdmin = req.user.esAdmin;
 
@@ -90,7 +90,7 @@ function registerReportsEndpoints(app, authMiddleware) {
     // GET /api/reports/subscriptions — my subscriptions
     app.get('/api/reports/subscriptions', authMiddleware, async (req, res) => {
         try {
-            const subs = await reportsDb.getSubscriptions(req.user.id);
+            const subs = await reportsDb.getSubscriptions(req.user.userId);
             res.json(subs);
         } catch (error) {
             console.error('❌ GET /api/reports/subscriptions error:', error.message);
@@ -158,6 +158,52 @@ function registerReportsEndpoints(app, authMiddleware) {
             res.json({ success: true });
         } catch (error) {
             console.error('❌ PUT /api/reports/:id/access error:', error.message);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // GET /api/reports/user-access — get user-specific access matrix (admin only)
+    app.get('/api/reports/user-access', authMiddleware, async (req, res) => {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+        try {
+            // This would return users with direct report assignments
+            const pool = await require('./db').poolPromise;
+            const result = await pool.request().query(`
+                SELECT a.ReporteID, a.UsuarioID, u.Nombre AS UsuarioNombre, u.Email AS UsuarioEmail
+                FROM DIM_REPORTE_ACCESO a
+                JOIN APP_USUARIOS u ON u.Id = a.UsuarioID
+                WHERE a.UsuarioID IS NOT NULL
+            `);
+            res.json(result.recordset);
+        } catch (error) {
+            console.error('❌ GET /api/reports/user-access error:', error.message);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // PUT /api/reports/:id/user-access — set specific user access (admin only)
+    app.put('/api/reports/:id/user-access', authMiddleware, async (req, res) => {
+        if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
+        try {
+            const { userIds } = req.body; // Array of user IDs to have direct access
+            const pool = await require('./db').poolPromise;
+
+            // Transaction-like bulk update for specific report
+            await pool.request()
+                .input('reporteId', require('./db').sql.Int, parseInt(req.params.id))
+                .query('DELETE FROM DIM_REPORTE_ACCESO WHERE ReporteID = @reporteId AND UsuarioID IS NOT NULL');
+
+            for (const uid of (userIds || [])) {
+                await pool.request()
+                    .input('reporteId', require('./db').sql.Int, parseInt(req.params.id))
+                    .input('userId', require('./db').sql.Int, uid)
+                    .input('assignedBy', require('./db').sql.NVarChar(200), req.user.email)
+                    .query('INSERT INTO DIM_REPORTE_ACCESO (ReporteID, UsuarioID, AsignadoPor) VALUES (@reporteId, @userId, @assignedBy)');
+            }
+
+            res.json({ success: true });
+        } catch (error) {
+            console.error('❌ PUT /api/reports/:id/user-access error:', error.message);
             res.status(500).json({ error: error.message });
         }
     });
