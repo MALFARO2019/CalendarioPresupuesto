@@ -16,11 +16,21 @@ function registerReportsEndpoints(app, authMiddleware) {
             const perfilId = req.user.perfilId || 0;
             const isAdmin = req.user.esAdmin;
 
-            let reports;
+            // Always get user-specific view (includes Suscrito, SuscripcionID)
+            let reports = await reportsDb.getReportsForUser(userId, perfilId);
+
+            // For admins, also fetch full list to merge admin-only data (TotalSuscriptores)
+            // and include any reports that the access filter might have excluded
             if (isAdmin) {
-                reports = await reportsDb.getReports();
-            } else {
-                reports = await reportsDb.getReportsForUser(userId, perfilId);
+                const allReports = await reportsDb.getReports();
+                const userMap = new Map(reports.map(r => [r.ID, r]));
+                reports = allReports.map(r => ({
+                    ...r,
+                    // Merge subscription info from user-specific query
+                    Suscrito: userMap.get(r.ID)?.Suscrito || 0,
+                    SuscripcionActiva: userMap.get(r.ID)?.SuscripcionActiva || 0,
+                    SuscripcionID: userMap.get(r.ID)?.SuscripcionID || null
+                }));
             }
 
             // Parse JSON fields for frontend

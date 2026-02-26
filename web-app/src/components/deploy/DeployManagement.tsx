@@ -11,10 +11,16 @@ import {
     fetchGitBranches,
     fetchGitStatus,
     commitAndPush,
+    fetchNotificacionesVersiones,
+    fetchVersionesDisponibles,
+    saveNotificacionVersion,
+    deleteNotificacionVersion,
+    fetchRuta,
     type DeployLogEntry,
     type SetupGuide,
     type ServerVersionInfo,
     type GitStatus,
+    type NotificacionVersion,
 } from '../../api';
 
 // ==========================================
@@ -78,7 +84,7 @@ function getDeployTimingHistory(): { durationMinutes: number }[] {
 
 export function DeployManagement() {
     const { showToast, showConfirm } = useToast();
-    const [activeSection, setActiveSection] = useState<'publish' | 'setup' | 'changelog'>('publish');
+    const [activeSection, setActiveSection] = useState<'publish' | 'setup' | 'changelog' | 'version-notes' | 'ruta'>('publish');
 
     // Multi-server state
     const [servers, setServers] = useState<ServerConfig[]>(loadServers);
@@ -118,6 +124,20 @@ export function DeployManagement() {
     const [showAddEntry, setShowAddEntry] = useState(false);
     const [newVersion, setNewVersion] = useState('');
     const [newNotes, setNewNotes] = useState('');
+
+    // Version Notes state
+    const [vnItems, setVnItems] = useState<NotificacionVersion[]>([]);
+    const [vnVersiones, setVnVersiones] = useState<string[]>([]);
+    const [vnFilterVersion, setVnFilterVersion] = useState<string>('');
+    const [vnLoading, setVnLoading] = useState(false);
+    const [vnShowForm, setVnShowForm] = useState(false);
+    const [vnEditing, setVnEditing] = useState<NotificacionVersion | null>(null);
+    const [vnForm, setVnForm] = useState({ VersionId: '', Titulo: '', Texto: '', Tipo: 'mejora', Orden: 0 });
+    const [vnSaving, setVnSaving] = useState(false);
+
+    // Ruta state
+    const [rutaItems, setRutaItems] = useState<NotificacionVersion[]>([]);
+    const [rutaLoading, setRutaLoading] = useState(false);
 
     // Git branch & status state
     const [branches, setBranches] = useState<string[]>(['main']);
@@ -209,7 +229,100 @@ export function DeployManagement() {
     useEffect(() => {
         if (activeSection === 'changelog') loadChangelog();
         if (activeSection === 'setup') loadGuide();
+        if (activeSection === 'version-notes') loadVersionNotes();
+        if (activeSection === 'ruta') loadRuta();
     }, [activeSection]);
+
+    // ==========================================
+    // VERSION NOTES HANDLERS
+    // ==========================================
+
+    const loadVersionNotes = async () => {
+        setVnLoading(true);
+        try {
+            const [items, versiones] = await Promise.all([
+                fetchNotificacionesVersiones(vnFilterVersion || undefined),
+                fetchVersionesDisponibles()
+            ]);
+            setVnItems(items);
+            setVnVersiones(versiones);
+        } catch (e: any) {
+            console.error('Error loading version notes:', e);
+        } finally { setVnLoading(false); }
+    };
+
+    useEffect(() => {
+        if (activeSection === 'version-notes') loadVersionNotes();
+    }, [vnFilterVersion]);
+
+    const handleVnSave = async () => {
+        if (!vnForm.Titulo.trim() || !vnForm.VersionId.trim()) return;
+        setVnSaving(true);
+        try {
+            await saveNotificacionVersion({
+                ...(vnEditing ? { id: vnEditing.Id } : {}),
+                VersionId: vnForm.VersionId,
+                Titulo: vnForm.Titulo,
+                Texto: vnForm.Texto,
+                Tipo: vnForm.Tipo,
+                Orden: vnForm.Orden,
+            });
+            showToast(vnEditing ? 'Nota actualizada' : 'Nota creada', 'success');
+            setVnShowForm(false);
+            setVnEditing(null);
+            setVnForm({ VersionId: '', Titulo: '', Texto: '', Tipo: 'mejora', Orden: 0 });
+            loadVersionNotes();
+        } catch (e: any) {
+            showToast('Error: ' + e.message, 'error');
+        } finally { setVnSaving(false); }
+    };
+
+    const handleVnEdit = (item: NotificacionVersion) => {
+        setVnEditing(item);
+        setVnForm({ VersionId: item.VersionId, Titulo: item.Titulo, Texto: item.Texto, Tipo: item.Tipo, Orden: item.Orden });
+        setVnShowForm(true);
+    };
+
+    const handleVnDelete = async (id: number) => {
+        if (!await showConfirm({ message: '¿Eliminar esta nota de versión?', destructive: true })) return;
+        try {
+            await deleteNotificacionVersion(id);
+            showToast('Nota eliminada', 'success');
+            loadVersionNotes();
+        } catch (e: any) { showToast('Error: ' + e.message, 'error'); }
+    };
+
+    const handleVnNew = () => {
+        setVnEditing(null);
+        // Pre-fill version with server version or filter
+        const defaultVer = vnFilterVersion || serverVersion?.version || '';
+        setVnForm({ VersionId: defaultVer, Titulo: '', Texto: '', Tipo: 'mejora', Orden: vnItems.length });
+        setVnShowForm(true);
+    };
+
+    const vnTipoBadge = (tipo: string) => {
+        switch (tipo) {
+            case 'mejora': return { emoji: '🟢', label: 'Mejora', cls: 'bg-green-100 text-green-700' };
+            case 'corrección': case 'correccion': return { emoji: '🔴', label: 'Corrección', cls: 'bg-red-100 text-red-700' };
+            case 'nueva funcionalidad': return { emoji: '🔵', label: 'Nueva', cls: 'bg-blue-100 text-blue-700' };
+            default: return { emoji: '⚪', label: tipo, cls: 'bg-gray-100 text-gray-700' };
+        }
+    };
+
+    // ==========================================
+    // RUTA (ROADMAP) HANDLERS
+    // ==========================================
+
+    const loadRuta = async () => {
+        setRutaLoading(true);
+        try {
+            const currentVer = serverVersion?.version || 'v0.0';
+            const items = await fetchRuta(currentVer);
+            setRutaItems(items);
+        } catch (e: any) {
+            console.error('Error loading ruta:', e);
+        } finally { setRutaLoading(false); }
+    };
 
     const loadChangelog = async () => {
         setLogLoading(true);
@@ -690,6 +803,18 @@ export function DeployManagement() {
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                     🚀 Publicar
                 </button>
+                <button onClick={() => setActiveSection('version-notes')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeSection === 'version-notes'
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    📝 Notas de Versión
+                </button>
+                <button onClick={() => setActiveSection('ruta')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeSection === 'ruta'
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    🗺️ Ruta
+                </button>
                 <button onClick={() => setActiveSection('setup')}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeSection === 'setup'
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
@@ -700,7 +825,7 @@ export function DeployManagement() {
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeSection === 'changelog'
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                    📜 Bitácora de Versiones
+                    📜 Bitácora
                 </button>
             </div>
 
@@ -1158,6 +1283,231 @@ export function DeployManagement() {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ==========================================
+                SECTION 4: VERSION NOTES
+               ========================================== */}
+            {activeSection === 'version-notes' && (
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                    <div className="bg-gradient-to-r from-cyan-600 to-blue-600 px-6 py-4 flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">📝 Notas de Versión</h2>
+                            <p className="text-cyan-100 text-sm mt-1">Administrar las notas que se muestran a los usuarios por versión</p>
+                        </div>
+                        <button onClick={handleVnNew}
+                            className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-sm font-semibold transition-all backdrop-blur-sm">
+                            + Nueva Nota
+                        </button>
+                    </div>
+                    <div className="p-6 space-y-5">
+                        {/* Version Filter */}
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <label className="text-xs font-bold text-gray-600 uppercase">Filtrar por versión</label>
+                            <select value={vnFilterVersion} onChange={e => setVnFilterVersion(e.target.value)}
+                                className="px-3 py-2 border-2 border-gray-200 rounded-xl text-sm font-mono focus:border-cyan-500 bg-white min-w-[140px]">
+                                <option value="">Todas</option>
+                                {vnVersiones.map(v => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                            <button onClick={loadVersionNotes} className="text-xs px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors">🔄 Refrescar</button>
+                        </div>
+
+                        {/* Add/Edit Form */}
+                        {vnShowForm && (
+                            <div className="bg-cyan-50 border-2 border-cyan-300 rounded-xl p-5 space-y-4">
+                                <h4 className="text-sm font-bold text-cyan-800">{vnEditing ? '✏️ Editar Nota' : '➕ Nueva Nota de Versión'}</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-bold text-cyan-800 uppercase mb-1">Versión *</label>
+                                        <input type="text" value={vnForm.VersionId} onChange={e => setVnForm(f => ({ ...f, VersionId: e.target.value }))}
+                                            placeholder="ej: v2.1" list="vn-version-list"
+                                            className="w-full px-3 py-2 border border-cyan-200 rounded-lg text-sm font-mono focus:border-cyan-500" />
+                                        <datalist id="vn-version-list">
+                                            {vnVersiones.map(v => <option key={v} value={v} />)}
+                                        </datalist>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-cyan-800 uppercase mb-1">Tipo</label>
+                                        <select value={vnForm.Tipo} onChange={e => setVnForm(f => ({ ...f, Tipo: e.target.value }))}
+                                            className="w-full px-3 py-2 border border-cyan-200 rounded-lg text-sm focus:border-cyan-500 bg-white">
+                                            <option value="mejora">🟢 Mejora</option>
+                                            <option value="corrección">🔴 Corrección</option>
+                                            <option value="nueva funcionalidad">🔵 Nueva funcionalidad</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-cyan-800 uppercase mb-1">Orden</label>
+                                        <input type="number" value={vnForm.Orden} onChange={e => setVnForm(f => ({ ...f, Orden: parseInt(e.target.value) || 0 }))}
+                                            className="w-full px-3 py-2 border border-cyan-200 rounded-lg text-sm font-mono focus:border-cyan-500" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-cyan-800 uppercase mb-1">Título *</label>
+                                    <input type="text" value={vnForm.Titulo} onChange={e => setVnForm(f => ({ ...f, Titulo: e.target.value }))}
+                                        placeholder="ej: Nuevo módulo de reportes"
+                                        className="w-full px-3 py-2 border border-cyan-200 rounded-lg text-sm focus:border-cyan-500" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-cyan-800 uppercase mb-1">Descripción</label>
+                                    <textarea value={vnForm.Texto} onChange={e => setVnForm(f => ({ ...f, Texto: e.target.value }))}
+                                        placeholder="Descripción detallada del cambio..." rows={3}
+                                        className="w-full px-3 py-2 border border-cyan-200 rounded-lg text-sm focus:border-cyan-500 resize-none" />
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                    <button onClick={() => { setVnShowForm(false); setVnEditing(null); }}
+                                        className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 transition-all">Cancelar</button>
+                                    <button onClick={handleVnSave} disabled={vnSaving || !vnForm.Titulo.trim() || !vnForm.VersionId.trim()}
+                                        className="px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-semibold hover:bg-cyan-700 transition-all disabled:opacity-50">
+                                        {vnSaving ? '⏳ Guardando...' : vnEditing ? '✓ Actualizar' : '✓ Crear'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Notes List */}
+                        {vnLoading ? (
+                            <div className="text-center py-8 text-gray-400">Cargando notas de versión...</div>
+                        ) : vnItems.length === 0 ? (
+                            <div className="text-center py-12">
+                                <p className="text-gray-400 text-lg mb-2">📝</p>
+                                <p className="text-gray-500 text-sm font-medium">No hay notas de versión</p>
+                                <p className="text-gray-400 text-xs mt-1">Crea una nota para comunicar cambios a los usuarios</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {/* Group by version */}
+                                {(() => {
+                                    const grouped: Record<string, NotificacionVersion[]> = {};
+                                    vnItems.forEach(item => {
+                                        if (!grouped[item.VersionId]) grouped[item.VersionId] = [];
+                                        grouped[item.VersionId].push(item);
+                                    });
+                                    return Object.entries(grouped).map(([ver, items]) => (
+                                        <div key={ver} className="border border-gray-200 rounded-xl overflow-hidden">
+                                            <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between">
+                                                <span className="text-sm font-bold text-gray-700 font-mono">📦 {ver}</span>
+                                                <span className="text-xs text-gray-400">{items.length} nota{items.length !== 1 ? 's' : ''}</span>
+                                            </div>
+                                            <div className="divide-y divide-gray-100">
+                                                {items.map(item => {
+                                                    const badge = vnTipoBadge(item.Tipo);
+                                                    return (
+                                                        <div key={item.Id} className="px-4 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors">
+                                                            <span className="text-sm mt-0.5">{badge.emoji}</span>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <span className="text-sm font-semibold text-gray-800">{item.Titulo}</span>
+                                                                    <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${badge.cls}`}>{badge.label}</span>
+                                                                    <span className="text-[10px] text-gray-400">Orden: {item.Orden}</span>
+                                                                    {!item.Activo && <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-gray-200 text-gray-500">Inactivo</span>}
+                                                                </div>
+                                                                {item.Texto && <p className="text-xs text-gray-500 mt-1">{item.Texto}</p>}
+                                                            </div>
+                                                            <div className="flex items-center gap-1 flex-shrink-0">
+                                                                <button onClick={() => handleVnEdit(item)}
+                                                                    className="text-xs px-2.5 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg font-semibold transition-all">✏️</button>
+                                                                <button onClick={() => handleVnDelete(item.Id)}
+                                                                    className="text-xs px-2.5 py-1.5 bg-red-50 text-red-500 hover:bg-red-100 rounded-lg font-semibold transition-all">🗑️</button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ));
+                                })()}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ==========================================
+                SECTION 5: RUTA (ROADMAP)
+               ========================================== */}
+            {activeSection === 'ruta' && (
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                    <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">🗺️ Ruta — Próximas Versiones</h2>
+                        <p className="text-amber-100 text-sm mt-1">
+                            Notas de versiones futuras (superiores a {serverVersion?.version || 'la versión actual'})
+                        </p>
+                    </div>
+                    <div className="p-6">
+                        {/* Current Version Badge */}
+                        <div className="flex items-center gap-3 mb-6">
+                            <span className="text-xs font-bold text-gray-500 uppercase">Versión actual:</span>
+                            {serverVersionLoading ? (
+                                <span className="text-xs text-gray-400 animate-pulse">Consultando...</span>
+                            ) : serverVersion?.version ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                    <span className="text-sm font-bold text-emerald-700 font-mono">{serverVersion.version}</span>
+                                    <span className="text-[10px] text-emerald-500">✅</span>
+                                </span>
+                            ) : (
+                                <span className="text-sm text-gray-400">Sin versión registrada</span>
+                            )}
+                            <button onClick={loadRuta} className="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors ml-auto">🔄 Refrescar</button>
+                        </div>
+
+                        {rutaLoading ? (
+                            <div className="text-center py-8 text-gray-400">Cargando ruta...</div>
+                        ) : rutaItems.length === 0 ? (
+                            <div className="text-center py-12">
+                                <p className="text-gray-400 text-3xl mb-3">🗺️</p>
+                                <p className="text-gray-500 text-sm font-medium">No hay versiones futuras planificadas</p>
+                                <p className="text-gray-400 text-xs mt-1">Crea notas con versiones superiores a la actual en "Notas de Versión"</p>
+                            </div>
+                        ) : (
+                            <div className="relative">
+                                {/* Timeline line */}
+                                <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-gradient-to-b from-amber-300 via-orange-300 to-red-300" />
+
+                                <div className="space-y-6">
+                                    {(() => {
+                                        const grouped: Record<string, NotificacionVersion[]> = {};
+                                        rutaItems.forEach(item => {
+                                            if (!grouped[item.VersionId]) grouped[item.VersionId] = [];
+                                            grouped[item.VersionId].push(item);
+                                        });
+                                        return Object.entries(grouped).map(([ver, items], groupIdx) => (
+                                            <div key={ver} className="relative pl-12">
+                                                {/* Timeline dot */}
+                                                <div className="absolute left-3 top-3 w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 border-2 border-white shadow-md flex items-center justify-center">
+                                                    <span className="text-[8px] font-bold text-white">{groupIdx + 1}</span>
+                                                </div>
+
+                                                <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border border-amber-200 overflow-hidden">
+                                                    <div className="px-4 py-3 bg-amber-100/60 border-b border-amber-200 flex items-center gap-2">
+                                                        <span className="text-sm font-bold text-amber-800 font-mono">📦 {ver}</span>
+                                                        <span className="text-[10px] px-2 py-0.5 bg-amber-200 text-amber-800 rounded-full font-bold">{items.length} cambio{items.length !== 1 ? 's' : ''}</span>
+                                                    </div>
+                                                    <div className="divide-y divide-amber-100">
+                                                        {items.map(item => {
+                                                            const badge = vnTipoBadge(item.Tipo);
+                                                            return (
+                                                                <div key={item.Id} className="px-4 py-3 flex items-start gap-3">
+                                                                    <span className="text-sm mt-0.5">{badge.emoji}</span>
+                                                                    <div className="min-w-0">
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            <span className="text-sm font-semibold text-gray-800">{item.Titulo}</span>
+                                                                            <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${badge.cls}`}>{badge.label}</span>
+                                                                        </div>
+                                                                        {item.Texto && <p className="text-xs text-gray-600 mt-1">{item.Texto}</p>}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ));
+                                    })()}
+                                </div>
                             </div>
                         )}
                     </div>

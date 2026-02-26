@@ -59,7 +59,7 @@ function registerNotificacionesEndpoints(app, authMiddleware) {
     // ─────────────────────────────────────────────────────────
     app.get('/api/notificaciones/pendientes', authMiddleware, async (req, res) => {
         try {
-            const usuarioId = req.user.id;
+            const usuarioId = req.user.userId;
             const versionActual = req.query.versionActual || null;
 
             const [admin, versiones] = await Promise.all([
@@ -83,7 +83,7 @@ function registerNotificacionesEndpoints(app, authMiddleware) {
             const { comentario, codigoEmpleado } = req.body;
             const ip = req.ip || req.connection?.remoteAddress;
             await notificaciones.revisarNotificacion(
-                req.user.id, parseInt(req.params.id), comentario, codigoEmpleado, ip
+                req.user.userId, parseInt(req.params.id), comentario, codigoEmpleado, ip
             );
             res.json({ success: true });
         } catch (err) {
@@ -99,7 +99,7 @@ function registerNotificacionesEndpoints(app, authMiddleware) {
     app.post('/api/notificaciones/versiones/:versionId/leer', authMiddleware, async (req, res) => {
         try {
             const ip = req.ip || req.connection?.remoteAddress;
-            await notificaciones.marcarVersionLeida(req.user.id, req.params.versionId, ip);
+            await notificaciones.marcarVersionLeida(req.user.userId, req.params.versionId, ip);
             res.json({ success: true });
         } catch (err) {
             console.error('POST /api/notificaciones/versiones/:versionId/leer:', err);

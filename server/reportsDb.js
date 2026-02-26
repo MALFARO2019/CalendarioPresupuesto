@@ -105,6 +105,11 @@ async function ensureReportsTables() {
                 IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('DIM_REPORTES') AND name = 'PermitirEnviarAhora')
                 ALTER TABLE DIM_REPORTES ADD PermitirEnviarAhora BIT DEFAULT 1
             `);
+            // Backfill: ensure existing rows that have NULL get the default value
+            await pool.request().query(`
+                UPDATE DIM_REPORTES SET PermitirProgramacionCustom = 1 WHERE PermitirProgramacionCustom IS NULL;
+                UPDATE DIM_REPORTES SET PermitirEnviarAhora = 1 WHERE PermitirEnviarAhora IS NULL;
+            `);
         } catch (e) {
             console.warn('⚠️ Reports: Could not add new config columns:', e.message);
         }

@@ -197,10 +197,15 @@ async function deleteAlias(id) {
 async function getStoreList() {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-        SELECT RTRIM(CODALMACEN) AS CodAlmacen, NOMBRE_CONTA AS Nombre
+        SELECT RTRIM(CODALMACEN) AS CodAlmacen,
+               COALESCE(
+                   NULLIF(RTRIM(NOMBRE_CONTA), ''),
+                   NULLIF(RTRIM(NOMBRE_GENERAL), ''),
+                   NULLIF(RTRIM(NOMBRE_OPERACIONES), ''),
+                   RTRIM(CODALMACEN)
+               ) AS Nombre
         FROM DIM_NOMBRES_ALMACEN
-        WHERE NOMBRE_CONTA IS NOT NULL AND NOMBRE_CONTA != ''
-        ORDER BY NOMBRE_CONTA
+        ORDER BY CodAlmacen
     `);
     return result.recordset;
 }

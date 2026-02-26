@@ -7,7 +7,7 @@ import { AdminPage } from './components/AdminPage';
 import { Dashboard } from './views/Dashboard';
 import { generateMockData } from './mockData';
 import type { BudgetRecord } from './mockData';
-import { fetchBudgetData, fetchComparableDays, fetchFechaLimite, fetchStores, fetchGroupStores, fetchAvailableCanales, getToken, getUser, logout, verifyToken, API_BASE, fetchEventosPorMes, fetchEventosPorAno, fetchSPEventosPorMes, fetchSPEventosPorAno, fetchEventosAjuste, fetchAdminPorLocal, type ComparableDayRecord, type PersonalAsignado, type EventosByDate } from './api';
+import { fetchBudgetData, fetchComparableDays, fetchFechaLimite, fetchStores, fetchGroupStores, fetchAvailableCanales, getToken, getUser, logout, verifyToken, API_BASE, fetchEventosPorMes, fetchEventosPorAno, fetchSPEventosPorMes, fetchSPEventosPorAno, fetchEventosAjuste, fetchAdminPorLocal, fetchNotificacionesVersiones, type ComparableDayRecord, type PersonalAsignado, type EventosByDate, type NotificacionVersion } from './api';
 import { addMonths, format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X, SlidersHorizontal, Home } from 'lucide-react';
@@ -79,6 +79,11 @@ function App() {
   const [adminNameForLocal, setAdminNameForLocal] = useState<PersonalAsignado[]>([]);
   const [appVersion, setAppVersion] = useState('');
   const [comparableDaysData, setComparableDaysData] = useState<ComparableDayRecord[]>([]);
+
+  // Changelog modal state
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [changelogItems, setChangelogItems] = useState<NotificacionVersion[]>([]);
+  const [changelogLoading, setChangelogLoading] = useState(false);
 
   // Fetch DB mode on mount
   useEffect(() => {
@@ -691,6 +696,27 @@ function App() {
             {/* Notificaciones Bell */}
             {user && (
               <NotificacionesBell versionActual={appVersion || undefined} />
+            )}
+
+            {/* Changelog Button */}
+            {user && (
+              <button
+                onClick={async () => {
+                  setShowChangelog(true);
+                  setChangelogLoading(true);
+                  try {
+                    const items = await fetchNotificacionesVersiones();
+                    setChangelogItems(items);
+                  } catch (e) { console.error(e); }
+                  finally { setChangelogLoading(false); }
+                }}
+                className="touch-target p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                title="Historial de Versiones"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+              </button>
             )}
 
             {/* Admin/Events/Modelo/Config button - for admin, eventos, modelo, asignaciones, or grupos users */}
@@ -1381,6 +1407,87 @@ function App() {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Changelog Modal */}
+      {showChangelog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowChangelog(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-4 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  📋 Historial de Versiones
+                </h3>
+                {appVersion && <p className="text-indigo-200 text-xs mt-0.5">Versión actual: {appVersion}</p>}
+              </div>
+              <button onClick={() => setShowChangelog(false)} className="p-1.5 text-white/70 hover:text-white hover:bg-white/20 rounded-lg transition-all">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {changelogLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                  <span className="ml-2 text-sm text-gray-500">Cargando...</span>
+                </div>
+              ) : changelogItems.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-gray-400 text-3xl mb-3">📋</p>
+                  <p className="text-gray-500 text-sm font-medium">No hay notas de versión disponibles</p>
+                </div>
+              ) : (() => {
+                const grouped: Record<string, NotificacionVersion[]> = {};
+                changelogItems.forEach(item => {
+                  if (!grouped[item.VersionId]) grouped[item.VersionId] = [];
+                  grouped[item.VersionId].push(item);
+                });
+                const tipoBadge = (tipo: string) => {
+                  switch (tipo) {
+                    case 'mejora': return { emoji: '🟢', label: 'Mejora', cls: 'bg-green-100 text-green-700' };
+                    case 'corrección': case 'correccion': return { emoji: '🔴', label: 'Corrección', cls: 'bg-red-100 text-red-700' };
+                    case 'nueva funcionalidad': return { emoji: '🔵', label: 'Nueva', cls: 'bg-blue-100 text-blue-700' };
+                    default: return { emoji: '⚪', label: tipo, cls: 'bg-gray-100 text-gray-700' };
+                  }
+                };
+                return (
+                  <div className="space-y-4">
+                    {Object.entries(grouped).map(([ver, items]) => (
+                      <div key={ver} className="border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="bg-gradient-to-r from-gray-50 to-indigo-50/50 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between">
+                          <span className="text-sm font-bold text-gray-700 font-mono flex items-center gap-2">
+                            📦 {ver}
+                            {ver === appVersion && <span className="text-[10px] px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded-full font-bold">Actual</span>}
+                          </span>
+                          <span className="text-[10px] text-gray-400">{items.length} cambio{items.length !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="divide-y divide-gray-100">
+                          {items.map(item => {
+                            const badge = tipoBadge(item.Tipo);
+                            return (
+                              <div key={item.Id} className="px-4 py-3 flex items-start gap-3">
+                                <span className="text-sm mt-0.5 flex-shrink-0">{badge.emoji}</span>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-semibold text-gray-800">{item.Titulo}</span>
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${badge.cls}`}>{badge.label}</span>
+                                  </div>
+                                  {item.Texto && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{item.Texto}</p>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
