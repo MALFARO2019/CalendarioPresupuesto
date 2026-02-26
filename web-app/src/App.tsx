@@ -964,7 +964,9 @@ function App() {
                   const lastDayOfMonth = new Date(yr, mo, 0).getDate();
                   const lastDayStr = `${yr}-${String(mo).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
                   // Use fechaLimite only if it's within the same month; otherwise use last day of month
-                  const endDate = fechaLimite < lastDayStr ? fechaLimite : lastDayStr;
+                  // Guard: if fechaLimite is before the month starts, cap endDate to startDate
+                  // to prevent inverted dateRange (which would cause ₡0 for future months)
+                  const endDate = fechaLimite < startDate ? startDate : (fechaLimite < lastDayStr ? fechaLimite : lastDayStr);
                   return { startDate, endDate };
                 })()}
               />
