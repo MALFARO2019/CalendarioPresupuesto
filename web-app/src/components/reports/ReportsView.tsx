@@ -42,6 +42,19 @@ export function ReportsView({ onBack }: ReportsViewProps) {
     const [generateEmail, setGenerateEmail] = useState('');
     const [generating, setGenerating] = useState(false);
 
+    // Subscribe modal (for custom programming)
+    const [subscribeModal, setSubscribeModal] = useState<{
+        report: Report | null;
+        isEdit: boolean;
+        subscriptionId?: number;
+    } | null>(null);
+    const [subEmail, setSubEmail] = useState(user?.email || '');
+    const [subFreq, setSubFreq] = useState('Diario');
+    const [subHora, setSubHora] = useState('07:00');
+    const [subDiaSemana, setSubDiaSemana] = useState<number>(1);
+    const [subDiaMes, setSubDiaMes] = useState<number>(1);
+    const [savingSub, setSavingSub] = useState(false);
+
     useEffect(() => {
         loadData();
     }, []);
@@ -62,6 +75,67 @@ export function ReportsView({ onBack }: ReportsViewProps) {
         }
     };
 
+    const handleSubscribeClick = (report: Report) => {
+        if (report.PermitirProgramacionCustom) {
+            // Edit new subscription
+            setSubscribeModal({ report, isEdit: false });
+            setSubEmail(user?.email || '');
+            setSubFreq(report.Frecuencia || 'Diario');
+            setSubHora(report.HoraEnvio || '07:00');
+            setSubDiaSemana(report.DiaSemana || 1);
+            setSubDiaMes(report.DiaMes || 1);
+        } else {
+            // Direct subscribe
+            handleSubscribe(report.ID);
+        }
+    };
+
+    const handleEditSubscriptionClick = (sub: ReportSubscription, reportDef: Report | undefined) => {
+        if (!reportDef) return;
+        setSubscribeModal({ report: reportDef, isEdit: true, subscriptionId: sub.ID });
+        setSubEmail(sub.EmailDestino || user?.email || '');
+        setSubFreq(sub.FrecuenciaPersonal || sub.FrecuenciaDefault || 'Diario');
+        setSubHora(sub.HoraEnvioPersonal || sub.HoraEnvioDefault || '07:00');
+        setSubDiaSemana(sub.DiaSemanaPersonal || sub.DiaSemanaDefault || 1);
+        setSubDiaMes(sub.DiaMesPersonal || sub.DiaMesDefault || 1);
+    };
+
+    const handleSaveCustomSubscription = async () => {
+        if (!subscribeModal?.report) return;
+        setSavingSub(true);
+        try {
+            if (subscribeModal.isEdit && subscribeModal.subscriptionId) {
+                await updateReportSubscription(subscribeModal.report.ID, {
+                    emailDestino: subEmail,
+                    frecuenciaPersonal: subFreq,
+                    horaEnvioPersonal: subHora,
+                    diaSemanaPersonal: subDiaSemana,
+                    diaMesPersonal: subDiaMes
+                });
+                showToast('Programación de suscripción actualizada', 'success');
+            } else {
+                // To create with custom it calls subscribe endpoint but we need a modified version in api or just update it right after
+                // The current subscribeToReport in api.ts doesn't take config param, let's update api.ts later to take config or just call updateReportSubscription right after
+                await subscribeToReport(subscribeModal.report.ID);
+                // Immediately after, update the config
+                await updateReportSubscription(subscribeModal.report.ID, {
+                    emailDestino: subEmail,
+                    frecuenciaPersonal: subFreq,
+                    horaEnvioPersonal: subHora,
+                    diaSemanaPersonal: subDiaSemana,
+                    diaMesPersonal: subDiaMes
+                });
+                showToast('Suscrito con programación personalizada', 'success');
+            }
+            setSubscribeModal(null);
+            loadData();
+        } catch (err: any) {
+            showToast('Error: ' + err.message, 'error');
+        } finally {
+            setSavingSub(false);
+        }
+    };
+
     const handleSubscribe = async (reportId: number) => {
         try {
             await subscribeToReport(reportId);
@@ -71,6 +145,7 @@ export function ReportsView({ onBack }: ReportsViewProps) {
             showToast('Error: ' + err.message, 'error');
         }
     };
+
 
     const handleUnsubscribe = async (reportId: number) => {
         try {
@@ -150,7 +225,7 @@ export function ReportsView({ onBack }: ReportsViewProps) {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
             <div className="max-w-6xl mx-auto">
                 {/* Header */}
-                <div className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
+                <div className="bg-white border-b border-gray-100 shadow-sm mb-2">
                     <div className="px-4 sm:px-6 py-4 flex items-center gap-4">
                         <button onClick={onBack}
                             className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-indigo-100 hover:text-indigo-600 rounded-xl transition-all text-gray-600">
@@ -249,16 +324,18 @@ export function ReportsView({ onBack }: ReportsViewProps) {
                                                         <BellOff className="w-3.5 h-3.5" /> Desuscribir
                                                     </button>
                                                 ) : (
-                                                    <button onClick={() => handleSubscribe(report.ID)}
+                                                    <button onClick={() => handleSubscribeClick(report)}
                                                         className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm touch-target">
                                                         <Bell className="w-3.5 h-3.5" /> Suscribirse
                                                     </button>
                                                 )}
-                                                <button onClick={() => { setGenerateModal(report); setGenerateEmail(user?.email || ''); }}
-                                                    className="flex items-center justify-center p-2 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg transition-all touch-target"
-                                                    title="Generar y enviar ahora">
-                                                    <Send className="w-3.5 h-3.5" />
-                                                </button>
+                                                {report.PermitirEnviarAhora !== false && (
+                                                    <button onClick={() => { setGenerateModal(report); setGenerateEmail(user?.email || ''); }}
+                                                        className="flex items-center justify-center p-2 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg transition-all touch-target"
+                                                        title="Generar y enviar ahora">
+                                                        <Send className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -312,6 +389,14 @@ export function ReportsView({ onBack }: ReportsViewProps) {
                                                     className={`relative w-11 h-6 rounded-full transition-all flex-shrink-0 ${sub.Activo ? 'bg-green-500' : 'bg-gray-300'}`}>
                                                     <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all ${sub.Activo ? 'left-5' : 'left-0.5'}`} />
                                                 </button>
+
+                                                {reports.find(r => r.ID === sub.ReporteID)?.PermitirProgramacionCustom && (
+                                                    <button onClick={() => handleEditSubscriptionClick(sub, reports.find(r => r.ID === sub.ReporteID))}
+                                                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all touch-target"
+                                                        title="Configurar programación">
+                                                        <Calendar className="w-4 h-4" />
+                                                    </button>
+                                                )}
 
                                                 <button onClick={() => handleUnsubscribe(sub.ReporteID)}
                                                     className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all touch-target"
@@ -406,6 +491,64 @@ export function ReportsView({ onBack }: ReportsViewProps) {
                                 className="flex-1 btn-primary justify-center">
                                 {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                                 Enviar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Subscribe / Custom Program Modal */}
+            {subscribeModal && subscribeModal.report && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSubscribeModal(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-lg font-bold text-gray-900 mb-1">{subscribeModal.report.Icono} Configurar Suscripción</h2>
+                        <p className="text-xs text-gray-500 mb-4">Elige cuándo quieres recibir el reporte de "{subscribeModal.report.Nombre}"</p>
+
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="label-mini">Email de entrega</label>
+                                <input type="email" value={subEmail} onChange={e => setSubEmail(e.target.value)}
+                                    className="input-field" placeholder="correo@ejemplo.com" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="label-mini">Frecuencia</label>
+                                    <select value={subFreq} onChange={e => setSubFreq(e.target.value)} className="input-field">
+                                        {['Diario', 'Semanal', 'Mensual'].map(f => <option key={f} value={f}>{f}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="label-mini">Hora de envío</label>
+                                    <input type="time" value={subHora} onChange={e => setSubHora(e.target.value)}
+                                        className="input-field" />
+                                </div>
+                                {subFreq === 'Semanal' && (
+                                    <div className="col-span-2">
+                                        <label className="label-mini">Día de la semana</label>
+                                        <select value={subDiaSemana} onChange={e => setSubDiaSemana(parseInt(e.target.value))} className="input-field">
+                                            {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((d, i) => (
+                                                <option key={i} value={i + 1}>{d}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                {subFreq === 'Mensual' && (
+                                    <div className="col-span-2">
+                                        <label className="label-mini">Día del mes</label>
+                                        <input type="number" min={1} max={28} value={subDiaMes} onChange={e => setSubDiaMes(parseInt(e.target.value))}
+                                            className="input-field" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button onClick={() => setSubscribeModal(null)}
+                                className="flex-1 btn-ghost justify-center">Cancelar</button>
+                            <button onClick={handleSaveCustomSubscription} disabled={savingSub || !subEmail}
+                                className="flex-1 btn-primary justify-center">
+                                {savingSub ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                Guardar
                             </button>
                         </div>
                     </div>

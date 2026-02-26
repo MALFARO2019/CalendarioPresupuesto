@@ -41,11 +41,21 @@ async function getNotificacionById(id) {
 
 async function saveNotificacion(data, usuario) {
     const p = await pool();
-    const {
-        id, titulo, texto, imagenUrl, clasificacionId,
-        nRepeticiones, requiereComentario, requiereCodigoEmpleado,
-        comunicarConFlamia, activo
-    } = data;
+    console.log('📌 saveNotificacion data:', data);
+    const id = data.Id || data.id;
+    const titulo = data.Titulo || data.titulo;
+    const texto = data.Texto || data.texto;
+    const imagenUrl = data.ImagenUrl || data.imagenUrl;
+    const clasificacionId = data.ClasificacionId || data.clasificacionId;
+    const nRepeticiones = data.NRepeticiones || data.nRepeticiones;
+    const requiereComentario = data.RequiereComentario || data.requiereComentario;
+    const requiereCodigoEmpleado = data.RequiereCodigoEmpleado !== undefined ? data.RequiereCodigoEmpleado : data.requiereCodigoEmpleado;
+    const comunicarConFlamia = data.ComunicarConFlamia !== undefined ? data.ComunicarConFlamia : data.comunicarConFlamia;
+    const activo = data.Activo !== undefined ? data.Activo : data.activo;
+
+    if (!titulo || !texto || !clasificacionId) {
+        throw new Error(`Error en el servidor: los datos recibidos están incompletos. Payload: ${JSON.stringify(data)}`);
+    }
 
     if (id) {
         await p.request()
@@ -172,7 +182,14 @@ async function getVersionesDisponibles() {
 
 async function saveNotificacionVersion(data, usuario) {
     const p = await pool();
-    const { id, versionId, titulo, texto, tipo, orden, activo, fechaPublicacion } = data;
+    const id = data.Id || data.id;
+    const versionId = data.VersionId || data.versionId;
+    const titulo = data.Titulo || data.titulo;
+    const texto = data.Texto || data.texto;
+    const tipo = data.Tipo || data.tipo;
+    const orden = data.Orden !== undefined ? data.Orden : data.orden;
+    const activo = data.Activo !== undefined ? data.Activo : data.activo;
+    const fechaPublicacion = data.FechaPublicacion || data.fechaPublicacion;
 
     if (id) {
         await p.request()

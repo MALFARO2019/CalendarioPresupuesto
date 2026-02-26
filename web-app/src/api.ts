@@ -1945,6 +1945,9 @@ export interface Report {
     FormatoSalida: string;
     TemplateAsunto: string | null;
     TemplateEncabezado: string | null;
+    TipoEspecial: string | null;
+    PermitirProgramacionCustom: boolean;
+    PermitirEnviarAhora: boolean;
     Activo: boolean;
     Orden: number;
     CreadoPor: string | null;

@@ -97,11 +97,10 @@ function registerReportsEndpoints(app, authMiddleware) {
             res.status(500).json({ error: error.message });
         }
     });
-
     // POST /api/reports/:id/subscribe — subscribe to report
     app.post('/api/reports/:id/subscribe', authMiddleware, async (req, res) => {
         try {
-            const subId = await reportsDb.subscribe(parseInt(req.params.id), req.user.id, req.body || {});
+            const subId = await reportsDb.subscribe(parseInt(req.params.id), req.user.userId, req.body || {});
             res.json({ success: true, subscriptionId: subId });
         } catch (error) {
             console.error('❌ POST /api/reports/:id/subscribe error:', error.message);
@@ -112,7 +111,7 @@ function registerReportsEndpoints(app, authMiddleware) {
     // DELETE /api/reports/:id/subscribe — unsubscribe
     app.delete('/api/reports/:id/subscribe', authMiddleware, async (req, res) => {
         try {
-            await reportsDb.unsubscribe(parseInt(req.params.id), req.user.id);
+            await reportsDb.unsubscribe(parseInt(req.params.id), req.user.userId);
             res.json({ success: true });
         } catch (error) {
             console.error('❌ DELETE /api/reports/:id/subscribe error:', error.message);
@@ -124,7 +123,7 @@ function registerReportsEndpoints(app, authMiddleware) {
     app.put('/api/reports/:id/subscribe', authMiddleware, async (req, res) => {
         try {
             // Find the subscription ID first
-            const subs = await reportsDb.getSubscriptions(req.user.id);
+            const subs = await reportsDb.getSubscriptions(req.user.userId);
             const sub = subs.find(s => s.ReporteID === parseInt(req.params.id));
             if (!sub) return res.status(404).json({ error: 'Suscripción no encontrada' });
 

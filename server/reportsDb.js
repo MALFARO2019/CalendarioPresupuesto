@@ -94,6 +94,21 @@ async function ensureReportsTables() {
             console.warn('⚠️ Reports: Could not add TipoEspecial column:', e.message);
         }
 
+        // Add PermitirProgramacionCustom & PermitirEnviarAhora if missing
+        try {
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('DIM_REPORTES') AND name = 'PermitirProgramacionCustom')
+                ALTER TABLE DIM_REPORTES ADD PermitirProgramacionCustom BIT DEFAULT 1
+            `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('DIM_REPORTES') AND name = 'PermitirEnviarAhora')
+                ALTER TABLE DIM_REPORTES ADD PermitirEnviarAhora BIT DEFAULT 1
+            `);
+        } catch (e) {
+            console.warn('⚠️ Reports: Could not add new config columns:', e.message);
+        }
+
+
         // Seed: Reporte Nocturno de Ventas
         try {
             const existing = await pool.request().query(
@@ -190,13 +205,15 @@ async function createReport(data, createdBy) {
         .input('templateAsunto', sql.NVarChar(500), data.templateAsunto || null)
         .input('templateEncabezado', sql.NVarChar(sql.MAX), data.templateEncabezado || null)
         .input('tipoEspecial', sql.NVarChar(100), data.tipoEspecial || null)
+        .input('permitirProgramacionCustom', sql.Bit, data.permitirProgramacionCustom !== undefined ? data.permitirProgramacionCustom : true)
+        .input('permitirEnviarAhora', sql.Bit, data.permitirEnviarAhora !== undefined ? data.permitirEnviarAhora : true)
         .input('orden', sql.Int, data.orden || 0)
         .input('creadoPor', sql.NVarChar(200), createdBy)
         .query(`
             INSERT INTO DIM_REPORTES (Nombre, Descripcion, Icono, Categoria, QuerySQL, Columnas, Parametros,
-                Frecuencia, HoraEnvio, DiaSemana, DiaMes, FormatoSalida, TemplateAsunto, TemplateEncabezado, TipoEspecial, Orden, CreadoPor)
+                Frecuencia, HoraEnvio, DiaSemana, DiaMes, FormatoSalida, TemplateAsunto, TemplateEncabezado, TipoEspecial, PermitirProgramacionCustom, PermitirEnviarAhora, Orden, CreadoPor)
             VALUES (@nombre, @descripcion, @icono, @categoria, @querySQL, @columnas, @parametros,
-                @frecuencia, @horaEnvio, @diaSemana, @diaMes, @formatoSalida, @templateAsunto, @templateEncabezado, @tipoEspecial, @orden, @creadoPor);
+                @frecuencia, @horaEnvio, @diaSemana, @diaMes, @formatoSalida, @templateAsunto, @templateEncabezado, @tipoEspecial, @permitirProgramacionCustom, @permitirEnviarAhora, @orden, @creadoPor);
             SELECT SCOPE_IDENTITY() AS ID
         `);
     return result.recordset[0].ID;
@@ -221,6 +238,8 @@ async function updateReport(id, data, modifiedBy) {
         .input('templateAsunto', sql.NVarChar(500), data.templateAsunto || null)
         .input('templateEncabezado', sql.NVarChar(sql.MAX), data.templateEncabezado || null)
         .input('tipoEspecial', sql.NVarChar(100), data.tipoEspecial || null)
+        .input('permitirProgramacionCustom', sql.Bit, data.permitirProgramacionCustom !== undefined ? data.permitirProgramacionCustom : true)
+        .input('permitirEnviarAhora', sql.Bit, data.permitirEnviarAhora !== undefined ? data.permitirEnviarAhora : true)
         .input('activo', sql.Bit, data.activo !== undefined ? data.activo : true)
         .input('orden', sql.Int, data.orden || 0)
         .input('modificadoPor', sql.NVarChar(200), modifiedBy)
@@ -230,7 +249,7 @@ async function updateReport(id, data, modifiedBy) {
                 QuerySQL = @querySQL, Columnas = @columnas, Parametros = @parametros,
                 Frecuencia = @frecuencia, HoraEnvio = @horaEnvio, DiaSemana = @diaSemana, DiaMes = @diaMes,
                 FormatoSalida = @formatoSalida, TemplateAsunto = @templateAsunto, TemplateEncabezado = @templateEncabezado,
-                TipoEspecial = @tipoEspecial, Activo = @activo, Orden = @orden,
+                TipoEspecial = @tipoEspecial, PermitirProgramacionCustom = @permitirProgramacionCustom, PermitirEnviarAhora = @permitirEnviarAhora, Activo = @activo, Orden = @orden,
                 ModificadoPor = @modificadoPor, FechaModificacion = GETDATE()
             WHERE ID = @id
         `);

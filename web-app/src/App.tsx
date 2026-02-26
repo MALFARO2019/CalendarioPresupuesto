@@ -726,8 +726,8 @@ function App() {
                 <span className="hidden lg:inline">Inicio</span>
               </button>
 
-              {/* Show presupuesto tabs when not in home and not in inocuidad */}
-              {dashboardTab !== 'home' && dashboardTab !== 'inocuidad' && (
+              {/* Show presupuesto tabs when not in home, inocuidad, and reportes */}
+              {dashboardTab !== 'home' && dashboardTab !== 'inocuidad' && dashboardTab !== 'reportes' && (
                 <>
                   {user?.accesoPresupuestoMensual && (
                     <button
@@ -1247,8 +1247,8 @@ function App() {
               <span className="text-[10px] font-semibold">Inicio</span>
             </button>
 
-            {/* Presupuesto mobile tabs - hidden when in inocuidad */}
-            {dashboardTab !== 'inocuidad' && (
+            {/* Presupuesto mobile tabs - hidden when in inocuidad or reportes */}
+            {dashboardTab !== 'inocuidad' && dashboardTab !== 'reportes' && (
               <>
                 {user?.accesoPresupuestoMensual && (
                   <button

@@ -405,6 +405,22 @@ export const NotificacionesAdmin: React.FC = () => {
                         </div>
 
                         <div className="px-5 py-4 border-t border-gray-100 flex gap-3">
+                            {editItem.id && (
+                                <button
+                                    onClick={async () => {
+                                        if (!confirm('¿Desactivar esta notificación?')) return;
+                                        try {
+                                            await deleteNotificacionAdmin(editItem.id!);
+                                            await loadData();
+                                            setEditItem(null);
+                                        } catch (e: any) { setError(e.message); }
+                                    }}
+                                    className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors"
+                                    title="Desactivar notificación"
+                                >
+                                    🗑️ Borrar
+                                </button>
+                            )}
                             <button onClick={() => { setEditItem(null); setError(''); }}
                                 className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200">
                                 Cancelar

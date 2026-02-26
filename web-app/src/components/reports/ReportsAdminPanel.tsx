@@ -79,6 +79,8 @@ export function ReportsAdminPanel() {
                 formatoSalida: editReport.FormatoSalida || 'html',
                 templateAsunto: editReport.TemplateAsunto,
                 templateEncabezado: editReport.TemplateEncabezado,
+                permitirProgramacionCustom: editReport.PermitirProgramacionCustom !== false,
+                permitirEnviarAhora: editReport.PermitirEnviarAhora !== false,
                 activo: editReport.Activo !== false,
                 orden: editReport.Orden || 0
             };
@@ -161,7 +163,7 @@ export function ReportsAdminPanel() {
                 <>
                     {/* Create button */}
                     <div className="flex justify-end mb-4">
-                        <button onClick={() => { setEditReport({ Icono: '📊', Frecuencia: 'Diario', HoraEnvio: '07:00', Activo: true, Categoria: 'General', FormatoSalida: 'html', columnas: [], parametros: [] }); setIsNew(true); }}
+                        <button onClick={() => { setEditReport({ Icono: '📊', Frecuencia: 'Diario', HoraEnvio: '07:00', Activo: true, PermitirProgramacionCustom: true, PermitirEnviarAhora: true, Categoria: 'General', FormatoSalida: 'html', columnas: [], parametros: [] }); setIsNew(true); }}
                             className="btn-primary">
                             <Plus className="w-4 h-4" /> Nuevo Reporte
                         </button>
@@ -250,6 +252,40 @@ export function ReportsAdminPanel() {
                                     <input className="input-field" value={editReport.TemplateAsunto || ''}
                                         onChange={e => setEditReport({ ...editReport, TemplateAsunto: e.target.value })}
                                         placeholder="{{nombre}} — {{fecha}}" />
+                                </div>
+
+                                <div className="sm:col-span-2 pt-2 border-t border-indigo-100/50 flex flex-col gap-3">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Permisos del Reporte</h4>
+
+                                    <label className="flex items-start gap-3 cursor-pointer group">
+                                        <div className="relative flex items-center justify-center mt-0.5">
+                                            <input type="checkbox" className="peer sr-only"
+                                                checked={editReport.PermitirProgramacionCustom !== false}
+                                                onChange={e => setEditReport({ ...editReport, PermitirProgramacionCustom: e.target.checked })} />
+                                            <div className="w-5 h-5 rounded border-2 border-gray-300 peer-checked:bg-indigo-600 peer-checked:border-indigo-600 transition-all flex items-center justify-center">
+                                                <Check className="w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity" strokeWidth={3} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-800">Permitir al usuario personalizar su programación</p>
+                                            <p className="text-xs text-gray-500">Si se apaga, los usuarios se suscribirán automáticamente a la Frecuencia/Hora por defecto ({editReport.Frecuencia} {editReport.HoraEnvio}) sin poder modificarla.</p>
+                                        </div>
+                                    </label>
+
+                                    <label className="flex items-start gap-3 cursor-pointer group">
+                                        <div className="relative flex items-center justify-center mt-0.5">
+                                            <input type="checkbox" className="peer sr-only"
+                                                checked={editReport.PermitirEnviarAhora !== false}
+                                                onChange={e => setEditReport({ ...editReport, PermitirEnviarAhora: e.target.checked })} />
+                                            <div className="w-5 h-5 rounded border-2 border-gray-300 peer-checked:bg-indigo-600 peer-checked:border-indigo-600 transition-all flex items-center justify-center">
+                                                <Check className="w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity" strokeWidth={3} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-800">Permitir botón "Enviar Ahora"</p>
+                                            <p className="text-xs text-gray-500">Muestra un botón en el catálogo para que los usuarios puedan disparar y recibir el reporte instantáneamente por correo.</p>
+                                        </div>
+                                    </label>
                                 </div>
                             </div>
                             <div className="flex gap-3 mt-5">
