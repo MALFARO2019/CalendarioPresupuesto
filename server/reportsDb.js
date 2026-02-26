@@ -114,6 +114,21 @@ async function ensureReportsTables() {
             console.warn('⚠️ Reports: Could not add new config columns:', e.message);
         }
 
+        // Add FiltrosDisponibles column if missing
+        try {
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('DIM_REPORTES') AND name = 'FiltrosDisponibles')
+                ALTER TABLE DIM_REPORTES ADD FiltrosDisponibles NVARCHAR(200) NULL
+            `);
+            // Backfill: alcance-nocturno supports all three filters
+            await pool.request().query(`
+                UPDATE DIM_REPORTES SET FiltrosDisponibles = 'grupos,locales,canales'
+                WHERE TipoEspecial = 'alcance-nocturno' AND (FiltrosDisponibles IS NULL OR FiltrosDisponibles = '')
+            `);
+        } catch (e) {
+            console.warn('⚠️ Reports: Could not add FiltrosDisponibles column:', e.message);
+        }
+
         // Add UsuarioID to DIM_REPORTE_ACCESO and make PerfilID nullable if missing
         try {
             await pool.request().query(`
@@ -168,7 +183,11 @@ async function ensureReportsTables() {
 async function getReports() {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-        SELECT r.*, 
+        SELECT r.ID, r.Nombre, r.Descripcion, r.Icono, r.Categoria, r.QuerySQL, r.Columnas, r.Parametros,
+            r.Frecuencia, r.HoraEnvio, r.DiaSemana, r.DiaMes, r.FormatoSalida, r.TemplateAsunto, r.TemplateEncabezado,
+            r.Activo, r.Orden, r.TipoEspecial, r.CreadoPor, r.FechaCreacion, r.ModificadoPor, r.FechaModificacion,
+            r.PermitirProgramacionCustom, r.PermitirEnviarAhora,
+            ISNULL(r.FiltrosDisponibles, '') AS FiltrosDisponibles,
             (SELECT COUNT(*) FROM DIM_REPORTE_SUSCRIPCIONES WHERE ReporteID = r.ID AND Activo = 1) AS TotalSuscriptores
         FROM DIM_REPORTES r
         ORDER BY r.Orden, r.Nombre
@@ -182,7 +201,11 @@ async function getReportsForUser(userId, perfilId) {
         .input('userId', sql.Int, userId)
         .input('perfilId', sql.Int, perfilId || 0)
         .query(`
-            SELECT DISTINCT r.*,
+            SELECT DISTINCT r.ID, r.Nombre, r.Descripcion, r.Icono, r.Categoria, r.QuerySQL, r.Columnas, r.Parametros,
+                r.Frecuencia, r.HoraEnvio, r.DiaSemana, r.DiaMes, r.FormatoSalida, r.TemplateAsunto, r.TemplateEncabezado,
+                r.Activo, r.Orden, r.TipoEspecial, r.CreadoPor, r.FechaCreacion, r.ModificadoPor, r.FechaModificacion,
+                r.PermitirProgramacionCustom, r.PermitirEnviarAhora,
+                ISNULL(r.FiltrosDisponibles, '') AS FiltrosDisponibles,
                 CASE WHEN s.ID IS NOT NULL THEN 1 ELSE 0 END AS Suscrito,
                 s.Activo AS SuscripcionActiva,
                 s.ID AS SuscripcionID
@@ -291,7 +314,9 @@ async function getSubscriptions(userId) {
         .input('userId', sql.Int, userId)
         .query(`
             SELECT s.*, r.Nombre, r.Descripcion, r.Icono, r.Categoria, r.Frecuencia AS FrecuenciaDefault,
-                r.HoraEnvio AS HoraEnvioDefault, r.DiaSemana AS DiaSemanaDefault, r.DiaMes AS DiaMesDefault
+                r.HoraEnvio AS HoraEnvioDefault, r.DiaSemana AS DiaSemanaDefault, r.DiaMes AS DiaMesDefault,
+                ISNULL(r.FiltrosDisponibles, '') AS FiltrosDisponibles,
+                r.TipoEspecial
             FROM DIM_REPORTE_SUSCRIPCIONES s
             JOIN DIM_REPORTES r ON r.ID = s.ReporteID
             WHERE s.UsuarioID = @userId
@@ -371,7 +396,7 @@ async function updateSubscription(subscriptionId, config) {
         .input('horaEnvioPersonal', sql.NVarChar(5), config.horaEnvioPersonal || null)
         .input('diaSemanaPersonal', sql.Int, config.diaSemanaPersonal || null)
         .input('diaMesPersonal', sql.Int, config.diaMesPersonal || null)
-        .input('parametrosFijos', sql.NVarChar(sql.MAX), config.parametrosFijos ? JSON.stringify(config.parametrosFijos) : null)
+        .input('parametrosFijos', sql.NVarChar(sql.MAX), config.parametrosFijos ? (typeof config.parametrosFijos === 'string' ? config.parametrosFijos : JSON.stringify(config.parametrosFijos)) : null)
         .input('activo', sql.Bit, config.activo !== undefined ? config.activo : true)
         .query(`
             UPDATE DIM_REPORTE_SUSCRIPCIONES SET 
@@ -392,7 +417,8 @@ async function getReportAccess() {
         SELECT a.*, r.Nombre AS ReporteNombre, p.Nombre AS PerfilNombre
         FROM DIM_REPORTE_ACCESO a
         JOIN DIM_REPORTES r ON r.ID = a.ReporteID
-        JOIN DIM_PERFILES p ON p.ID = a.PerfilID
+        JOIN APP_PERFILES p ON p.Id = a.PerfilID
+        WHERE a.PerfilID IS NOT NULL
         ORDER BY r.Nombre, p.Nombre
     `);
     return result.recordset;
@@ -424,11 +450,11 @@ async function setProfileAccess(reporteId, perfilId, grant, assignedBy) {
 
 async function bulkSetAccess(reporteId, perfilIds, assignedBy) {
     const pool = await poolPromise;
-    // Remove all existing
+    // Remove only profile-based access (preserve user-specific access)
     await pool.request()
         .input('reporteId', sql.Int, reporteId)
-        .query('DELETE FROM DIM_REPORTE_ACCESO WHERE ReporteID = @reporteId');
-    // Add new
+        .query('DELETE FROM DIM_REPORTE_ACCESO WHERE ReporteID = @reporteId AND PerfilID IS NOT NULL');
+    // Add new profile assignments
     for (const perfilId of perfilIds) {
         await pool.request()
             .input('reporteId', sql.Int, reporteId)
@@ -493,7 +519,7 @@ async function getDueSubscriptions(currentHour, currentMinute, dayOfWeek, dayOfM
         .input('dayOfWeek', sql.Int, dayOfWeek)
         .input('dayOfMonth', sql.Int, dayOfMonth)
         .query(`
-            SELECT s.*, r.QuerySQL, r.Columnas, r.Parametros, r.Nombre AS ReporteNombre,
+            SELECT s.*, r.QuerySQL, r.Columnas, r.Parametros, r.Nombre AS ReporteNombre, r.Icono,
                 r.TemplateAsunto, r.TemplateEncabezado, r.FormatoSalida, r.TipoEspecial,
                 r.Frecuencia AS FrecuenciaDefault, r.HoraEnvio AS HoraEnvioDefault,
                 r.DiaSemana AS DiaSemanaDefault, r.DiaMes AS DiaMesDefault,
@@ -515,6 +541,17 @@ async function getDueSubscriptions(currentHour, currentMinute, dayOfWeek, dayOfM
               )
         `);
     return result.recordset;
+}
+
+/**
+ * Get a single report by ID
+ */
+async function getReportById(reportId) {
+    const pool = await poolPromise;
+    const result = await pool.request()
+        .input('id', sql.Int, reportId)
+        .query(`SELECT *, ISNULL(FiltrosDisponibles, '') AS FiltrosDisponibles FROM DIM_REPORTES WHERE ID = @id`);
+    return result.recordset[0] || null;
 }
 
 module.exports = {

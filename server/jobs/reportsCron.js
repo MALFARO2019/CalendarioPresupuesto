@@ -75,7 +75,37 @@ async function checkAndSendReports() {
             if (sub.TipoEspecial === 'alcance-nocturno') {
                 // Fetch user permissions for personalized report
                 const userPerms = await getUserPermissions(sub.UsuarioID);
-                const { ok } = await generarReporteAlcance([emailTo], userPerms);
+
+                // Apply subscription-level filters (intersect with user permissions)
+                let effectivePerms = { ...userPerms };
+                if (fixedParams.filtroGrupos && fixedParams.filtroGrupos.length > 0) {
+                    // Subscription filter: only include groups/stores that user also has permission for
+                    const allowed = new Set(userPerms.allowedStores);
+                    effectivePerms.allowedStores = allowed.size > 0
+                        ? fixedParams.filtroGrupos.filter(g => allowed.has(g))
+                        : fixedParams.filtroGrupos; // no user restrictions = allow all selected
+                }
+                if (fixedParams.filtroLocales && fixedParams.filtroLocales.length > 0) {
+                    // Merge locales into allowedStores (they share the same dimension)
+                    const allowed = new Set(userPerms.allowedStores);
+                    const filteredLocales = allowed.size > 0
+                        ? fixedParams.filtroLocales.filter(l => allowed.has(l))
+                        : fixedParams.filtroLocales;
+                    if (effectivePerms.allowedStores && effectivePerms.allowedStores.length > 0) {
+                        effectivePerms.allowedStores = [...new Set([...effectivePerms.allowedStores, ...filteredLocales])];
+                    } else {
+                        effectivePerms.allowedStores = filteredLocales;
+                    }
+                }
+                if (fixedParams.filtroCanales && fixedParams.filtroCanales.length > 0) {
+                    const allowed = new Set(userPerms.allowedCanales);
+                    effectivePerms.allowedCanales = allowed.size > 0
+                        ? fixedParams.filtroCanales.filter(c => allowed.has(c))
+                        : fixedParams.filtroCanales;
+                }
+
+                const config = { nombre: sub.ReporteNombre, icono: sub.Icono || '📊' };
+                const { ok } = await generarReporteAlcance([emailTo], effectivePerms, config);
                 if (ok) {
                     await reportsDb.markSubscriptionSent(sub.ID);
                     console.log(`  ✅ Reporte nocturno enviado a ${emailTo}`);

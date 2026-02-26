@@ -229,8 +229,13 @@ function App() {
       .then(storeData => {
         setGroups(storeData.groups);
         setIndividualStores(storeData.individuals);
-        // Auto-select first individual store
-        if (!filterLocal && storeData.individuals.length > 0) {
+        const allAvailable = [...storeData.groups, ...storeData.individuals];
+        // Validate current filterLocal is accessible — if not, reset to first available
+        if (filterLocal && allAvailable.length > 0 && !allAvailable.includes(filterLocal)) {
+          console.warn(`⚠️ filterLocal "${filterLocal}" not in user's available stores, resetting to first available`);
+          setFilterLocal(storeData.individuals[0] || storeData.groups[0]);
+        } else if (!filterLocal && storeData.individuals.length > 0) {
+          // Auto-select first individual store
           setFilterLocal(storeData.individuals[0]);
         }
       })
@@ -282,10 +287,17 @@ function App() {
       })
       .catch(err => {
         console.error('❌ API failed:', err);
-        console.warn('🔄 Falling back to mock data');
-        setError(`Error al cargar datos: ${err.message}`);
-        setData(generateMockData());
-        setUseApi(false);
+        // Only fall back to mock data for actual connection errors, not permission errors
+        if (err.message?.includes('403') || err.message?.includes('No tiene acceso')) {
+          console.warn('🚫 Permission error — user does not have access to this store');
+          setError(`No tiene acceso a este local. Seleccione otro local.`);
+          setData([]);
+        } else {
+          console.warn('🔄 Falling back to mock data');
+          setError(`Error al cargar datos: ${err.message}`);
+          setData(generateMockData());
+          setUseApi(false);
+        }
       });
 
     // Fetch data for ALL 3 KPIs for summary card

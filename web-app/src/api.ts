@@ -421,6 +421,11 @@ export async function fetchBudgetData(
         return [];
     }
 
+    if (response.status === 403) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'No tiene acceso a este local (403)');
+    }
+
     if (!response.ok) {
         throw new Error(`Error fetching budget data: ${response.statusText}`);
     }
@@ -2010,6 +2015,7 @@ export interface Report {
     Suscrito?: number;
     SuscripcionActiva?: number;
     SuscripcionID?: number;
+    FiltrosDisponibles?: string | null;
 }
 
 export interface ReportSubscription {
@@ -2034,6 +2040,8 @@ export interface ReportSubscription {
     HoraEnvioDefault: string;
     DiaSemanaDefault: number | null;
     DiaMesDefault: number | null;
+    FiltrosDisponibles?: string | null;
+    TipoEspecial?: string | null;
 }
 
 export interface ReportAccess {
@@ -2093,6 +2101,19 @@ export async function previewReport(id: number, params?: Record<string, string>)
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     const response = await fetch(`${API_BASE}/reports/${id}/preview${qs}`, { headers: authHeaders() });
     if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error previewing report'); }
+    return response.json();
+}
+
+export interface ReportFilterOptions {
+    grupos: string[];
+    locales: string[];
+    canales: string[];
+    filtrosDisponibles: string[];
+}
+
+export async function fetchReportFilterOptions(id: number): Promise<ReportFilterOptions> {
+    const response = await fetch(`${API_BASE}/reports/${id}/filter-options`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Error fetching filter options');
     return response.json();
 }
 

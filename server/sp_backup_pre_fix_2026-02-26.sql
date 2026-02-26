@@ -1,3 +1,4 @@
+
 CREATE PROCEDURE [dbo].[SP_CALCULAR_PRESUPUESTO]
     @NombrePresupuesto  NVARCHAR(100) = NULL,
     @TablaDestino       NVARCHAR(100) = NULL,
@@ -120,7 +121,6 @@ BEGIN
     IF OBJECT_ID('tempdb..#GrupoMiembros') IS NOT NULL DROP TABLE #GrupoMiembros;
     CREATE TABLE #GrupoMiembros(IDGRUPO INT NOT NULL, CodAlmacen NVARCHAR(10) NOT NULL, PRIMARY KEY(IDGRUPO,CodAlmacen));
 
-    SET XACT_ABORT OFF;
     BEGIN TRY
         INSERT INTO #GrupoMiembros(IDGRUPO,CodAlmacen)
         SELECT cab.IDGRUPO, LEFT(LTRIM(RTRIM(lin.CODALMACEN)) COLLATE DATABASE_DEFAULT, 10)
@@ -129,9 +129,18 @@ BEGIN
         WHERE cab.CODVISIBLE = 20;
     END TRY
     BEGIN CATCH
-        PRINT 'Warning: Group tables not available - ' + ERROR_MESSAGE();
+        BEGIN TRY
+            INSERT INTO #GrupoMiembros(IDGRUPO,CodAlmacen)
+            SELECT cab.IDGRUPO, LEFT(LTRIM(RTRIM(lin.CODALMACEN)) COLLATE DATABASE_DEFAULT, 10)
+            FROM dbo.GRUPOSALMACENCAB cab WITH (NOLOCK)
+            JOIN dbo.GRUPOSALMACENLIN lin WITH (NOLOCK) ON lin.IDGRUPO = cab.IDGRUPO
+            WHERE cab.CODVISIBLE = 20;
+        END TRY
+        BEGIN CATCH
+            -- No group tables available, continue without groups
+            PRINT 'Warning: Group tables not available';
+        END CATCH
     END CATCH
-    SET XACT_ABORT ON;
 
     DELETE gm FROM #GrupoMiembros gm WHERE NOT EXISTS (SELECT 1 FROM #Cods c WHERE c.CodAlmacen = gm.CodAlmacen);
 
@@ -256,7 +265,6 @@ BEGIN
     -- ============================================
     -- 8. BASE YEAR DAILY SALES (for weights)
     -- ============================================
-    IF OBJECT_ID('tempdb..#DailyBaseOriginal') IS NOT NULL DROP TABLE #DailyBaseOriginal;
     IF OBJECT_ID('tempdb..#DailyBase') IS NOT NULL DROP TABLE #DailyBase;
     CREATE TABLE #DailyBase(
         Fecha DATE NOT NULL, CodAlmacen NVARCHAR(10) NOT NULL,
@@ -294,11 +302,6 @@ BEGIN
              WHEN UPPER(LTRIM(RTRIM(v.CANAL))) IN (N'SALON',N'SALÓN') THEN N'Salón'
              WHEN UPPER(LTRIM(RTRIM(v.CANAL))) IN (N'UBEREATS',N'UBER EATS') THEN N'UberEats'
              ELSE NULL END IS NOT NULL;
-
-    -- Snapshot BEFORE reference merge: preserves REAL sales only
-    IF OBJECT_ID('tempdb..#DailyBaseOriginal') IS NOT NULL DROP TABLE #DailyBaseOriginal;
-    SELECT Fecha, CodAlmacen, Canal, Venta, Transacciones INTO #DailyBaseOriginal FROM #DailyBase;
-    CREATE CLUSTERED INDEX IX_DBO ON #DailyBaseOriginal(Fecha,CodAlmacen,Canal);
 
     -- Handle reference-mapped stores (new stores without history)
     INSERT INTO #DailyBase(Fecha,CodAlmacen,Canal,Venta,Transacciones)
@@ -755,7 +758,7 @@ BEGIN
 
     -- Aggregate base year sales per date+store+channel for fast lookup
     IF OBJECT_ID('tempdb..#BaseLookup') IS NOT NULL DROP TABLE #BaseLookup;
-    SELECT Fecha, CodAlmacen, Canal, Venta, Transacciones INTO #BaseLookup FROM #DailyBaseOriginal;
+    SELECT Fecha, CodAlmacen, Canal, Venta, Transacciones INTO #BaseLookup FROM #DailyBase;
     CREATE CLUSTERED INDEX IX_BL ON #BaseLookup(Fecha,CodAlmacen,Canal);
 
     -- Current year actual sales
@@ -922,7 +925,6 @@ BEGIN
             SerieNum VARCHAR(2) NOT NULL  -- numeric Serie: '0','1'...'17'
         );
 
-        SET XACT_ABORT OFF;
         BEGIN TRY
             INSERT INTO #GrpInfo(IDGRUPO, CodGrupo, NombreGrupo, IdLocalGrupo, SerieNum)
             SELECT cab.IDGRUPO,
@@ -934,9 +936,20 @@ BEGIN
             WHERE cab.CODVISIBLE = 20;
         END TRY
         BEGIN CATCH
-            PRINT 'Warning: Could not load group descriptions - ' + ERROR_MESSAGE();
+            BEGIN TRY
+                INSERT INTO #GrpInfo(IDGRUPO, CodGrupo, NombreGrupo, IdLocalGrupo, SerieNum)
+                SELECT cab.IDGRUPO,
+                    N'G'+RIGHT(N'0'+CAST(cab.IDGRUPO-3000 AS NVARCHAR(2)),2),
+                    LTRIM(RTRIM(cab.DESCRIPCION)),
+                    cab.IDGRUPO,
+                    CAST(cab.IDGRUPO-3000 AS VARCHAR(2))
+                FROM dbo.GRUPOSALMACENCAB cab WITH (NOLOCK)
+                WHERE cab.CODVISIBLE = 20;
+            END TRY
+            BEGIN CATCH
+                PRINT 'Warning: Could not load group descriptions';
+            END CATCH
         END CATCH
-        SET XACT_ABORT ON;
 
         -- Insert group aggregations (Ventas + Transacciones)
         SET @SQL = N'

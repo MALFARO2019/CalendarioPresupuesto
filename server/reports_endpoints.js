@@ -1,6 +1,7 @@
 const reportsDb = require('./reportsDb');
 const { sendReportEmail } = require('./emailService');
 const { generarReporteAlcance } = require('./reporteNocturno');
+const { sql, poolPromise } = require('./db');
 
 // ============================================
 // Register reports endpoints
@@ -63,8 +64,9 @@ function registerReportsEndpoints(app, authMiddleware) {
                 // Generate without sending email - just return HTML
                 const { generarReporteAlcancePreview } = require('./reporteNocturno');
                 if (generarReporteAlcancePreview) {
-                    const html = await generarReporteAlcancePreview(userPerms);
-                    return res.json({ html, isSpecial: true });
+                    const config = { nombre: report.Nombre, icono: report.Icono || '📊' };
+                    const html = await generarReporteAlcancePreview(userPerms, config);
+                    return res.json({ html, isSpecial: true, filtrosDisponibles: report.FiltrosDisponibles || '' });
                 }
                 return res.json({ html: '<p>Preview no disponible para este tipo de reporte. Use "Generar" para enviarlo por correo.</p>', isSpecial: true });
             }
@@ -237,6 +239,86 @@ function registerReportsEndpoints(app, authMiddleware) {
         }
     });
 
+    // ---- FILTER OPTIONS ----
+
+    // GET /api/reports/:id/filter-options — get available filter options for a report
+    app.get('/api/reports/:id/filter-options', authMiddleware, async (req, res) => {
+        try {
+            const reportId = parseInt(req.params.id);
+            const report = await reportsDb.getReportById(reportId);
+            if (!report) return res.status(404).json({ error: 'Reporte no encontrado' });
+
+            const rawFiltros = report.FiltrosDisponibles;
+            const filtrosStr = typeof rawFiltros === 'string' ? rawFiltros : (rawFiltros ? String(rawFiltros) : '');
+            const filtrosDisponibles = filtrosStr.split(',').map(f => f.trim()).filter(Boolean);
+            if (filtrosDisponibles.length === 0) {
+                return res.json({ grupos: [], locales: [], canales: [] });
+            }
+
+            const pool = await poolPromise;
+            const userStores = req.user.allowedStores || [];
+            const userCanales = req.user.allowedCanales || [];
+
+            let grupos = [];
+            let locales = [];
+            let canales = [];
+
+            // For alcance-nocturno type, query RSM_ALCANCE_DIARIO for available options
+            if (report.TipoEspecial === 'alcance-nocturno') {
+                if (filtrosDisponibles.includes('grupos')) {
+                    const gruposResult = await pool.request().query(`
+                        SELECT DISTINCT Local AS Grupo
+                        FROM RSM_ALCANCE_DIARIO
+                        WHERE Tipo = 'Ventas' AND Canal = 'Todos'
+                          AND SUBSTRING(CODALMACEN, 1, 1) = 'G'
+                        ORDER BY Local
+                    `);
+                    grupos = gruposResult.recordset.map(r => r.Grupo?.trim()).filter(Boolean);
+                    // Filter by user permissions if they have store restrictions
+                    if (userStores.length > 0) {
+                        const allowed = new Set(userStores);
+                        grupos = grupos.filter(g => allowed.has(g));
+                    }
+                }
+
+                if (filtrosDisponibles.includes('locales')) {
+                    const localesResult = await pool.request().query(`
+                        SELECT DISTINCT Local
+                        FROM RSM_ALCANCE_DIARIO
+                        WHERE Tipo = 'Ventas' AND Canal = 'Todos'
+                          AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                        ORDER BY Local
+                    `);
+                    locales = localesResult.recordset.map(r => r.Local?.trim()).filter(Boolean);
+                    if (userStores.length > 0) {
+                        const allowed = new Set(userStores);
+                        locales = locales.filter(l => allowed.has(l));
+                    }
+                }
+
+                if (filtrosDisponibles.includes('canales')) {
+                    const canalesResult = await pool.request().query(`
+                        SELECT DISTINCT Canal
+                        FROM RSM_ALCANCE_DIARIO
+                        WHERE Tipo = 'Ventas' AND Canal != 'Todos'
+                          AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                        ORDER BY Canal
+                    `);
+                    canales = canalesResult.recordset.map(r => r.Canal?.trim()).filter(Boolean);
+                    if (userCanales.length > 0) {
+                        const allowed = new Set(userCanales);
+                        canales = canales.filter(c => allowed.has(c));
+                    }
+                }
+            }
+
+            res.json({ grupos, locales, canales, filtrosDisponibles });
+        } catch (error) {
+            console.error('❌ GET /api/reports/:id/filter-options error:', error.message);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     // ---- GENERATE NOW ----
 
     // POST /api/reports/:id/generate — generate and send report right now
@@ -260,7 +342,34 @@ function registerReportsEndpoints(app, authMiddleware) {
                     allowedStores: req.user.allowedStores || [],
                     allowedCanales: req.user.allowedCanales || []
                 };
-                const { ok } = await generarReporteAlcance([emailTo], userPerms);
+
+                // Apply subscription-level filters if provided in params
+                if (params.filtroGrupos && params.filtroGrupos.length > 0) {
+                    const allowed = new Set(userPerms.allowedStores);
+                    userPerms.allowedStores = allowed.size > 0
+                        ? params.filtroGrupos.filter(g => allowed.has(g))
+                        : params.filtroGrupos;
+                }
+                if (params.filtroLocales && params.filtroLocales.length > 0) {
+                    const allowed = new Set(req.user.allowedStores || []);
+                    const filteredLocales = allowed.size > 0
+                        ? params.filtroLocales.filter(l => allowed.has(l))
+                        : params.filtroLocales;
+                    if (userPerms.allowedStores && userPerms.allowedStores.length > 0) {
+                        userPerms.allowedStores = [...new Set([...userPerms.allowedStores, ...filteredLocales])];
+                    } else {
+                        userPerms.allowedStores = filteredLocales;
+                    }
+                }
+                if (params.filtroCanales && params.filtroCanales.length > 0) {
+                    const allowed = new Set(userPerms.allowedCanales);
+                    userPerms.allowedCanales = allowed.size > 0
+                        ? params.filtroCanales.filter(c => allowed.has(c))
+                        : params.filtroCanales;
+                }
+
+                const config = { nombre: report.Nombre, icono: report.Icono || '📊' };
+                const { ok } = await generarReporteAlcance([emailTo], userPerms, config);
                 return res.json({ success: ok, message: `Reporte nocturno enviado a ${emailTo}` });
             }
 

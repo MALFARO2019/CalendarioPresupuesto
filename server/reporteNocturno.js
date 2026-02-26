@@ -6,7 +6,12 @@
 // =============================================================================
 const { sql, poolPromise } = require('./db');
 const nodemailer = require('nodemailer');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
+
+// Logo path for embedding in emails
+const LOGO_PATH = path.resolve(__dirname, '..', 'web-app', 'public', 'LogoRosti.png');
 
 // ── Utilidades ─────────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -345,7 +350,9 @@ function buildTableHTML(titulo, datos) {
 }
 
 // ── HTML Principal (Estilo Stitch) ────────────────────────────────────────────
-function buildHTML(hoy, periodos, kpis) {
+function buildHTML(hoy, periodos, kpis, config = {}) {
+  const nombre = config.nombre || 'Reporte Nocturno de Ventas';
+  const icono = config.icono || '🌙';
   const fechaStr = hoy.toLocaleDateString('es-CR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const fechaCapitalized = fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
 
@@ -369,68 +376,101 @@ function buildHTML(hoy, periodos, kpis) {
   const vsAntColor = kpis.vsAntMes >= 0 ? '#12B76A' : '#F04438';
   const vsAntSign = kpis.vsAntMes >= 0 ? '+' : '';
 
+  // Determine logo src: use CID for email (default), data URI for preview
+  const logoSrc = config._logoDataUri || 'cid:logo-rosti';
+
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Reporte Nocturno de Ventas</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>${nombre}</title>
+<style>
+  /* Reset for email clients */
+  body, table, td, div, p { margin:0; padding:0; }
+  img { display:block; border:0; }
+  /* Mobile-first responsive */
+  @media only screen and (max-width: 480px) {
+    .outer-wrap { padding: 12px 6px !important; }
+    .main-card { border-radius: 12px !important; }
+    .header-cell { padding: 24px 16px 18px !important; }
+    .header-title { font-size: 16px !important; }
+    .header-icon { font-size: 20px !important; }
+    .kpi-cell { padding: 18px 14px 6px !important; }
+    .kpi-pct-hero { font-size: 44px !important; }
+    .kpi-big-number { font-size: 22px !important; }
+    .content-cell { padding: 12px 14px !important; }
+    .metric-pair td { display: block !important; width: 100% !important; padding: 0 0 8px 0 !important; }
+    .metric-pair td:last-child { padding-left: 0 !important; }
+    .quick-metrics td { padding: 4px 2px !important; }
+    .quick-metrics .metric-label { font-size: 8px !important; }
+    .quick-metrics .metric-value { font-size: 12px !important; }
+    .data-cell { padding: 14px 14px 10px !important; }
+    .footer-cell { padding: 16px 14px 20px !important; }
+    .card-box { padding: 10px 12px !important; }
+    .card-box-value { font-size: 15px !important; }
+  }
+</style>
 </head>
-<body style="margin:0;padding:0;background:#EAECF0;font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EAECF0;">
+<body style="margin:0;padding:0;background:#F9FAFB;font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F9FAFB;">
     <tr>
-      <td align="center" style="padding:24px 12px;">
-        <table width="420" cellpadding="0" cellspacing="0" border="0" style="max-width:420px;width:100%;background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <td align="center" class="outer-wrap" style="padding:24px 12px;">
+        <!--[if mso]><table width="460" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+        <table cellpadding="0" cellspacing="0" border="0" class="main-card" style="max-width:460px;width:100%;background:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #EAECF0;box-shadow:0 4px 12px rgba(16,24,40,0.05);">
 
           <!-- HEADER -->
           <tr>
-            <td style="background:#162232;padding:28px 24px 24px;text-align:center;">
-              <img src="https://rostipolloscr.com/wp-content/uploads/2023/03/logo-rosti.png" alt="Rosti" style="height:52px;margin-bottom:12px;" />
-              <div style="font-size:16px;font-weight:800;color:#FFFFFF;letter-spacing:1.5px;text-transform:uppercase;">REPORTE NOCTURNO DE VENTAS</div>
-              <div style="font-size:12px;color:#98A2B3;margin-top:4px;">${fechaCapitalized}</div>
+            <td class="header-cell" style="background:#FFFFFF;padding:28px 24px 20px;text-align:center;border-bottom:1px solid #F2F4F7;">
+              <img src="${logoSrc}" alt="Rosti" style="height:44px;margin:0 auto 14px;display:block;" />
+              <div class="header-title" style="font-size:18px;font-weight:800;color:#101828;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;line-height:1.3;">
+                <span class="header-icon" style="font-size:22px;margin-right:6px;vertical-align:bottom;">${icono}</span>${nombre}
+              </div>
+              <div style="font-size:13px;color:#667085;font-weight:500;">${fechaCapitalized}</div>
             </td>
           </tr>
 
-          <!-- KPI PRINCIPAL -->
+          <!-- KPI PRINCIPAL — PORCENTAJE HÉROE -->
           <tr>
-            <td style="padding:24px 24px 8px;">
-              <div style="text-align:center;">
-                <div style="font-size:10px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">VENTA ACUMULADA MES</div>
-                <div style="font-size:32px;font-weight:900;color:#101828;line-height:1.1;">${fmt(kpis.ventaMes)}</div>
+            <td class="kpi-cell" style="padding:24px 20px 8px;">
+              <!-- % Alcance como elemento HÉROE -->
+              <div style="text-align:center;margin-bottom:8px;">
+                <div style="font-size:10px;font-weight:700;color:#98A2B3;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">% ALCANCE DEL MES</div>
+                <div class="kpi-pct-hero" style="font-size:52px;font-weight:900;color:${progressColor};line-height:1;letter-spacing:-1px;">${fmtPct(kpis.pctMes)}</div>
               </div>
 
-              <!-- Barra de progreso -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
+              <!-- Barra de progreso (gruesa) -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">
                 <tr>
-                  <td style="font-size:12px;color:#667085;font-weight:500;">% Alcance Mes</td>
-                  <td style="font-size:12px;color:${progressColor};font-weight:700;text-align:right;">${fmtPct(kpis.pctMes)}</td>
-                </tr>
-              </table>
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:4px;">
-                <tr>
-                  <td style="background:#F2F4F7;border-radius:4px;height:8px;padding:0;">
-                    <div style="width:${progressPct}%;background:${progressColor};height:8px;border-radius:4px;"></div>
+                  <td style="background:#F2F4F7;border-radius:6px;height:12px;padding:0;">
+                    <div style="width:${progressPct}%;background:${progressColor};height:12px;border-radius:6px;"></div>
                   </td>
                 </tr>
               </table>
+
+              <!-- Venta acumulada debajo -->
+              <div style="text-align:center;margin-top:14px;">
+                <div style="font-size:10px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">VENTA ACUMULADA MES</div>
+                <div class="kpi-big-number" style="font-size:26px;font-weight:800;color:#101828;line-height:1.1;">${fmt(kpis.ventaMes)}</div>
+              </div>
             </td>
           </tr>
 
           <!-- PRESUPUESTO + VS AÑO ANTERIOR -->
           <tr>
-            <td style="padding:12px 24px 8px;">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <td class="content-cell" style="padding:10px 20px 6px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" class="metric-pair">
                 <tr>
-                  <td width="48%" style="padding-right:8px;">
-                    <div style="background:#F9FAFB;border-radius:10px;padding:14px 16px;border:1px solid #EAECF0;">
+                  <td width="48%" style="padding-right:6px;">
+                    <div class="card-box" style="background:#F9FAFB;border-radius:10px;padding:12px 14px;border:1px solid #EAECF0;">
                       <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1px;">PRESUPUESTO</div>
-                      <div style="font-size:18px;font-weight:800;color:#101828;margin-top:4px;">${fmt(kpis.presupuestoMes)}</div>
+                      <div class="card-box-value" style="font-size:16px;font-weight:800;color:#101828;margin-top:4px;word-break:break-all;">${fmt(kpis.presupuestoMes)}</div>
                     </div>
                   </td>
-                  <td width="48%" style="padding-left:8px;">
-                    <div style="background:#F9FAFB;border-radius:10px;padding:14px 16px;border:1px solid #EAECF0;">
+                  <td width="48%" style="padding-left:6px;">
+                    <div class="card-box" style="background:#F9FAFB;border-radius:10px;padding:12px 14px;border:1px solid #EAECF0;">
                       <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1px;">VS AÑO ANTERIOR</div>
-                      <div style="font-size:18px;font-weight:800;color:${vsAntColor};margin-top:4px;">${kpis.vsAntMes != null ? vsAntSign + kpis.vsAntMes.toFixed(1) + '%' : '—'}</div>
+                      <div class="card-box-value" style="font-size:16px;font-weight:800;color:${vsAntColor};margin-top:4px;">${kpis.vsAntMes != null ? vsAntSign + kpis.vsAntMes.toFixed(1) + '%' : '—'}</div>
                     </div>
                   </td>
                 </tr>
@@ -440,13 +480,13 @@ function buildHTML(hoy, periodos, kpis) {
 
           <!-- MÉTRICAS RÁPIDAS POR PERÍODO -->
           <tr>
-            <td style="padding:12px 24px 20px;">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <td class="content-cell" style="padding:10px 20px 16px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" class="quick-metrics">
                 <tr>
                   ${quickMetrics.map(m => `
-                  <td style="text-align:center;padding:0 4px;">
-                    <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">${m.nombre}</div>
-                    <div style="font-size:14px;font-weight:800;color:#101828;margin-top:2px;">${fmtCompact(m.venta)}</div>
+                  <td style="text-align:center;padding:0 3px;">
+                    <div class="metric-label" style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">${m.nombre}</div>
+                    <div class="metric-value" style="font-size:13px;font-weight:800;color:#101828;margin-top:2px;">${fmtCompact(m.venta)}</div>
                   </td>`).join('')}
                 </tr>
               </table>
@@ -455,21 +495,21 @@ function buildHTML(hoy, periodos, kpis) {
 
           <!-- SEPARADOR -->
           <tr>
-            <td style="padding:0 24px;">
+            <td style="padding:0 20px;">
               <div style="border-top:1px solid #EAECF0;"></div>
             </td>
           </tr>
 
           <!-- TABLAS DE DATOS -->
           <tr>
-            <td style="padding:20px 24px 16px;">
+            <td class="data-cell" style="padding:16px 20px 12px;">
               ${sections}
             </td>
           </tr>
 
           <!-- FOOTER -->
           <tr>
-            <td style="padding:20px 24px 28px;text-align:center;">
+            <td class="footer-cell" style="padding:16px 20px 24px;text-align:center;">
               <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1.5px;line-height:1.5;">
                 GENERADO AUTOMÁTICAMENTE POR ROSTI<br>CONTROL DE PRESUPUESTO
               </div>
@@ -482,6 +522,7 @@ function buildHTML(hoy, periodos, kpis) {
           </tr>
 
         </table>
+        <!--[if mso]></td></tr></table><![endif]-->
       </td>
     </tr>
   </table>
@@ -491,7 +532,7 @@ function buildHTML(hoy, periodos, kpis) {
 
 // ── Función principal de generación y envío ────────────────────────────────────
 // userPermissions = { allowedStores: string[], allowedCanales: string[] }
-async function generarReporteAlcance(destinatarios, userPermissions = {}) {
+async function generarReporteAlcance(destinatarios, userPermissions = {}, config = {}) {
   const { gruposRows, canalesRows, totalRows, gruposDisponibles, hoy, ayer } = await fetchData();
   const { allowedStores, allowedCanales } = userPermissions;
 
@@ -531,7 +572,7 @@ async function generarReporteAlcance(destinatarios, userPermissions = {}) {
     vsAntMes: corpMes.vsAnterior
   };
 
-  const html = buildHTML(hoy, periodos, kpis);
+  const html = buildHTML(hoy, periodos, kpis, config);
 
   // Envío via nodemailer
   const transporter = nodemailer.createTransport({
@@ -546,12 +587,25 @@ async function generarReporteAlcance(destinatarios, userPermissions = {}) {
   });
 
   const hoyStr = hoy.toLocaleDateString('es-CR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const nombreReporte = config.nombre || 'Reporte Nocturno de Ventas';
+  const iconoReporte = config.icono || '🌙';
+
+  // Prepare logo attachment for CID embedding
+  const attachments = [];
+  if (fs.existsSync(LOGO_PATH)) {
+    attachments.push({
+      filename: 'LogoRosti.png',
+      path: LOGO_PATH,
+      cid: 'logo-rosti'
+    });
+  }
 
   await transporter.sendMail({
     from: `"Rosti Control" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
     to: destinatarios.join(';'),
-    subject: `🌙 Reporte Nocturno de Ventas — ${hoyStr}`,
+    subject: `${iconoReporte} ${nombreReporte} — ${hoyStr}`,
     html,
+    attachments,
   });
 
   console.log(`📧 Reporte nocturno enviado a: ${destinatarios.join(', ')}`);
@@ -559,7 +613,7 @@ async function generarReporteAlcance(destinatarios, userPermissions = {}) {
 }
 
 // ── Preview (genera HTML sin enviar correo) ───────────────────────────────────
-async function generarReporteAlcancePreview(userPermissions = {}) {
+async function generarReporteAlcancePreview(userPermissions = {}, config = {}) {
   const { gruposRows, canalesRows, totalRows, gruposDisponibles, hoy, ayer } = await fetchData();
   const { allowedStores, allowedCanales } = userPermissions;
 
@@ -578,7 +632,14 @@ async function generarReporteAlcancePreview(userPermissions = {}) {
     anteriorMes: corpMes.anterior || 0, vsAntMes: corpMes.vsAnterior
   };
 
-  return buildHTML(hoy, periodos, kpis);
+  // For preview, embed logo as base64 data URI instead of CID
+  const previewConfig = { ...config };
+  if (fs.existsSync(LOGO_PATH)) {
+    const logoBase64 = fs.readFileSync(LOGO_PATH).toString('base64');
+    previewConfig._logoDataUri = `data:image/png;base64,${logoBase64}`;
+  }
+
+  return buildHTML(hoy, periodos, kpis, previewConfig);
 }
 
 // ── Función de prueba ──────────────────────────────────────────────────────────
