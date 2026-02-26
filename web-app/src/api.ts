@@ -243,12 +243,13 @@ export async function createAdminUser(
     cedula: string | null = null,
     telefono: string | null = null,
     accesoAsignaciones: boolean = false,
-    accesoGruposAlmacen: boolean = false
+    accesoGruposAlmacen: boolean = false,
+    accesoReportes: boolean = false
 ): Promise<{ success: boolean; userId: number; clave: string }> {
     const response = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, ...modeloPerms })
+        body: JSON.stringify({ email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, accesoReportes, ...modeloPerms })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -283,12 +284,13 @@ export async function updateAdminUser(
     cedula: string | null = null,
     telefono: string | null = null,
     accesoAsignaciones: boolean = false,
-    accesoGruposAlmacen: boolean = false
+    accesoGruposAlmacen: boolean = false,
+    accesoReportes: boolean = false
 ): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, ...modeloPerms })
+        body: JSON.stringify({ email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, accesoReportes, ...modeloPerms })
     });
     if (!response.ok) {
         const data = await response.json();
@@ -1077,6 +1079,7 @@ export interface Profile {
     apareceEnTituloRangos: boolean;
     accesoAsignaciones: boolean;
     accesoGruposAlmacen: boolean;
+    accesoReportes: boolean;
     usuariosAsignados: number;
     fechaCreacion: string;
     fechaModificacion: string | null;
@@ -1129,6 +1132,7 @@ export async function createProfile(data: {
         apareceEnTituloRangos?: boolean;
         accesoAsignaciones?: boolean;
         accesoGruposAlmacen?: boolean;
+        accesoReportes?: boolean;
     };
 }): Promise<{ success: boolean; profileId: number }> {
     const response = await fetch(`${API_BASE}/admin/profiles`, {
@@ -1180,6 +1184,7 @@ export async function updateProfile(
             apareceEnTituloRangos?: boolean;
             accesoAsignaciones?: boolean;
             accesoGruposAlmacen?: boolean;
+            accesoReportes?: boolean;
         };
     }
 ): Promise<{ success: boolean }> {

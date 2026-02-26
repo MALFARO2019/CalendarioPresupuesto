@@ -59,6 +59,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
         apareceEnTituloRangos: true,
         accesoAsignaciones: false,
         accesoGruposAlmacen: false,
+        accesoReportes: false,
     });
 
     useEffect(() => {
@@ -115,6 +116,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     apareceEnTituloRangos: formData.apareceEnTituloRangos,
                     accesoAsignaciones: formData.accesoAsignaciones,
                     accesoGruposAlmacen: formData.accesoGruposAlmacen,
+                    accesoReportes: formData.accesoReportes,
                 }
             });
             setShowCreateModal(false);
@@ -163,6 +165,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                     apareceEnTituloRangos: formData.apareceEnTituloRangos,
                     accesoAsignaciones: formData.accesoAsignaciones,
                     accesoGruposAlmacen: formData.accesoGruposAlmacen,
+                    accesoReportes: formData.accesoReportes,
                 }
             });
             setEditingProfile(null);
@@ -243,6 +246,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             apareceEnTituloRangos: true,
             accesoAsignaciones: false,
             accesoGruposAlmacen: false,
+            accesoReportes: false,
         });
     };
 
@@ -282,6 +286,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
             apareceEnTituloRangos: profile.apareceEnTituloRangos ?? true,
             accesoAsignaciones: profile.accesoAsignaciones || false,
             accesoGruposAlmacen: profile.accesoGruposAlmacen || false,
+            accesoReportes: profile.accesoReportes || false,
         });
     };
 
@@ -342,6 +347,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                                     {profile.accesoEvaluaciones && <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded">Evaluaciones</span>}
                                     {profile.accesoInventarios && <span className="px-2 py-1 bg-teal-100 text-teal-700 text-xs rounded">Inventarios</span>}
                                     {profile.accesoPersonal && <span className="px-2 py-1 bg-rose-100 text-rose-700 text-xs rounded">Personal</span>}
+                                    {profile.accesoReportes && <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded">Reportes</span>}
                                     {profile.accesoModeloPresupuesto && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded">Modelo P.</span>}
                                     {profile.esAdmin && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded font-bold">Admin</span>}
                                     {!profile.permitirEnvioClave && <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">Sin envío de clave</span>}
@@ -438,6 +444,7 @@ export function ProfilesManagement({ users, onUserUpdate }: ProfilesManagementPr
                                         { key: 'accesoEvaluaciones', label: 'Evaluaciones' },
                                         { key: 'accesoInventarios', label: 'Inventarios' },
                                         { key: 'accesoPersonal', label: 'Personal' },
+                                        { key: 'accesoReportes', label: 'Reportes' },
                                         { key: 'accesoModeloPresupuesto', label: 'Modelo Presupuesto' },
                                         { key: 'esAdmin', label: 'Administrador' },
                                         { key: 'permitirEnvioClave', label: 'Envío de clave' },

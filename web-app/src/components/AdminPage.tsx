@@ -123,6 +123,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [newTelefono, setNewTelefono] = useState('');
     const [newAccesoAsignaciones, setNewAccesoAsignaciones] = useState(false);
     const [newAccesoGruposAlmacen, setNewAccesoGruposAlmacen] = useState(false);
+    const [newAccesoReportes, setNewAccesoReportes] = useState(false);
     const [formError, setFormError] = useState('');
     const [formSuccess, setFormSuccess] = useState('');
 
@@ -158,6 +159,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editTelefono, setEditTelefono] = useState('');
     const [editAccesoAsignaciones, setEditAccesoAsignaciones] = useState(false);
     const [editAccesoGruposAlmacen, setEditAccesoGruposAlmacen] = useState(false);
+    const [editAccesoReportes, setEditAccesoReportes] = useState(false);
 
     // Search & Filter functionality
     const [searchTerm, setSearchTerm] = useState('');
@@ -358,6 +360,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 });
                 setNewAccesoAsignaciones(p.accesoAsignaciones || false);
                 setNewAccesoGruposAlmacen(p.accesoGruposAlmacen || false);
+                setNewAccesoReportes(p.accesoReportes || false);
             }
         }
     };
@@ -401,7 +404,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 newCedula || null,
                 newTelefono || null,
                 newAccesoAsignaciones,
-                newAccesoGruposAlmacen
+                newAccesoGruposAlmacen,
+                newAccesoReportes
             );
             setFormSuccess(`Usuario ${newEmail} creado. Clave: ${result.clave}`);
             setNewEmail('');
@@ -431,6 +435,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             setNewTelefono('');
             setNewAccesoAsignaciones(false);
             setNewAccesoGruposAlmacen(false);
+            setNewAccesoReportes(false);
             setShowForm(false);
             loadData();
         } catch (err: any) {
@@ -478,6 +483,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setEditTelefono(user.telefono || '');
         setEditAccesoAsignaciones(user.accesoAsignaciones || false);
         setEditAccesoGruposAlmacen(user.accesoGruposAlmacen || false);
+        setEditAccesoReportes(user.accesoReportes || false);
     };
 
     const handleUpdateUser = async () => {
@@ -516,7 +522,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                 editCedula || null,
                 editTelefono || null,
                 editAccesoAsignaciones,
-                editAccesoGruposAlmacen
+                editAccesoGruposAlmacen,
+                editAccesoReportes
             );
             setFormSuccess(`Usuario ${editEmail} actualizado exitosamente`);
             setEditingUser(null);
@@ -1027,6 +1034,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                         />
                                                         <span className="text-sm font-medium text-gray-700">Personal</span>
                                                     </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-indigo-50 p-2 rounded-lg border border-indigo-200">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={newAccesoReportes}
+                                                            onChange={e => setNewAccesoReportes(e.target.checked)}
+                                                            className="w-4 h-4 text-indigo-600 rounded"
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">Reportes</span>
+                                                    </label>
                                                 </div>
                                             </div>
 
@@ -1312,6 +1328,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                                         {user.accesoEvaluaciones && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">Evaluaciones</span>}
                                                                         {user.accesoInventarios && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium">Inventarios</span>}
                                                                         {user.accesoPersonal && <span className="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full font-medium">Personal</span>}
+                                                                        {user.accesoReportes && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-medium">Reportes</span>}
                                                                     </div>
                                                                     {user.allowedCanales && user.allowedCanales.length > 0 && (
                                                                         <div className="flex flex-wrap gap-1 mt-1">
@@ -1679,6 +1696,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                                     className="w-4 h-4 text-rose-600 rounded"
                                                                 />
                                                                 <span className="text-sm font-medium text-gray-700">Personal</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-2 cursor-pointer bg-indigo-50 p-2 rounded-lg border border-indigo-200">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={editAccesoReportes}
+                                                                    onChange={e => setEditAccesoReportes(e.target.checked)}
+                                                                    className="w-4 h-4 text-indigo-600 rounded"
+                                                                />
+                                                                <span className="text-sm font-medium text-gray-700">Reportes</span>
                                                             </label>
                                                         </div>
                                                     </div>
