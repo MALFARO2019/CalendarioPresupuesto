@@ -1,6 +1,7 @@
 const reportsDb = require('../reportsDb');
 const { sendReportEmail } = require('../emailService');
 const { buildReportHtml } = require('../reports_endpoints');
+const { generarReporteAlcance } = require('../reporteNocturno');
 
 let cronInterval = null;
 
@@ -43,10 +44,25 @@ async function checkAndSendReports() {
 
     for (const sub of dueSubs) {
         try {
-            // Parse params
             const fixedParams = sub.ParametrosFijos ? JSON.parse(sub.ParametrosFijos) : {};
+            const emailTo = sub.EmailDestino || sub.Email;
+            const subject = sub.TemplateAsunto
+                ? sub.TemplateAsunto.replace('{{fecha}}', now.toLocaleDateString('es-CR'))
+                : `${sub.ReporteNombre} - ${now.toLocaleDateString('es-CR')}`;
 
-            // Execute the report query
+            // ── Reportes con lógica especial ─────────────────
+            if (sub.TipoEspecial === 'alcance-nocturno') {
+                const { ok } = await generarReporteAlcance([emailTo]);
+                if (ok) {
+                    await reportsDb.markSubscriptionSent(sub.ID);
+                    console.log(`  ✅ Reporte nocturno enviado a ${emailTo}`);
+                } else {
+                    console.error(`  ❌ Reporte nocturno falló para ${emailTo}`);
+                }
+                continue;
+            }
+
+            // ── Flujo genérico (QuerySQL) ──────────────────
             const report = {
                 Nombre: sub.ReporteNombre,
                 Descripcion: null,
@@ -57,17 +73,8 @@ async function checkAndSendReports() {
                 Parametros: sub.Parametros
             };
             const result = await reportsDb.executeReport(sub.ReporteID, fixedParams);
-
-            // Build HTML
             const htmlContent = buildReportHtml(report, result);
 
-            // Determine recipient email
-            const emailTo = sub.EmailDestino || sub.Email;
-            const subject = sub.TemplateAsunto
-                ? sub.TemplateAsunto.replace('{{fecha}}', now.toLocaleDateString('es-CR'))
-                : `${sub.ReporteNombre} - ${now.toLocaleDateString('es-CR')}`;
-
-            // Send email
             const sent = await sendReportEmail(
                 emailTo,
                 'Sistema Automático',

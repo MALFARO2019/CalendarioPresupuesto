@@ -35,6 +35,7 @@ import LoginAuditPanel from './LoginAuditPanel';
 import { StoreAliasAdmin } from './StoreAliasAdmin';
 import { GruposAlmacenAdmin } from './GruposAlmacenAdmin';
 import { ReportsAdminPanel } from './reports/ReportsAdminPanel';
+import { NotificacionesAdmin } from './notificaciones/NotificacionesAdmin';
 
 interface AdminPageProps {
     onBack: () => void;
@@ -87,7 +88,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
 
     // Auto-select tab based on permissions: admin->users, modelo->modelo-presupuesto, eventos->events
     const defaultTab = isOfflineAdmin ? 'database' : (canAccessUsers ? 'users' : (canAccessModelo ? 'modelo-presupuesto' : (canAccessEvents ? 'events' : (canAccessAsignaciones ? 'personal' : (canAccessGruposAlmacen ? 'grupos-almacen' : 'events')))));
-    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit' | 'store-aliases' | 'grupos-almacen' | 'reportes-admin'>(defaultTab);
+    const [activeTab, setActiveTab] = useState<'users' | 'events' | 'ia' | 'database' | 'profiles' | 'invgate' | 'forms' | 'personal' | 'uber-eats' | 'kpi-admin' | 'deploy' | 'general' | 'modelo-presupuesto' | 'login-audit' | 'store-aliases' | 'grupos-almacen' | 'reportes-admin' | 'notificaciones-admin'>(defaultTab);
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [allStores, setAllStores] = useState<string[]>([]);
@@ -158,23 +159,33 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editAccesoAsignaciones, setEditAccesoAsignaciones] = useState(false);
     const [editAccesoGruposAlmacen, setEditAccesoGruposAlmacen] = useState(false);
 
-    // Search functionality
+    // Search & Filter functionality
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterProfile, setFilterProfile] = useState<number | 'all' | 'none'>('all');
     const [currentPage, setCurrentPage] = useState(1);
     const usersPerPage = 10;
 
-    // Reset page when search changes
-    useEffect(() => { setCurrentPage(1); }, [searchTerm]);
+    // Reset page when search or filter changes
+    useEffect(() => { setCurrentPage(1); }, [searchTerm, filterProfile]);
 
-    // Filter users based on search term
+    // Filter users based on search term and profile
     const filteredUsers = users.filter(user => {
-        if (!searchTerm) return true;
+        let matchesSearch = true;
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            matchesSearch = !!(user.email?.toLowerCase().includes(term) || user.nombre?.toLowerCase().includes(term));
+        }
 
-        const term = searchTerm.toLowerCase();
-        return (
-            user.email?.toLowerCase().includes(term) ||
-            user.nombre?.toLowerCase().includes(term)
-        );
+        let matchesProfile = true;
+        if (filterProfile !== 'all') {
+            if (filterProfile === 'none') {
+                matchesProfile = !user.perfilId;
+            } else {
+                matchesProfile = user.perfilId === filterProfile;
+            }
+        }
+
+        return matchesSearch && matchesProfile;
     });
 
     const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
@@ -740,6 +751,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                 Reportes
                             </button>
                         )}
+                        {(canAccessUsers || currentUser?.accesoNotificaciones || currentUser?.crearNotificaciones) && (
+                            <button onClick={() => setActiveTab('notificaciones-admin')}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'notificaciones-admin' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                <svg className="w-4 h-4 flex-shrink-0 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                                Notificaciones
+                            </button>
+                        )}
                     </nav>
 
                     {/* Main Content */}
@@ -1182,8 +1202,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="mb-6">
-                                            <div className="relative">
+                                        <div className="mb-6 flex flex-col sm:flex-row gap-4">
+                                            <div className="relative flex-1">
                                                 <input
                                                     type="text"
                                                     placeholder="Buscar por nombre o correo..."
@@ -1209,12 +1229,34 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                     </button>
                                                 )}
                                             </div>
-                                            {searchTerm && (
-                                                <p className="text-xs text-gray-500 mt-2">
+                                            <div className="sm:w-64">
+                                                <select
+                                                    value={filterProfile}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setFilterProfile(val === 'all' ? 'all' : val === 'none' ? 'none' : Number(val));
+                                                    }}
+                                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm text-gray-700 bg-white"
+                                                    title="Filtrar por perfil"
+                                                >
+                                                    <option value="all">Todos los perfiles ({users.length})</option>
+                                                    {profiles.map(p => {
+                                                        const count = users.filter(u => u.perfilId === p.id).length;
+                                                        return (
+                                                            <option key={p.id} value={p.id}>{p.nombre} ({count})</option>
+                                                        );
+                                                    })}
+                                                    <option value="none">Sin perfil ({users.filter(u => !u.perfilId).length})</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        {(searchTerm || filterProfile !== 'all') && (
+                                            <div className="mb-4">
+                                                <p className="text-xs text-gray-500">
                                                     {filteredUsers.length} de {users.length} usuario{users.length !== 1 ? 's' : ''}
                                                 </p>
-                                            )}
-                                        </div>
+                                            </div>
+                                        )}
                                         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
                                             <table className="w-full">
                                                 <thead>
@@ -1841,6 +1883,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             <GruposAlmacenAdmin />
                         ) : activeTab === 'reportes-admin' ? (
                             <ReportsAdminPanel />
+                        ) : activeTab === 'notificaciones-admin' ? (
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-800 mb-6">Gestión de Notificaciones</h2>
+                                <NotificacionesAdmin />
+                            </div>
                         ) : (
                             /* T&E (Táctica y Estrategia) Tab */
                             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">

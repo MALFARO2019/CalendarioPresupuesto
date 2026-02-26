@@ -64,6 +64,8 @@ export const StoreAliasAdmin: React.FC = () => {
     const [editingId, setEditingId] = useState<number | null>(null);
     const [formAlias, setFormAlias] = useState('');
     const [formCod, setFormCod] = useState('');
+    const [storeSearch, setStoreSearch] = useState('');
+    const [showStoreDropdown, setShowStoreDropdown] = useState(false);
     const [formFuente, setFormFuente] = useState('');
     const [formCustomFuente, setFormCustomFuente] = useState('');
     const [saving, setSaving] = useState(false);
@@ -177,6 +179,10 @@ export const StoreAliasAdmin: React.FC = () => {
         setEditingId(a.Id);
         setFormAlias(a.Alias);
         setFormCod(a.CodAlmacen);
+
+        const storeMatch = stores.find(s => s.CodAlmacen === a.CodAlmacen);
+        setStoreSearch(storeMatch ? `${storeMatch.CodAlmacen} — ${storeMatch.Nombre}` : a.CodAlmacen);
+
         if (a.Fuente && !fuentes.includes(a.Fuente)) {
             setFormFuente('__custom__');
             setFormCustomFuente(a.Fuente);
@@ -191,6 +197,8 @@ export const StoreAliasAdmin: React.FC = () => {
         setEditingId(null);
         setFormAlias('');
         setFormCod('');
+        setStoreSearch('');
+        setShowStoreDropdown(false);
         setFormFuente('');
         setFormCustomFuente('');
         setShowForm(false);
@@ -352,20 +360,56 @@ export const StoreAliasAdmin: React.FC = () => {
                                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"
                             />
                         </div>
-                        <div>
+                        <div className="relative">
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">CodAlmacen *</label>
-                            <select
-                                value={formCod}
-                                onChange={e => setFormCod(e.target.value)}
+                            <input
+                                type="text"
+                                value={storeSearch}
+                                onChange={e => {
+                                    setStoreSearch(e.target.value);
+                                    setFormCod(e.target.value.toUpperCase());
+                                    setShowStoreDropdown(true);
+                                }}
+                                onFocus={() => setShowStoreDropdown(true)}
+                                onBlur={() => setTimeout(() => setShowStoreDropdown(false), 200)}
+                                placeholder="Buscar o crear nuevo..."
                                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"
-                            >
-                                <option value="">— Seleccionar —</option>
-                                {stores.map(s => (
-                                    <option key={s.CodAlmacen} value={s.CodAlmacen}>
-                                        {s.CodAlmacen} — {s.Nombre}
-                                    </option>
-                                ))}
-                            </select>
+                            />
+                            {showStoreDropdown && (
+                                <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg">
+                                    {stores
+                                        .filter(s =>
+                                            !storeSearch ||
+                                            s.CodAlmacen.toLowerCase().includes(storeSearch.toLowerCase()) ||
+                                            s.Nombre.toLowerCase().includes(storeSearch.toLowerCase())
+                                        )
+                                        .map(s => (
+                                            <div
+                                                key={s.CodAlmacen}
+                                                className="px-3 py-2 text-sm hover:bg-indigo-50 cursor-pointer"
+                                                onClick={() => {
+                                                    setStoreSearch(`${s.CodAlmacen} — ${s.Nombre}`);
+                                                    setFormCod(s.CodAlmacen);
+                                                    setShowStoreDropdown(false);
+                                                }}
+                                            >
+                                                <span className="font-semibold">{s.CodAlmacen}</span> — {s.Nombre}
+                                            </div>
+                                        ))}
+                                    {storeSearch && !stores.some(s => s.CodAlmacen.toUpperCase() === storeSearch.toUpperCase()) && (
+                                        <div
+                                            className="px-3 py-2 text-sm text-indigo-600 hover:bg-indigo-50 cursor-pointer font-medium border-t border-gray-100"
+                                            onClick={() => {
+                                                setStoreSearch(storeSearch.toUpperCase());
+                                                setFormCod(storeSearch.toUpperCase());
+                                                setShowStoreDropdown(false);
+                                            }}
+                                        >
+                                            Usar código personalizado: "{storeSearch.toUpperCase()}"
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Fuente</label>

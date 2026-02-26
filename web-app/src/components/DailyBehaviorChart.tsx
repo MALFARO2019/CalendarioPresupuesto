@@ -114,7 +114,7 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                 if (evs) regularEventsForDay.push(...evs);
             }
             // Look up adjustment events for this day
-            const ajusteEventsForDay: { id: number; evento: string }[] = [];
+            const ajusteEventsForDay: { id: number; evento: string; canal?: string | null; local?: number | string | null; fechaEfectiva?: string | null }[] = [];
             if (verEventosAjuste && tooltipDate) {
                 const dd = String(tooltipDate.day).padStart(2, '0');
                 const mm = String(tooltipDate.month).padStart(2, '0');
@@ -185,9 +185,33 @@ export const DailyBehaviorChart: React.FC<DailyBehaviorChartProps> = ({ data, kp
                         <>
                             <div className="h-px bg-red-200 my-1.5" />
                             {ajusteEventsForDay.map((aev, idx) => (
-                                <div key={idx} className="flex items-center gap-2 text-xs font-medium">
-                                    <div className="w-2 h-2 rounded-full bg-red-600"></div>
-                                    <span className="text-red-700 font-semibold">{aev.evento}</span>
+                                <div key={idx} className="text-xs">
+                                    <div className="flex items-center gap-2 font-medium">
+                                        <div className="w-2 h-2 rounded-full bg-red-600 flex-shrink-0"></div>
+                                        <span className="text-red-700 font-semibold">{aev.evento}</span>
+                                    </div>
+                                    {(aev.fechaEfectiva || aev.canal || aev.local) && (
+                                        <div className="ml-4 mt-0.5 space-y-0.5">
+                                            {aev.fechaEfectiva && (
+                                                <div className="flex gap-1 text-gray-500">
+                                                    <span className="font-medium">Fecha ref.:</span>
+                                                    <span>{new Date(aev.fechaEfectiva + 'T00:00:00').toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                </div>
+                                            )}
+                                            {aev.canal && (
+                                                <div className="flex gap-1 text-gray-500">
+                                                    <span className="font-medium">Canal:</span>
+                                                    <span>{aev.canal}</span>
+                                                </div>
+                                            )}
+                                            {aev.local && (
+                                                <div className="flex gap-1 text-gray-500">
+                                                    <span className="font-medium">Local:</span>
+                                                    <span>{aev.local}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </>

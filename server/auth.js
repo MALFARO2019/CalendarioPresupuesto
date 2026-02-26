@@ -497,9 +497,13 @@ IMPORTANTE:
             { table: 'APP_USUARIOS', col: 'AccesoAsignaciones', def: '0' },
             { table: 'APP_USUARIOS', col: 'AccesoGruposAlmacen', def: '0' },
             { table: 'APP_USUARIOS', col: 'AccesoReportes', def: '0' },
+            { table: 'APP_USUARIOS', col: 'accesoNotificaciones', def: '0' },
+            { table: 'APP_USUARIOS', col: 'crearNotificaciones', def: '0' },
             { table: 'APP_PERFILES', col: 'AccesoAsignaciones', def: '0' },
             { table: 'APP_PERFILES', col: 'AccesoGruposAlmacen', def: '0' },
             { table: 'APP_PERFILES', col: 'AccesoReportes', def: '0' },
+            { table: 'APP_PERFILES', col: 'accesoNotificaciones', def: '0' },
+            { table: 'APP_PERFILES', col: 'crearNotificaciones', def: '0' },
         ];
         for (const { table, col, def } of configCols) {
             await pool.request().query(`
@@ -579,7 +583,7 @@ async function loginUser(email, clave, ip, userAgent) {
     const pool = await poolPromise;
     const result = await pool.request()
         .input('email', sql.NVarChar, email)
-        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(restaurarVersiones,0) as restaurarVersiones, ISNULL(AccesoAsignaciones,0) as AccesoAsignaciones, ISNULL(AccesoGruposAlmacen,0) as AccesoGruposAlmacen, ISNULL(AccesoReportes,0) as AccesoReportes FROM APP_USUARIOS WHERE Email = @email');
+        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(restaurarVersiones,0) as restaurarVersiones, ISNULL(AccesoAsignaciones,0) as AccesoAsignaciones, ISNULL(AccesoGruposAlmacen,0) as AccesoGruposAlmacen, ISNULL(AccesoReportes,0) as AccesoReportes, ISNULL(accesoNotificaciones,0) as accesoNotificaciones, ISNULL(crearNotificaciones,0) as crearNotificaciones FROM APP_USUARIOS WHERE Email = @email');
 
     if (result.recordset.length === 0) {
         logLoginEvent(email, null, false, 'Usuario no encontrado', ip, userAgent);
@@ -656,6 +660,8 @@ async function loginUser(email, clave, ip, userAgent) {
             accesoAsignaciones: user.AccesoAsignaciones,
             accesoGruposAlmacen: user.AccesoGruposAlmacen,
             accesoReportes: user.AccesoReportes,
+            accesoNotificaciones: user.accesoNotificaciones,
+            crearNotificaciones: user.crearNotificaciones,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido
         },
@@ -699,6 +705,8 @@ async function loginUser(email, clave, ip, userAgent) {
             accesoAsignaciones: user.AccesoAsignaciones,
             accesoGruposAlmacen: user.AccesoGruposAlmacen,
             accesoReportes: user.AccesoReportes,
+            accesoNotificaciones: user.accesoNotificaciones,
+            crearNotificaciones: user.crearNotificaciones,
             esAdmin: user.EsAdmin,
             esProtegido: user.EsProtegido,
             allowedStores,
@@ -792,6 +800,8 @@ async function getAllUsers() {
                ISNULL(u.AccesoAsignaciones, 0) as AccesoAsignaciones,
                ISNULL(u.AccesoGruposAlmacen, 0) as AccesoGruposAlmacen,
                ISNULL(u.AccesoReportes, 0) as AccesoReportes,
+               ISNULL(u.accesoNotificaciones, 0) as accesoNotificaciones,
+               ISNULL(u.crearNotificaciones, 0) as crearNotificaciones,
                (SELECT STRING_AGG(a2.Local, ', ') FROM APP_USUARIO_ALMACEN a2 WHERE a2.UsuarioId = u.Id) AS Almacenes,
                (SELECT STRING_AGG(c2.Canal, ', ') FROM APP_USUARIO_CANAL c2 WHERE c2.UsuarioId = u.Id) AS Canales
         FROM APP_USUARIOS u
@@ -831,6 +841,8 @@ async function getAllUsers() {
         accesoAsignaciones: user.AccesoAsignaciones,
         accesoGruposAlmacen: user.AccesoGruposAlmacen,
         accesoReportes: user.AccesoReportes,
+        accesoNotificaciones: user.accesoNotificaciones,
+        crearNotificaciones: user.crearNotificaciones,
         esAdmin: user.EsAdmin,
         esProtegido: user.EsProtegido,
         permitirEnvioClave: user.PermitirEnvioClave,

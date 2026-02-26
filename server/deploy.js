@@ -332,10 +332,73 @@ function normalizeVersion(v) {
     return v.replace(/\.0$/, '');
 }
 
-async function deployToServer(serverIp, user, password, appDir, deployVersion, branch, scenario = 'standard') {
+/**
+ * Deploy con auto-recuperación inteligente.
+ * El escenario es seleccionado automáticamente por la aplicación:
+ *  - Intento 1: 'standard' (deploy completo normal)
+ *  - Si la API no responde → Intento 2: 'hard-reset' (limpieza profunda)
+ *  - Si sigue fallando → Intento 3: 'restart-only' (solo reinicia servicios)
+ * El parámetro `scenario` es ignorado (legacy, mantener por compatibilidad de API).
+ */
+async function deployToServer(serverIp, user, password, appDir, deployVersion, branch, _scenarioIgnored) {
     branch = branch || 'main';
-    const steps = [];
     const startTime = new Date();
+
+    // Intento 1: Standard completo
+    const result1 = await _runDeployScenario(serverIp, user, password, appDir, deployVersion, branch, 'standard', startTime);
+    if (result1.success) return result1;
+
+    // El deploy falló — determinar si fue en la verificación API o en un paso anterior
+    const lastStep1 = result1.steps[result1.steps.length - 1];
+    const apiFailedOrVersionMismatch = lastStep1 &&
+        (lastStep1.step === 'Verificando API' || lastStep1.step === 'Reiniciando servicio');
+
+    if (!apiFailedOrVersionMismatch) {
+        // Falló en un paso crítico (git, build, etc.) — no tiene sentido escalar
+        return result1;
+    }
+
+    // Intento 2: Hard Reset — limpieza profunda de node_modules y git
+    console.log(`[Deploy] Intento 1 falló en "${lastStep1.step}". Escalando a hard-reset...`);
+    const recoveryNote1 = {
+        step: '🔄 Auto-recuperación: Hard Reset',
+        status: 'running',
+        detail: 'El deploy estándar falló. Intentando limpieza profunda automáticamente...'
+    };
+    const result2 = await _runDeployScenario(serverIp, user, password, appDir, deployVersion, branch, 'hard-reset', startTime, [recoveryNote1]);
+    if (result2.success) return result2;
+
+    // Intento 3: Restart Only — si todo lo demás falla, al menos intentar levantar el servicio
+    const lastStep2 = result2.steps[result2.steps.length - 1];
+    const canTryRestart = lastStep2 &&
+        (lastStep2.step === 'Verificando API' || lastStep2.step === 'Reiniciando servicio' || lastStep2.step === '🔄 Auto-recuperación: Hard Reset');
+
+    if (!canTryRestart) {
+        return result2;
+    }
+
+    console.log(`[Deploy] Intento 2 (hard-reset) falló. Escalando a restart-only como último recurso...`);
+    const recoveryNote2 = {
+        step: '🚨 Auto-recuperación: Reinicio de Emergencia',
+        status: 'running',
+        detail: 'Hard Reset no resolvió el problema. Intentando reinicio de servicios como último recurso...'
+    };
+    const result3 = await _runDeployScenario(serverIp, user, password, appDir, deployVersion, branch, 'restart-only', startTime, [recoveryNote2]);
+    return result3;
+}
+
+/**
+ * Ejecuta un escenario de deploy específico.
+ * @internal — Usar deployToServer() desde el exterior.
+ */
+async function _runDeployScenario(serverIp, user, password, appDir, deployVersion, branch, scenario, startTime, prefixSteps = []) {
+    const steps = [...prefixSteps];
+    if (prefixSteps.length > 0) {
+        steps[steps.length - 1] = {
+            ...steps[steps.length - 1], status: 'success',
+            detail: steps[steps.length - 1].detail.replace('Intentando', 'Aplicando')
+        };
+    }
     const credBlock = `$cred = New-Object System.Management.Automation.PSCredential('${user}', (ConvertTo-SecureString '${password}' -AsPlainText -Force))`;
 
     // Step 1: Test connection

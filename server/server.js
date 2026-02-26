@@ -65,12 +65,14 @@ const registerGruposAlmacenEndpoints = require('./gruposAlmacen_endpoints');
 const { ensureReportsTables } = require('./reportsDb');
 const registerReportsEndpoints = require('./reports_endpoints');
 const reportsCron = require('./jobs/reportsCron');
+const registerNotificacionesEndpoints = require('./notificaciones_endpoints');
 
 const app = express();
 const port = process.env.PORT || 80;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 // Initialize security tables and DB config table on startup
 (async () => {
@@ -136,6 +138,11 @@ registerGruposAlmacenEndpoints(app, authMiddleware);
 registerReportsEndpoints(app, authMiddleware);
 
 // ==========================================
+// NOTIFICACIONES ENDPOINTS
+// ==========================================
+registerNotificacionesEndpoints(app, authMiddleware);
+
+// ==========================================
 // DEPLOY MANAGEMENT ENDPOINTS
 // ==========================================
 
@@ -191,7 +198,7 @@ app.post('/api/deploy/log', authMiddleware, (req, res) => {
 app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
     if (!req.user.esAdmin) return res.status(403).json({ error: 'Solo administradores' });
     try {
-        const { serverIp, user, password, appDir, version, notes, branch, scenario = 'standard' } = req.body;
+        const { serverIp, user, password, appDir, version, notes, branch } = req.body;
         if (!serverIp || !user || !password || !appDir) {
             return res.status(400).json({ error: 'Faltan parámetros: serverIp, user, password, appDir' });
         }
@@ -218,8 +225,8 @@ app.post('/api/deploy/publish', authMiddleware, async (req, res) => {
             'deploying'
         );
 
-        // Execute deploy
-        const result = await deployModule.deployToServer(serverIp, user, password, appDir, version, branch, scenario);
+        // Execute deploy — scenario is auto-determined by the backend
+        const result = await deployModule.deployToServer(serverIp, user, password, appDir, version, branch);
 
         // Update log entry with result
         deployModule.updateDeployEntry(entry.id, {
@@ -2814,6 +2821,9 @@ app.get('/api/eventos-ajuste/all', authMiddleware, async (req, res) => {
             .query(`
                 SELECT 
                     EF.FECHA,
+                    EF.FECHA_EFECTIVA,
+                    EF.Canal,
+                    EF.GrupoAlmacen,
                     E.IDEVENTO,
                     E.EVENTO,
                     E.ESFERIADO,
@@ -2830,12 +2840,19 @@ app.get('/api/eventos-ajuste/all', authMiddleware, async (req, res) => {
             const dateStr = (row.FECHA instanceof Date ? row.FECHA : new Date(row.FECHA))
                 .toISOString().substring(0, 10);
             if (!byDate[dateStr]) byDate[dateStr] = [];
+            const fechaEfectiva = row.FECHA_EFECTIVA
+                ? (row.FECHA_EFECTIVA instanceof Date ? row.FECHA_EFECTIVA : new Date(row.FECHA_EFECTIVA))
+                    .toISOString().substring(0, 10)
+                : null;
             byDate[dateStr].push({
                 id: row.IDEVENTO,
                 evento: row.EVENTO,
                 esFeriado: row.ESFERIADO === 'S' || row.ESFERIADO === true || row.ESFERIADO === 1,
                 esInterno: row.ESINTERNO === 'S' || row.ESINTERNO === true || row.ESINTERNO === 1,
-                usarEnPresupuesto: true
+                usarEnPresupuesto: true,
+                canal: row.Canal || null,
+                local: row.GrupoAlmacen || null,
+                fechaEfectiva
             });
         }
         res.json({ byDate });

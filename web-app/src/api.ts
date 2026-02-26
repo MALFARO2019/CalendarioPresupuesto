@@ -33,6 +33,8 @@ export interface User {
     restaurarVersiones: boolean;
     accesoAsignaciones: boolean;
     accesoGruposAlmacen: boolean;
+    accesoNotificaciones?: boolean;
+    crearNotificaciones?: boolean;
     esAdmin: boolean;
     esProtegido: boolean;
     allowedStores: string[];
@@ -654,6 +656,9 @@ export interface EventoItem {
     categoria?: string;
     todoElDia?: boolean;
     descripcion?: string;
+    canal?: string | null;
+    local?: number | string | null;
+    fechaEfectiva?: string | null;
 }
 
 export type EventosByDate = Record<string, EventoItem[]>;
@@ -1431,12 +1436,11 @@ export async function deployToServer(
     version: string,
     notes: string,
     branch?: string,
-    scenario?: string
 ): Promise<{ success: boolean; steps: { step: string; status: string; detail?: string }[]; entryId: number; timing?: { startTime: string; endTime: string; durationMinutes: number } }> {
     const response = await fetch(`${API_BASE}/deploy/publish`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ serverIp, user, password, appDir, version, notes, branch: branch || 'main', scenario: scenario || 'standard' })
+        body: JSON.stringify({ serverIp, user, password, appDir, version, notes, branch: branch || 'main' })
     });
     if (!response.ok) {
         const err = await response.json();
@@ -2082,4 +2086,174 @@ export async function generateReport(id: number, params?: Record<string, string>
     });
     if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error generating report'); }
     return response.json();
+}
+
+// ==========================================
+// NOTIFICACIONES API
+// ==========================================
+
+export interface ClasificacionNotif {
+    Id: number;
+    Nombre: string;
+    Color: string;
+    Orden: number;
+}
+
+export interface NotificacionAdmin {
+    Id: number;
+    Titulo: string;
+    Texto: string;
+    ImagenUrl?: string | null;
+    ClasificacionId: number;
+    ClasificacionNombre: string;
+    ClasificacionColor: string;
+    NRepeticiones: number;
+    RequiereComentario: 'none' | 'opcional' | 'obligatorio';
+    RequiereCodigoEmpleado: boolean;
+    ComunicarConFlamia: boolean;
+    Activo: boolean;
+    VistasCount?: number; // solo en pendientes
+    FechaCreacion?: string;
+}
+
+export interface NotificacionVersion {
+    Id: number;
+    VersionId: string;
+    Titulo: string;
+    Texto: string;
+    Tipo: string;
+    Orden: number;
+    Activo: boolean;
+    FechaPublicacion?: string;
+    FechaCreacion?: string;
+}
+
+export interface NotifLogEntry {
+    Id: number;
+    FechaVista: string;
+    NumRepeticion: number;
+    Comentario?: string;
+    CodigoEmpleado?: string;
+    Usuario: string;
+    NombreUsuario: string;
+    NotifTitulo: string;
+    Tipo: string;
+}
+
+export interface NotifReporteAgrupado {
+    Usuario: string;
+    NombreUsuario: string;
+    Ano: number;
+    Mes: number;
+    TotalVistas: number;
+    NotifDistintas: number;
+}
+
+// GET clasificaciones
+export async function fetchClasificaciones(): Promise<ClasificacionNotif[]> {
+    const r = await fetch(`${API_BASE}/notificaciones/clasificaciones`, { headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    return r.json();
+}
+
+// GET notificaciones pendientes (campana)
+export async function fetchNotificacionesPendientes(versionActual?: string): Promise<{
+    admin: NotificacionAdmin[];
+    versiones: { VersionId: string; TotalNotif: number }[];
+    total: number;
+}> {
+    const q = versionActual ? `?versionActual=${encodeURIComponent(versionActual)}` : '';
+    const r = await fetch(`${API_BASE}/notificaciones/pendientes${q}`, { headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    return r.json();
+}
+
+// POST revisar una notificación admin
+export async function revisarNotificacion(id: number, comentario?: string, codigoEmpleado?: string): Promise<void> {
+    const r = await fetch(`${API_BASE}/notificaciones/${id}/revisar`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ comentario, codigoEmpleado })
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+}
+
+// POST marcar versión como leída
+export async function marcarVersionLeida(versionId: string): Promise<void> {
+    const r = await fetch(`${API_BASE}/notificaciones/versiones/${encodeURIComponent(versionId)}/leer`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({})
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+}
+
+// GET CRUD notificaciones admin
+export async function fetchNotificacionesAdmin(): Promise<NotificacionAdmin[]> {
+    const r = await fetch(`${API_BASE}/notificaciones`, { headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    return r.json();
+}
+
+export async function saveNotificacionAdmin(data: Partial<NotificacionAdmin> & { id?: number }): Promise<number> {
+    const isNew = !data.id;
+    const r = await fetch(`${API_BASE}/notificaciones${isNew ? '' : `/${data.id}`}`, {
+        method: isNew ? 'POST' : 'PUT', headers: authHeaders(), body: JSON.stringify(data)
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    const res = await r.json();
+    return res.id || data.id!;
+}
+
+export async function deleteNotificacionAdmin(id: number): Promise<void> {
+    const r = await fetch(`${API_BASE}/notificaciones/${id}`, { method: 'DELETE', headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+}
+
+// GET CRUD notificaciones de versión
+export async function fetchNotificacionesVersiones(versionId?: string): Promise<NotificacionVersion[]> {
+    const q = versionId ? `?versionId=${encodeURIComponent(versionId)}` : '';
+    const r = await fetch(`${API_BASE}/notificaciones/versiones${q}`, { headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    return r.json();
+}
+
+export async function fetchVersionesDisponibles(): Promise<string[]> {
+    const r = await fetch(`${API_BASE}/notificaciones/versiones-disponibles`, { headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    return r.json();
+}
+
+export async function saveNotificacionVersion(data: Partial<NotificacionVersion> & { id?: number }): Promise<number> {
+    const isNew = !data.id;
+    const r = await fetch(`${API_BASE}/notificaciones/versiones${isNew ? '' : `/${data.id}`}`, {
+        method: isNew ? 'POST' : 'PUT', headers: authHeaders(), body: JSON.stringify(data)
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    const res = await r.json();
+    return res.id || data.id!;
+}
+
+export async function deleteNotificacionVersion(id: number): Promise<void> {
+    const r = await fetch(`${API_BASE}/notificaciones/versiones/${id}`, { method: 'DELETE', headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+}
+
+// GET Ruta (notificaciones de versiones futuras)
+export async function fetchRuta(versionActual: string): Promise<NotificacionVersion[]> {
+    const r = await fetch(`${API_BASE}/notificaciones/ruta?versionActual=${encodeURIComponent(versionActual)}`, { headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    return r.json();
+}
+
+// GET reportes
+export async function fetchNotifReporteLineal(filtros?: { desde?: string; hasta?: string; notifId?: number; usuarioId?: number }): Promise<NotifLogEntry[]> {
+    const params = new URLSearchParams({ tipo: 'lineal', ...(filtros || {}) as any });
+    const r = await fetch(`${API_BASE}/notificaciones/reportes?${params}`, { headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    return r.json();
+}
+
+export async function fetchNotifReporteAgrupado(filtros?: { desde?: string; hasta?: string }): Promise<NotifReporteAgrupado[]> {
+    const params = new URLSearchParams({ tipo: 'agrupado', ...(filtros || {}) as any });
+    const r = await fetch(`${API_BASE}/notificaciones/reportes?${params}`, { headers: authHeaders() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
+    return r.json();
 }

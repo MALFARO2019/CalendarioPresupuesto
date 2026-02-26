@@ -28,6 +28,7 @@ async function ensureReportsTables() {
                 TemplateEncabezado NVARCHAR(MAX) NULL,
                 Activo BIT DEFAULT 1,
                 Orden INT DEFAULT 0,
+                TipoEspecial NVARCHAR(100) NULL,
                 CreadoPor NVARCHAR(200) NULL,
                 FechaCreacion DATETIME DEFAULT GETDATE(),
                 ModificadoPor NVARCHAR(200) NULL,
@@ -81,6 +82,43 @@ async function ensureReportsTables() {
             `);
         } catch (e) {
             console.warn('⚠️ Reports: Could not add permission columns:', e.message);
+        }
+
+        // Add TipoEspecial if missing
+        try {
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('DIM_REPORTES') AND name = 'TipoEspecial')
+                ALTER TABLE DIM_REPORTES ADD TipoEspecial NVARCHAR(100) NULL
+            `);
+        } catch (e) {
+            console.warn('⚠️ Reports: Could not add TipoEspecial column:', e.message);
+        }
+
+        // Seed: Reporte Nocturno de Ventas
+        try {
+            const existing = await pool.request().query(
+                `SELECT ID FROM DIM_REPORTES WHERE TipoEspecial = 'alcance-nocturno'`
+            );
+            if (existing.recordset.length === 0) {
+                await pool.request().query(`
+                    INSERT INTO DIM_REPORTES
+                        (Nombre, Descripcion, Icono, Categoria, QuerySQL, Frecuencia, HoraEnvio,
+                         FormatoSalida, TemplateAsunto, TipoEspecial, Orden, CreadoPor)
+                    VALUES
+                        (N'Reporte Nocturno de Ventas',
+                         N'Alcance de presupuesto por canal: Hoy, Ayer, Semana, Mes y YTD.',
+                         N'🌙', N'Ventas',
+                         N'-- Gestionado por reporteNocturno.js',
+                         N'Diario', N'21:00',
+                         N'html',
+                         N'🌙 Reporte Nocturno de Ventas — {{fecha}}',
+                         N'alcance-nocturno',
+                         10, N'sistema')
+                `);
+                console.log('✅ Reports: Reporte Nocturno de Ventas registrado');
+            }
+        } catch (e) {
+            console.warn('⚠️ Reports: Could not seed reporte nocturno:', e.message);
         }
 
         console.log('✅ Reports tables ensured');
@@ -151,13 +189,14 @@ async function createReport(data, createdBy) {
         .input('formatoSalida', sql.NVarChar(20), data.formatoSalida || 'html')
         .input('templateAsunto', sql.NVarChar(500), data.templateAsunto || null)
         .input('templateEncabezado', sql.NVarChar(sql.MAX), data.templateEncabezado || null)
+        .input('tipoEspecial', sql.NVarChar(100), data.tipoEspecial || null)
         .input('orden', sql.Int, data.orden || 0)
         .input('creadoPor', sql.NVarChar(200), createdBy)
         .query(`
             INSERT INTO DIM_REPORTES (Nombre, Descripcion, Icono, Categoria, QuerySQL, Columnas, Parametros,
-                Frecuencia, HoraEnvio, DiaSemana, DiaMes, FormatoSalida, TemplateAsunto, TemplateEncabezado, Orden, CreadoPor)
+                Frecuencia, HoraEnvio, DiaSemana, DiaMes, FormatoSalida, TemplateAsunto, TemplateEncabezado, TipoEspecial, Orden, CreadoPor)
             VALUES (@nombre, @descripcion, @icono, @categoria, @querySQL, @columnas, @parametros,
-                @frecuencia, @horaEnvio, @diaSemana, @diaMes, @formatoSalida, @templateAsunto, @templateEncabezado, @orden, @creadoPor);
+                @frecuencia, @horaEnvio, @diaSemana, @diaMes, @formatoSalida, @templateAsunto, @templateEncabezado, @tipoEspecial, @orden, @creadoPor);
             SELECT SCOPE_IDENTITY() AS ID
         `);
     return result.recordset[0].ID;
@@ -181,6 +220,7 @@ async function updateReport(id, data, modifiedBy) {
         .input('formatoSalida', sql.NVarChar(20), data.formatoSalida || 'html')
         .input('templateAsunto', sql.NVarChar(500), data.templateAsunto || null)
         .input('templateEncabezado', sql.NVarChar(sql.MAX), data.templateEncabezado || null)
+        .input('tipoEspecial', sql.NVarChar(100), data.tipoEspecial || null)
         .input('activo', sql.Bit, data.activo !== undefined ? data.activo : true)
         .input('orden', sql.Int, data.orden || 0)
         .input('modificadoPor', sql.NVarChar(200), modifiedBy)
@@ -190,7 +230,8 @@ async function updateReport(id, data, modifiedBy) {
                 QuerySQL = @querySQL, Columnas = @columnas, Parametros = @parametros,
                 Frecuencia = @frecuencia, HoraEnvio = @horaEnvio, DiaSemana = @diaSemana, DiaMes = @diaMes,
                 FormatoSalida = @formatoSalida, TemplateAsunto = @templateAsunto, TemplateEncabezado = @templateEncabezado,
-                Activo = @activo, Orden = @orden, ModificadoPor = @modificadoPor, FechaModificacion = GETDATE()
+                TipoEspecial = @tipoEspecial, Activo = @activo, Orden = @orden,
+                ModificadoPor = @modificadoPor, FechaModificacion = GETDATE()
             WHERE ID = @id
         `);
 }
@@ -414,7 +455,7 @@ async function getDueSubscriptions(currentHour, currentMinute, dayOfWeek, dayOfM
         .input('dayOfMonth', sql.Int, dayOfMonth)
         .query(`
             SELECT s.*, r.QuerySQL, r.Columnas, r.Parametros, r.Nombre AS ReporteNombre,
-                r.TemplateAsunto, r.TemplateEncabezado, r.FormatoSalida,
+                r.TemplateAsunto, r.TemplateEncabezado, r.FormatoSalida, r.TipoEspecial,
                 r.Frecuencia AS FrecuenciaDefault, r.HoraEnvio AS HoraEnvioDefault,
                 r.DiaSemana AS DiaSemanaDefault, r.DiaMes AS DiaMesDefault,
                 u.Email, u.Nombre AS UsuarioNombre

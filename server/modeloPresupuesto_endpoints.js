@@ -166,8 +166,9 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     app.post('/api/modelo-presupuesto/calcular', authMiddleware, async (req, res) => {
         try {
             // Extend socket timeout for long-running SP (takes ~4 min)
-            req.setTimeout(600000);
-            res.setTimeout(600000);
+            // req.socket.setTimeout extends the underlying TCP socket timeout
+            req.socket?.setTimeout(600000);
+            res.socket?.setTimeout(600000);
             if (!requireModuleAccess(req, res)) return;
             if (!req.user.ejecutarRecalculo && !req.user.esAdmin) {
                 return res.status(403).json({ error: 'No tiene permiso para ejecutar recálculo' });

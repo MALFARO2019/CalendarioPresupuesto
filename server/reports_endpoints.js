@@ -1,5 +1,6 @@
 const reportsDb = require('./reportsDb');
 const { sendReportEmail } = require('./emailService');
+const { generarReporteAlcance } = require('./reporteNocturno');
 
 // ============================================
 // Register reports endpoints
@@ -170,15 +171,18 @@ function registerReportsEndpoints(app, authMiddleware) {
             const reportId = parseInt(req.params.id);
             const params = req.body.params || {};
             const emailTo = req.body.emailTo || req.user.email;
-
-            // Execute report
-            const result = await reportsDb.executeReport(reportId, params);
             const report = await reportsDb.getReportById(reportId);
+            if (!report) return res.status(404).json({ error: 'Reporte no encontrado' });
 
-            // Build HTML table from results
+            // ── Reportes con lógica especial ─────────────────────────────
+            if (report.TipoEspecial === 'alcance-nocturno') {
+                const { ok } = await generarReporteAlcance([emailTo]);
+                return res.json({ success: ok, message: `Reporte nocturno enviado a ${emailTo}` });
+            }
+
+            // ── Flujo genérico (QuerySQL) ────────────────────────────────
+            const result = await reportsDb.executeReport(reportId, params);
             const htmlContent = buildReportHtml(report, result);
-
-            // Send email
             const subject = report.TemplateAsunto || `${report.Nombre} - KPIs Rosti`;
             const sent = await sendReportEmail(
                 emailTo,

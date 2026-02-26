@@ -31,6 +31,7 @@ import { ComparableCurves } from './components/ComparableCurves';
 import { PreferencesView } from './components/PreferencesView';
 import { InocuidadView } from './components/inocuidad/InocuidadView';
 import { ReportsView } from './components/reports/ReportsView';
+import { NotificacionesBell } from './components/notificaciones/NotificacionesBell';
 
 type AppView = 'login' | 'dashboard' | 'admin' | 'preferencias';
 type DashboardTab = 'home' | 'mensual' | 'anual' | 'tendencia' | 'rangos' | 'inocuidad' | 'reportes';
@@ -685,6 +686,11 @@ function App() {
                 </svg>
                 Táctica
               </button>
+            )}
+
+            {/* Notificaciones Bell */}
+            {user && (
+              <NotificacionesBell versionActual={appVersion || undefined} />
             )}
 
             {/* Admin/Events/Modelo/Config button - for admin, eventos, modelo, asignaciones, or grupos users */}
