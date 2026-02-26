@@ -1,5 +1,5 @@
 const { sql, poolPromise } = require('./db');
-const { getAlcanceTableName } = require('./alcanceConfig');
+const { getAlcanceTableNameForUser } = require('./alcanceConfig');
 
 /**
  * GET /api/rangos
@@ -27,7 +27,7 @@ async function getRangosData(req, res) {
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const dbCanal = canal === 'Total' ? 'Todos' : canal;
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 
@@ -297,7 +297,7 @@ async function getRangosResumenCanal(req, res) {
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const anteriorField = yearType === 'ajustado' ? 'ISNULL(MontoAnteriorAjustado, 0)' : 'MontoAnterior';
 
         // Build local filter

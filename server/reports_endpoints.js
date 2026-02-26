@@ -50,8 +50,27 @@ function registerReportsEndpoints(app, authMiddleware) {
     // GET /api/reports/:id/preview — execute and preview a report
     app.get('/api/reports/:id/preview', authMiddleware, async (req, res) => {
         try {
+            const reportId = parseInt(req.params.id);
+            const report = await reportsDb.getReportById(reportId);
+            if (!report) return res.status(404).json({ error: 'Reporte no encontrado' });
+
+            // Special type reports return HTML directly
+            if (report.TipoEspecial === 'alcance-nocturno') {
+                const userPerms = {
+                    allowedStores: req.user.allowedStores || [],
+                    allowedCanales: req.user.allowedCanales || []
+                };
+                // Generate without sending email - just return HTML
+                const { generarReporteAlcancePreview } = require('./reporteNocturno');
+                if (generarReporteAlcancePreview) {
+                    const html = await generarReporteAlcancePreview(userPerms);
+                    return res.json({ html, isSpecial: true });
+                }
+                return res.json({ html: '<p>Preview no disponible para este tipo de reporte. Use "Generar" para enviarlo por correo.</p>', isSpecial: true });
+            }
+
             const params = req.query || {};
-            const result = await reportsDb.executeReport(parseInt(req.params.id), params);
+            const result = await reportsDb.executeReport(reportId, params);
             res.json(result);
         } catch (error) {
             console.error('❌ GET /api/reports/:id/preview error:', error.message);
@@ -225,13 +244,23 @@ function registerReportsEndpoints(app, authMiddleware) {
         try {
             const reportId = parseInt(req.params.id);
             const params = req.body.params || {};
-            const emailTo = req.body.emailTo || req.user.email;
+            let emailTo = req.body.emailTo || req.user.email;
             const report = await reportsDb.getReportById(reportId);
             if (!report) return res.status(404).json({ error: 'Reporte no encontrado' });
 
+            // Security: non-admin users can only send to their own email
+            if (!req.user.esAdmin && emailTo !== req.user.email) {
+                console.log(`⚠️ Non-admin user ${req.user.email} tried to send report to ${emailTo} — forcing own email`);
+                emailTo = req.user.email;
+            }
+
             // ── Reportes con lógica especial ─────────────────────────────
             if (report.TipoEspecial === 'alcance-nocturno') {
-                const { ok } = await generarReporteAlcance([emailTo]);
+                const userPerms = {
+                    allowedStores: req.user.allowedStores || [],
+                    allowedCanales: req.user.allowedCanales || []
+                };
+                const { ok } = await generarReporteAlcance([emailTo], userPerms);
                 return res.json({ success: ok, message: `Reporte nocturno enviado a ${emailTo}` });
             }
 

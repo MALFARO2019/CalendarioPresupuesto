@@ -305,10 +305,18 @@ export const EventosPeriodView: React.FC = () => {
                                 <input
                                     type="text"
                                     value={emailTo}
-                                    onChange={e => setEmailTo(e.target.value)}
+                                    onChange={e => { if (user?.esAdmin) setEmailTo(e.target.value); }}
                                     placeholder="correo@ejemplo.com, otro@ejemplo.com"
-                                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 text-sm mb-4"
+                                    readOnly={!user?.esAdmin}
+                                    disabled={!user?.esAdmin}
+                                    className={`w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 text-sm mb-1 ${!user?.esAdmin ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                                 />
+                                {!user?.esAdmin && (
+                                    <p className="text-xs text-amber-600 mb-3 flex items-center gap-1">
+                                        🔒 Solo los administradores pueden modificar el email
+                                    </p>
+                                )}
+                                {user?.esAdmin && <div className="mb-3" />}
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setShowEmailModal(false)}

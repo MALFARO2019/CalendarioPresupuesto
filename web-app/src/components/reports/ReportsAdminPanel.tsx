@@ -92,6 +92,7 @@ export function ReportsAdminPanel() {
                 templateEncabezado: editReport.TemplateEncabezado,
                 permitirProgramacionCustom: editReport.PermitirProgramacionCustom !== false,
                 permitirEnviarAhora: editReport.PermitirEnviarAhora !== false,
+                tipoEspecial: editReport.TipoEspecial || null,
                 activo: editReport.Activo !== false,
                 orden: editReport.Orden || 0
             };
@@ -345,6 +346,7 @@ export function ReportsAdminPanel() {
                                         <span className="text-[10px] text-gray-400">{report.Categoria}</span>
                                         <span className="text-[10px] text-gray-400">{report.Frecuencia} {report.HoraEnvio}</span>
                                         {!report.Activo && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">Inactivo</span>}
+                                        {report.TipoEspecial && <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-bold">{report.TipoEspecial}</span>}
                                         {report.TotalSuscriptores != null && <span className="text-[10px] text-gray-400">{report.TotalSuscriptores} subs</span>}
                                     </div>
                                 </div>

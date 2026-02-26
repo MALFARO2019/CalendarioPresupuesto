@@ -1,5 +1,5 @@
 const { sql, poolPromise } = require('./db');
-const { getAlcanceTableName } = require('./alcanceConfig');
+const { getAlcanceTableNameForUser } = require('./alcanceConfig');
 
 /**
  * GET /api/tendencia
@@ -24,7 +24,7 @@ async function getTendenciaData(req, res) {
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const dbCanal = channel === 'Total' ? 'Todos' : channel;
         // Use DAILY fields (not accumulated) since we SUM them ourselves
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
@@ -574,7 +574,7 @@ async function getResumenCanal(req, res) {
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 
         // If a group is selected, find member stores (same logic as getTendenciaData)
@@ -725,7 +725,7 @@ async function getResumenGrupos(req, res) {
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const dbCanal = channel === 'Total' ? 'Todos' : channel;
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 

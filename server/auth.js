@@ -186,6 +186,14 @@ async function ensureSecurityTables() {
             END
         `);
 
+        // Add AlcanceTableOverride column for per-user table override (NULL = use global config)
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('APP_USUARIOS') AND name = 'AlcanceTableOverride')
+            BEGIN
+                ALTER TABLE APP_USUARIOS ADD AlcanceTableOverride NVARCHAR(100) NULL;
+            END
+        `);
+
         // TODO:  Create performance indexes on RSM_ALCANCE_DIARIO if they don't exist
         // Temporarily commented out - KPI column doesn't exist in RSM_ALCANCE_DIARIO
         /*

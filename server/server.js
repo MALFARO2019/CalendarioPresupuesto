@@ -56,7 +56,7 @@ const spEventsService = require('./services/sharepointEventsService');
 const { ensureKpiAdminTables } = require('./kpiAdminDb');
 const { registerKpiAdminEndpoints } = require('./kpiAdmin_endpoints');
 const deployModule = require('./deploy');
-const { getAlcanceTableName, invalidateAlcanceTableCache } = require('./alcanceConfig');
+const { getAlcanceTableName, getAlcanceTableNameForUser, invalidateAlcanceTableCache } = require('./alcanceConfig');
 const registerModeloPresupuestoEndpoints = require('./modeloPresupuesto_endpoints');
 const registerStoreAliasEndpoints = require('./storeAlias_endpoints');
 const { ensureStoreAliasTable } = require('./services/storeAliasService');
@@ -1351,7 +1351,7 @@ app.put('/api/admin/config/:key', authMiddleware, async (req, res) => {
 app.get('/api/budget', authMiddleware, async (req, res) => {
     try {
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const year = parseInt(req.query.year) || 2026;
         const local = req.query.local;
         let canal = req.query.canal || 'Todos';
@@ -1509,17 +1509,18 @@ app.get('/api/budget', authMiddleware, async (req, res) => {
 app.get('/api/comparable-days', authMiddleware, async (req, res) => {
     try {
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const year = parseInt(req.query.year) || 2026;
         const month = parseInt(req.query.month);
         const local = req.query.local;
         let canal = req.query.canal || 'Todos';
         const tipo = req.query.tipo || 'Ventas';
+        const desglosar = req.query.desglosar === 'true';
 
         if (!local) return res.status(400).json({ error: 'El parámetro local es requerido' });
         if (!month) return res.status(400).json({ error: 'El parámetro month es requerido' });
 
-        console.log(`📊 /api/comparable-days: year=${year}, month=${month}, local=${local}, canal=${canal}, tipo=${tipo}`);
+        console.log(`📊 /api/comparable-days: year=${year}, month=${month}, local=${local}, canal=${canal}, tipo=${tipo}, desglosar=${desglosar}`);
 
         // Check user permissions for requested store
         const userStores = req.user.allowedStores || [];
@@ -1535,6 +1536,7 @@ app.get('/api/comparable-days', authMiddleware, async (req, res) => {
 
         // Detect if local is a group
         let memberLocals = null;
+        let isGroup = false;
         const idGrupoResult = await pool.request()
             .input('groupName', sql.NVarChar, local)
             .query(`
@@ -1544,6 +1546,7 @@ app.get('/api/comparable-days', authMiddleware, async (req, res) => {
             `);
 
         if (idGrupoResult.recordset.length > 0) {
+            isGroup = true;
             const idGrupos = idGrupoResult.recordset.map(r => r.IDGRUPO);
             const memberCodesRequest = pool.request();
             idGrupos.forEach((id, i) => memberCodesRequest.input(`idgrupo${i}`, sql.Int, id));
@@ -1591,24 +1594,50 @@ app.get('/api/comparable-days', authMiddleware, async (req, res) => {
             canalParams['canal'] = canal;
         }
 
-        const query = `
-            SELECT 
-                Fecha,
-                Dia,
-                idDia,
-                Serie,
-                SUM(MontoReal) AS MontoReal,
-                SUM(Monto) AS Monto,
-                SUM(MontoAnterior) AS MontoAnterior,
-                SUM(MontoAnteriorAjustado) AS MontoAnteriorAjustado,
-                MIN(FechaAnterior) AS FechaAnterior,
-                MIN(FechaAnteriorAjustada) AS FechaAnteriorAjustada
-            FROM ${alcanceTable}
-            WHERE Año = @year AND Mes = @month AND ${localFilter} AND ${canalFilter} AND Tipo = @tipo
-                AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
-            GROUP BY Fecha, Dia, idDia, Serie
-            ORDER BY Dia
-        `;
+        // Build query: desglosar adds Local column; grouped mode aggregates all stores
+        let query;
+        if (desglosar && isGroup) {
+            // Desglosado: one row per day per store, includes Local column
+            query = `
+                SELECT 
+                    Fecha,
+                    Dia,
+                    MAX(idDia) AS idDia,
+                    Local,
+                    MAX(Serie) AS Serie,
+                    SUM(MontoReal) AS MontoReal,
+                    SUM(Monto) AS Monto,
+                    SUM(MontoAnterior) AS MontoAnterior,
+                    SUM(MontoAnteriorAjustado) AS MontoAnteriorAjustado,
+                    MIN(FechaAnterior) AS FechaAnterior,
+                    MIN(FechaAnteriorAjustada) AS FechaAnteriorAjustada
+                FROM ${alcanceTable}
+                WHERE Año = @year AND Mes = @month AND ${localFilter} AND ${canalFilter} AND Tipo = @tipo
+                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                GROUP BY Fecha, Dia, Local
+                ORDER BY Dia, Local
+            `;
+        } else {
+            // Agrupado: one row per day (all stores summed)
+            query = `
+                SELECT 
+                    Fecha,
+                    Dia,
+                    MAX(idDia) AS idDia,
+                    MAX(Serie) AS Serie,
+                    SUM(MontoReal) AS MontoReal,
+                    SUM(Monto) AS Monto,
+                    SUM(MontoAnterior) AS MontoAnterior,
+                    SUM(MontoAnteriorAjustado) AS MontoAnteriorAjustado,
+                    MIN(FechaAnterior) AS FechaAnterior,
+                    MIN(FechaAnteriorAjustada) AS FechaAnteriorAjustada
+                FROM ${alcanceTable}
+                WHERE Año = @year AND Mes = @month AND ${localFilter} AND ${canalFilter} AND Tipo = @tipo
+                    AND SUBSTRING(CODALMACEN, 1, 1) != 'G'
+                GROUP BY Fecha, Dia
+                ORDER BY Dia
+            `;
+        }
 
         const request = pool.request()
             .input('year', sql.Int, year)
@@ -1623,7 +1652,7 @@ app.get('/api/comparable-days', authMiddleware, async (req, res) => {
         });
 
         const result = await request.query(query);
-        console.log(`📊 Comparable days for ${local} (${canal}/${tipo}) month ${month}: ${result.recordset.length} rows`);
+        console.log(`📊 Comparable days for ${local} (${canal}/${tipo}) month ${month}: ${result.recordset.length} rows${desglosar ? ' [DESGLOSADO]' : ''}`);
         res.json(result.recordset);
     } catch (err) {
         console.error('Error in /api/comparable-days:', err);
@@ -1650,7 +1679,7 @@ app.get('/api/stores', authMiddleware, async (req, res) => {
         console.log('ðŸ“‹ Official group names from GRUPOSALMACENCAB:', Array.from(officialGroupNames));
 
         // Then get all locals from budget data
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         let localsQuery = `SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026`;
 
         if (userStores.length > 0) {
@@ -1729,7 +1758,7 @@ app.get('/api/stores-v2', authMiddleware, async (req, res) => {
         const currentMonth = new Date().getMonth() + 1; // 1-12
 
         // Query to get groups: Local with CODALMACEN starting with 'G'
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         let groupsQuery = `
             SELECT DISTINCT Local
             FROM ${alcanceTable} 
@@ -1854,7 +1883,7 @@ app.get('/api/group-stores/:groupName', authMiddleware, async (req, res) => {
         }
 
         // Step 3: Map member CODALMACEN to Local names via alcance table
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const storesQuery = `
             SELECT DISTINCT Local
             FROM ${alcanceTable}
@@ -1884,7 +1913,7 @@ app.get('/api/all-stores', authMiddleware, async (req, res) => {
     try {
         // No permission check needed - all authenticated users can see stores
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const result = await pool.request()
             .query(`SELECT DISTINCT Local FROM ${alcanceTable} WHERE Año = 2026 ORDER BY Local`);
         const stores = result.recordset.map(r => r.Local);
@@ -1943,7 +1972,7 @@ app.get('/api/fecha-limite', authMiddleware, async (req, res) => {
         const pool = await poolPromise;
         const year = parseInt(req.query.year) || 2026;
 
-        const alcanceTable = await getAlcanceTableName(pool);
+        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
         const result = await pool.request()
             .input('year', sql.Int, year)
             .query(`SELECT MAX(Fecha) as FechaLimite FROM ${alcanceTable} WHERE MontoReal > 0 AND Año = @year`);
@@ -2527,6 +2556,64 @@ app.put('/api/user/dashboard-config', authMiddleware, async (req, res) => {
         res.json({ success: true, dashboardLocales, comparativePeriod });
     } catch (err) {
         console.error('Error in PUT /api/user/dashboard-config:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/user/alcance-table - Get current user's alcance table override + global setting
+app.get('/api/user/alcance-table', authMiddleware, async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        // Get user's override
+        const userResult = await pool.request()
+            .input('userId', sql.Int, req.user.userId)
+            .query('SELECT AlcanceTableOverride FROM APP_USUARIOS WHERE Id = @userId');
+        const override = userResult.recordset[0]?.AlcanceTableOverride || null;
+
+        // Get global setting
+        const globalResult = await pool.request()
+            .input('clave', sql.NVarChar, 'ALCANCE_TABLE_NAME')
+            .query('SELECT Valor FROM APP_CONFIGURACION WHERE Clave = @clave');
+        const globalTable = globalResult.recordset[0]?.Valor || 'RSM_ALCANCE_DIARIO';
+
+        // Get available tables from modelo configs
+        const configs = await pool.request()
+            .query("SELECT DISTINCT TablaDestino FROM MODELO_PRESUPUESTO_CONFIG WHERE TablaDestino IS NOT NULL").catch(() => ({ recordset: [] }));
+        const tablesFromConfigs = configs.recordset.map(r => r.TablaDestino);
+        const availableTables = Array.from(new Set(['RSM_ALCANCE_DIARIO', globalTable, ...tablesFromConfigs]));
+
+        const effective = override || globalTable;
+        res.json({ override, global: globalTable, effective, availableTables });
+    } catch (err) {
+        console.error('Error in GET /api/user/alcance-table:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/user/alcance-table - Save current user's alcance table override
+app.put('/api/user/alcance-table', authMiddleware, async (req, res) => {
+    try {
+        const { override } = req.body; // null to clear, or table name string
+        const pool = await poolPromise;
+
+        // Validate the override if provided
+        if (override) {
+            const { isAllowedTable } = require('./alcanceConfig');
+            // If the helper isn't exported yet, just do basic validation
+            if (!/^RSM_ALCANCE_DIARIO/.test(override)) {
+                return res.status(400).json({ error: 'Tabla no válida' });
+            }
+        }
+
+        await pool.request()
+            .input('userId', sql.Int, req.user.userId)
+            .input('override', sql.NVarChar, override || null)
+            .query('UPDATE APP_USUARIOS SET AlcanceTableOverride = @override WHERE Id = @userId');
+
+        console.log(`✅ Alcance table override saved for user ${req.user.email}: ${override || '(usando global)'}`);
+        res.json({ success: true, override: override || null });
+    } catch (err) {
+        console.error('Error in PUT /api/user/alcance-table:', err);
         res.status(500).json({ error: err.message });
     }
 });

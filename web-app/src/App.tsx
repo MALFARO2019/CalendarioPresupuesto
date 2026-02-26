@@ -7,7 +7,7 @@ import { AdminPage } from './components/AdminPage';
 import { Dashboard } from './views/Dashboard';
 import { generateMockData } from './mockData';
 import type { BudgetRecord } from './mockData';
-import { fetchBudgetData, fetchComparableDays, fetchFechaLimite, fetchStores, fetchGroupStores, fetchAvailableCanales, getToken, getUser, logout, verifyToken, API_BASE, fetchEventosPorMes, fetchEventosPorAno, fetchSPEventosPorMes, fetchSPEventosPorAno, fetchEventosAjuste, fetchAdminPorLocal, fetchNotificacionesVersiones, type ComparableDayRecord, type PersonalAsignado, type EventosByDate, type NotificacionVersion } from './api';
+import { fetchBudgetData, fetchFechaLimite, fetchStores, fetchGroupStores, fetchAvailableCanales, getToken, getUser, logout, verifyToken, API_BASE, fetchEventosPorMes, fetchEventosPorAno, fetchSPEventosPorMes, fetchSPEventosPorAno, fetchEventosAjuste, fetchAdminPorLocal, fetchNotificacionesVersiones, type PersonalAsignado, type EventosByDate, type NotificacionVersion } from './api';
 import { addMonths, format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Loader2, LogOut, Settings, Calendar, BarChart3, Download, Mail, Send, X, SlidersHorizontal, Home } from 'lucide-react';
@@ -78,7 +78,7 @@ function App() {
   const [eventosAAByDate, setEventosAAByDate] = useState<EventosByDate>({});
   const [adminNameForLocal, setAdminNameForLocal] = useState<PersonalAsignado[]>([]);
   const [appVersion, setAppVersion] = useState('');
-  const [comparableDaysData, setComparableDaysData] = useState<ComparableDayRecord[]>([]);
+
 
   // Changelog modal state
   const [showChangelog, setShowChangelog] = useState(false);
@@ -306,23 +306,7 @@ function App() {
       });
   }, [year, filterLocal, filterCanal, filterKpi, useApi, view]);
 
-  // Fetch comparable days data for the current month
-  useEffect(() => {
-    if (view !== 'dashboard' || dashboardTab !== 'mensual' || !filterLocal || !getToken()) {
-      setComparableDaysData([]);
-      return;
-    }
-    const month = currentDate.getMonth() + 1;
-    fetchComparableDays(year, month, filterLocal, filterCanal, filterKpi)
-      .then(data => {
-        console.log(`📊 Comparable days loaded: ${data.length} rows`);
-        setComparableDaysData(data);
-      })
-      .catch(err => {
-        console.error('Error fetching comparable days:', err);
-        setComparableDaysData([]);
-      });
-  }, [year, filterLocal, filterCanal, filterKpi, currentDate, view, dashboardTab]);
+
 
   // Fetch group members when a group is selected
   useEffect(() => {
@@ -1088,11 +1072,14 @@ function App() {
             <div className="print-page">
               <div className="mt-8">
                 <ComparableDaysTable
-                  data={comparableDaysData}
-                  kpi={filterKpi}
-                  yearType={yearType}
                   year={currentDate.getFullYear()}
                   month={currentDate.getMonth()}
+                  local={filterLocal}
+                  canal={filterCanal}
+                  kpi={filterKpi}
+                  yearType={yearType}
+                  isGroup={showGroupCard}
+                  fechaLimite={fechaLimite}
                 />
               </div>
             </div>
@@ -1382,11 +1369,18 @@ function App() {
                 <input
                   type="email"
                   value={emailTo}
-                  onChange={(e) => setEmailTo(e.target.value)}
+                  onChange={(e) => { if (user?.esAdmin) setEmailTo(e.target.value); }}
                   placeholder="ejemplo@empresa.com"
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                  readOnly={!user?.esAdmin}
+                  disabled={!user?.esAdmin}
+                  className={`w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm ${!user?.esAdmin ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendReportEmail()}
                 />
+                {!user?.esAdmin && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                    🔒 Solo los administradores pueden modificar el email
+                  </p>
+                )}
               </div>
               <div className="flex gap-3">
                 <button

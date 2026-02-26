@@ -460,10 +460,11 @@ async function executeReport(reportId, params = {}) {
 
     try {
         const result = await pool.request().query(querySQL);
+        const data = result.recordset || [];
         return {
             columns: report.Columnas ? JSON.parse(report.Columnas) : null,
-            data: result.recordset,
-            rowCount: result.recordset.length
+            data,
+            rowCount: data.length
         };
     } catch (error) {
         throw new Error(`Error ejecutando reporte: ${error.message}`);

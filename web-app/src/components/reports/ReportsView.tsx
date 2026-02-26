@@ -490,8 +490,12 @@ export function ReportsView({ onBack }: ReportsViewProps) {
                         <h2 className="text-lg font-bold text-gray-900 mb-1">{generateModal.Icono} Generar Reporte</h2>
                         <p className="text-xs text-gray-500 mb-4">Se generará y enviará por email inmediatamente</p>
                         <label className="label-mini">Email destino</label>
-                        <input type="email" value={generateEmail} onChange={e => setGenerateEmail(e.target.value)}
-                            className="input-field mb-4" placeholder="correo@ejemplo.com" />
+                        {user?.esAdmin ? (
+                            <input type="email" value={generateEmail} onChange={e => setGenerateEmail(e.target.value)}
+                                className="input-field mb-4" placeholder="correo@ejemplo.com" />
+                        ) : (
+                            <div className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600 mb-4">{generateEmail}</div>
+                        )}
                         <div className="flex gap-3">
                             <button onClick={() => setGenerateModal(null)}
                                 className="flex-1 btn-ghost justify-center">Cancelar</button>
@@ -515,8 +519,12 @@ export function ReportsView({ onBack }: ReportsViewProps) {
                         <div className="space-y-4 mb-6">
                             <div>
                                 <label className="label-mini">Email de entrega</label>
-                                <input type="email" value={subEmail} onChange={e => setSubEmail(e.target.value)}
-                                    className="input-field" placeholder="correo@ejemplo.com" />
+                                {user?.esAdmin ? (
+                                    <input type="email" value={subEmail} onChange={e => setSubEmail(e.target.value)}
+                                        className="input-field" placeholder="correo@ejemplo.com" />
+                                ) : (
+                                    <div className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600">{subEmail}</div>
+                                )}
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>

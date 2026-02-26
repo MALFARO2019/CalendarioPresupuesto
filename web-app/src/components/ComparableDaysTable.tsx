@@ -1,15 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useFormatCurrency } from '../utils/formatters';
 import { useUserPreferences } from '../context/UserPreferences';
-import type { ComparableDayRecord } from '../api';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { fetchComparableDays, type ComparableDayRecord } from '../api';
+import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 
 interface ComparableDaysTableProps {
-    data: ComparableDayRecord[];
-    kpi: string;
-    yearType: 'Año Anterior' | 'Año Anterior Ajustado';
     year: number;
     month: number; // 0-indexed
+    local: string;
+    canal: string;
+    kpi: string;
+    yearType: 'Año Anterior' | 'Año Anterior Ajustado';
+    isGroup: boolean;
+    fechaLimite?: string;
 }
 
 const DAY_LETTERS: Record<number, string> = { 1: 'L', 2: 'K', 3: 'M', 4: 'J', 5: 'V', 6: 'S', 7: 'D' };
@@ -32,18 +35,55 @@ function getDayLetterFromDate(dateStr: string): string {
 }
 
 export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
-    data, kpi, yearType, year, month
+    year, month, local, canal, kpi, yearType, isGroup, fechaLimite
 }) => {
     const [expanded, setExpanded] = useState(false);
+    const [desglosar, setDesglosar] = useState(false);
+    const [data, setData] = useState<ComparableDayRecord[]>([]);
+    const [loading, setLoading] = useState(false);
     const fc = useFormatCurrency();
     const { formatPct100 } = useUserPreferences();
 
     const prevYear = year - 1;
     const isAjustado = yearType === 'Año Anterior Ajustado';
+    const apiMonth = month + 1; // Convert 0-indexed to 1-indexed
+
+    // Fetch data when params change
+    useEffect(() => {
+        if (!local) {
+            setData([]);
+            return;
+        }
+        setLoading(true);
+        fetchComparableDays(year, apiMonth, local, canal, kpi, desglosar && isGroup)
+            .then(result => {
+                setData(result);
+            })
+            .catch(err => {
+                console.error('Error fetching comparable days:', err);
+                setData([]);
+            })
+            .finally(() => setLoading(false));
+    }, [year, apiMonth, local, canal, kpi, desglosar, isGroup]);
+
+    // Reset desglosar when switching away from group
+    useEffect(() => {
+        if (!isGroup) setDesglosar(false);
+    }, [isGroup]);
+
+    const showLocalCol = desglosar && isGroup && data.some(d => d.Local);
 
     const rows = useMemo(() => {
         if (!data || data.length === 0) return [];
-        const mapped = data.map(d => {
+        // Filter out days after fechaLimite
+        const filtered = fechaLimite
+            ? data.filter(d => {
+                const fechaStr = (d.Fecha || '').substring(0, 10);
+                return fechaStr <= fechaLimite;
+            })
+            : data;
+        if (filtered.length === 0) return [];
+        const mapped = filtered.map(d => {
             const vtaAnterior = isAjustado ? d.MontoAnteriorAjustado : d.MontoAnterior;
             const fechaAnt = isAjustado ? d.FechaAnteriorAjustada : d.FechaAnterior;
             const vtaActual = d.MontoReal;
@@ -72,16 +112,18 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
                 difPres,
                 pctPres,
                 isFuture: vtaActual === 0 && pres > 0,
-                hasComparable: vtaAnterior > 0
+                hasComparable: vtaAnterior > 0,
+                local: d.Local || ''
             };
         });
         // Sort numerically by day, then push future days to end
         mapped.sort((a, b) => {
             if (a.isFuture !== b.isFuture) return a.isFuture ? 1 : -1;
-            return a.dia - b.dia;
+            if (a.dia !== b.dia) return a.dia - b.dia;
+            return a.local.localeCompare(b.local);
         });
         return mapped;
-    }, [data, isAjustado]);
+    }, [data, isAjustado, fechaLimite]);
 
     const totals = useMemo(() => {
         if (rows.length === 0) return null;
@@ -125,30 +167,71 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
 
     const getDifColor = (val: number) => val >= 0 ? 'text-green-600' : 'text-red-600';
 
+    // Total colSpan for footer rows
+    const footerAntSpan = showLocalCol ? 3 : 2;
+    const footerMidSpan = showLocalCol ? 3 : 2;
+
+    const renderHeader = () => (
+        <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 transition-colors"
+        >
+            <div className="flex items-center gap-2 sm:gap-3">
+                <span className="text-lg sm:text-xl">📊</span>
+                <div className="text-left">
+                    <h3 className="text-sm sm:text-base font-bold text-gray-800">Días Comparables</h3>
+                    <p className="text-[10px] sm:text-xs text-gray-500">
+                        {MONTH_NAMES[month]} {year} vs {prevYear} • {yearType}
+                        {totals && (
+                            <span className={`ml-2 font-bold ${getColorClass(totals.totalPctAA !== null ? totals.totalPctAA + 100 : null)}`}>
+                                {totals.totalPctAA !== null ? `${totals.totalPctAA >= 0 ? '+' : ''}${totals.totalPctAA.toFixed(1)}%` : ''}
+                            </span>
+                        )}
+                    </p>
+                </div>
+            </div>
+            <div className="flex items-center gap-2">
+                {expanded && isGroup && (
+                    <label
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-semibold border cursor-pointer select-none transition-all"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            backgroundColor: desglosar ? '#EEF2FF' : '#F9FAFB',
+                            borderColor: desglosar ? '#A5B4FC' : '#E5E7EB',
+                            color: desglosar ? '#4338CA' : '#6B7280'
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={desglosar}
+                            onChange={(e) => setDesglosar(e.target.checked)}
+                            className="w-3 h-3 rounded accent-indigo-600"
+                        />
+                        Desglosar por local
+                    </label>
+                )}
+                {expanded
+                    ? <ChevronUp className="w-5 h-5 text-gray-400" />
+                    : <ChevronDown className="w-5 h-5 text-gray-400" />
+                }
+            </div>
+        </button>
+    );
+
     if (!data || data.length === 0) {
         return (
             <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-lg overflow-hidden">
-                <button
-                    onClick={() => setExpanded(!expanded)}
-                    className="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 transition-colors"
-                >
-                    <div className="flex items-center gap-2 sm:gap-3">
-                        <span className="text-lg sm:text-xl">📊</span>
-                        <div className="text-left">
-                            <h3 className="text-sm sm:text-base font-bold text-gray-800">Días Comparables</h3>
-                            <p className="text-[10px] sm:text-xs text-gray-500">
-                                {MONTH_NAMES[month]} {year} vs {prevYear} • {yearType}
-                            </p>
-                        </div>
-                    </div>
-                    {expanded
-                        ? <ChevronUp className="w-5 h-5 text-gray-400" />
-                        : <ChevronDown className="w-5 h-5 text-gray-400" />
-                    }
-                </button>
+                {renderHeader()}
                 {expanded && (
                     <div className="px-6 py-8 text-center text-gray-400 text-sm">
-                        Cargando datos comparables...
+                        {loading ? (
+                            <div className="flex items-center justify-center gap-2">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Cargando datos comparables...
+                            </div>
+                        ) : (
+                            'No hay datos comparables para este período'
+                        )}
                     </div>
                 )}
             </div>
@@ -158,29 +241,15 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
     return (
         <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-lg overflow-hidden">
             {/* Collapsible Header */}
-            <button
-                onClick={() => setExpanded(!expanded)}
-                className="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 transition-colors"
-            >
-                <div className="flex items-center gap-2 sm:gap-3">
-                    <span className="text-lg sm:text-xl">📊</span>
-                    <div className="text-left">
-                        <h3 className="text-sm sm:text-base font-bold text-gray-800">Días Comparables</h3>
-                        <p className="text-[10px] sm:text-xs text-gray-500">
-                            {MONTH_NAMES[month]} {year} vs {prevYear} • {yearType}
-                            {totals && (
-                                <span className={`ml-2 font-bold ${getColorClass(totals.totalPctAA !== null ? totals.totalPctAA + 100 : null)}`}>
-                                    {totals.totalPctAA !== null ? `${totals.totalPctAA >= 0 ? '+' : ''}${totals.totalPctAA.toFixed(1)}%` : ''}
-                                </span>
-                            )}
-                        </p>
-                    </div>
+            {renderHeader()}
+
+            {/* Loading overlay */}
+            {loading && expanded && (
+                <div className="px-6 py-3 bg-indigo-50 text-indigo-600 text-xs flex items-center gap-2 border-b border-indigo-100">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Actualizando datos...
                 </div>
-                {expanded
-                    ? <ChevronUp className="w-5 h-5 text-gray-400" />
-                    : <ChevronDown className="w-5 h-5 text-gray-400" />
-                }
-            </button>
+            )}
 
             {/* Table Content */}
             {expanded && (
@@ -188,6 +257,11 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
                     <table className="w-full text-xs">
                         <thead>
                             <tr className="bg-gray-50 border-b-2 border-gray-200">
+                                {showLocalCol && (
+                                    <th className="py-2 px-1.5 text-center font-bold text-gray-500 whitespace-nowrap" rowSpan={2}>
+                                        <span className="text-emerald-600">Local</span>
+                                    </th>
+                                )}
                                 <th className="py-2 px-1.5 text-center font-bold text-gray-500 whitespace-nowrap" colSpan={3}>
                                     <span className="text-purple-600">{prevYear}</span>
                                 </th>
@@ -221,6 +295,11 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
                                     key={i}
                                     className={`border-b border-gray-100 ${r.isFuture ? 'opacity-40' : ''} ${r.diaLetraActual === 'D' ? 'bg-blue-50/30' : ''} hover:bg-gray-50 transition-colors`}
                                 >
+                                    {showLocalCol && (
+                                        <td className="py-1.5 px-1.5 text-left text-[10px] font-semibold text-emerald-700 whitespace-nowrap max-w-[100px] truncate" title={r.local}>
+                                            {r.local}
+                                        </td>
+                                    )}
                                     <td className="py-1.5 px-1.5 text-center text-gray-600 font-mono whitespace-nowrap">
                                         {formatShortDate(r.fechaAnterior?.substring(0, 10) || '')}
                                     </td>
@@ -264,13 +343,13 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
                                 {/* SSS (Same-Store Sales) */}
                                 {totals.comparableCount > 0 && totals.newCount > 0 && (
                                     <tr className="bg-purple-50 border-t-2 border-purple-200">
-                                        <td className="py-2 px-1.5 font-bold text-purple-700 text-[10px] text-center" colSpan={2}>
+                                        <td className="py-2 px-1.5 font-bold text-purple-700 text-[10px] text-center" colSpan={footerAntSpan}>
                                             SSS ({totals.comparableCount}d)
                                         </td>
                                         <td className="py-2 px-1.5 text-right font-mono font-bold text-purple-700">
                                             {fc(totals.sssVtaAnt, kpi)}
                                         </td>
-                                        <td colSpan={2}></td>
+                                        <td colSpan={footerMidSpan}></td>
                                         <td className="py-2 px-1.5 text-right font-mono font-bold text-purple-700">
                                             {fc(totals.sssVtaAct, kpi)}
                                         </td>
@@ -284,11 +363,11 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
                                 {/* Nuevos */}
                                 {totals.newCount > 0 && (
                                     <tr className="bg-green-50">
-                                        <td className="py-2 px-1.5 font-bold text-green-700 text-[10px] text-center" colSpan={2}>
+                                        <td className="py-2 px-1.5 font-bold text-green-700 text-[10px] text-center" colSpan={footerAntSpan}>
                                             Nuevos ({totals.newCount}d)
                                         </td>
                                         <td className="py-2 px-1.5 text-right font-mono text-gray-400">—</td>
-                                        <td colSpan={2}></td>
+                                        <td colSpan={footerMidSpan}></td>
                                         <td className="py-2 px-1.5 text-right font-mono font-bold text-green-700">
                                             {fc(totals.newVtaAct, kpi)}
                                         </td>
@@ -298,13 +377,13 @@ export const ComparableDaysTable: React.FC<ComparableDaysTableProps> = ({
 
                                 {/* TOTAL */}
                                 <tr className="bg-gray-100 border-t-2 border-gray-400">
-                                    <td className="py-2.5 px-1.5 font-bold text-gray-800 text-center" colSpan={2}>
+                                    <td className="py-2.5 px-1.5 font-bold text-gray-800 text-center" colSpan={footerAntSpan}>
                                         TOTAL
                                     </td>
                                     <td className="py-2.5 px-1.5 text-right font-mono font-bold text-gray-800">
                                         {fc(totals.totalVtaAnt, kpi)}
                                     </td>
-                                    <td className="border-l border-gray-200" colSpan={2}></td>
+                                    <td className="border-l border-gray-200" colSpan={footerMidSpan}></td>
                                     <td className="py-2.5 px-1.5 text-right font-mono font-bold text-gray-800">
                                         {fc(totals.totalVtaAct, kpi)}
                                     </td>

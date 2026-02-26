@@ -457,6 +457,7 @@ export interface ComparableDayRecord {
     MontoAnteriorAjustado: number;
     FechaAnterior: string;
     FechaAnteriorAjustada: string;
+    Local?: string;
 }
 
 export async function fetchComparableDays(
@@ -464,7 +465,8 @@ export async function fetchComparableDays(
     month: number,
     local: string,
     canal: string = 'Todos',
-    tipo: string = 'Ventas'
+    tipo: string = 'Ventas',
+    desglosar: boolean = false
 ): Promise<ComparableDayRecord[]> {
     const params = new URLSearchParams({
         year: year.toString(),
@@ -473,6 +475,7 @@ export async function fetchComparableDays(
         canal,
         tipo
     });
+    if (desglosar) params.set('desglosar', 'true');
 
     const response = await fetch(`${API_BASE}/comparable-days?${params}`, {
         headers: authHeaders()
@@ -501,6 +504,7 @@ export async function fetchComparableDays(
         MontoAnteriorAjustado: parseFloat(row.MontoAnteriorAjustado) || 0,
         FechaAnterior: row.FechaAnterior || '',
         FechaAnteriorAjustada: row.FechaAnteriorAjustada || '',
+        Local: row.Local || undefined,
     }));
 }
 
@@ -857,6 +861,34 @@ export async function saveConfig(key: string, valor: string): Promise<{ success:
     if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Error saving config');
+    }
+    return response.json();
+}
+
+// ==========================================
+// User Alcance Table Override API
+// ==========================================
+
+export async function getUserAlcanceTable(): Promise<{ override: string | null; global: string; effective: string; availableTables: string[] }> {
+    const response = await fetch(`${API_BASE}/user/alcance-table`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) {
+        console.error('Error fetching user alcance table:', response.statusText);
+        return { override: null, global: 'RSM_ALCANCE_DIARIO', effective: 'RSM_ALCANCE_DIARIO', availableTables: ['RSM_ALCANCE_DIARIO'] };
+    }
+    return response.json();
+}
+
+export async function saveUserAlcanceTable(override: string | null): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/user/alcance-table`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ override })
+    });
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error saving user alcance table');
     }
     return response.json();
 }

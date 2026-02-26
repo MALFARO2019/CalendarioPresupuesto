@@ -2,6 +2,7 @@ const reportsDb = require('../reportsDb');
 const { sendReportEmail } = require('../emailService');
 const { buildReportHtml } = require('../reports_endpoints');
 const { generarReporteAlcance } = require('../reporteNocturno');
+const { sql, poolPromise } = require('../db');
 
 let cronInterval = null;
 
@@ -25,6 +26,26 @@ function stop() {
         clearInterval(cronInterval);
         cronInterval = null;
         console.log('📊 Reports cron job stopped');
+    }
+}
+
+// Helper: fetch user's allowed stores and channels
+async function getUserPermissions(userId) {
+    try {
+        const pool = await poolPromise;
+        const storesResult = await pool.request()
+            .input('userId', sql.Int, userId)
+            .query('SELECT Local FROM APP_USUARIO_ALMACEN WHERE UsuarioId = @userId');
+        const canalesResult = await pool.request()
+            .input('userId', sql.Int, userId)
+            .query('SELECT Canal FROM APP_USUARIO_CANAL WHERE UsuarioId = @userId');
+        return {
+            allowedStores: storesResult.recordset.map(r => r.Local),
+            allowedCanales: canalesResult.recordset.map(r => r.Canal)
+        };
+    } catch (e) {
+        console.warn('⚠️ Could not fetch user permissions:', e.message);
+        return { allowedStores: [], allowedCanales: [] };
     }
 }
 
@@ -52,7 +73,9 @@ async function checkAndSendReports() {
 
             // ── Reportes con lógica especial ─────────────────
             if (sub.TipoEspecial === 'alcance-nocturno') {
-                const { ok } = await generarReporteAlcance([emailTo]);
+                // Fetch user permissions for personalized report
+                const userPerms = await getUserPermissions(sub.UsuarioID);
+                const { ok } = await generarReporteAlcance([emailTo], userPerms);
                 if (ok) {
                     await reportsDb.markSubscriptionSent(sub.ID);
                     console.log(`  ✅ Reporte nocturno enviado a ${emailTo}`);
