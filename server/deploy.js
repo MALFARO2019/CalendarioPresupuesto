@@ -615,11 +615,10 @@ async function _runDeployScenario(serverIp, user, password, appDir, deployVersio
         } catch (e) {
             steps[steps.length - 1] = {
                 step: 'Configurando infraestructura',
-                status: 'error',
-                detail: `Falló la configuración de infraestructura: ${e.message.substring(0, 200)}`
+                status: 'warning',
+                detail: `No se pudo validar infraestructura (no fatal): ${e.message.substring(0, 200)}`
             };
-            // Fatal — without proper infra, the server won't respond anyway
-            return { success: false, steps, timing: buildTiming(startTime) };
+            // Non-fatal — continue with the deploy; the service may still work with existing paths
         }
     }
 
@@ -1024,5 +1023,6 @@ module.exports = {
     getLocalGitStatus,
     getGitBranches,
     commitAndPush,
+    runPowerShell,
     buildTiming
 };
