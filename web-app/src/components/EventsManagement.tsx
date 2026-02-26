@@ -12,10 +12,12 @@ import {
     deleteEventoFecha,
     fetchAvailableCanales,
     fetchGruposAlmacen,
+    fetchAvailableAlmacenes,
     getUser,
     type Evento,
     type EventoFecha,
-    type GrupoAlmacen
+    type GrupoAlmacen,
+    type AlmacenOption
 } from '../api';
 import { SearchableCombobox, type ComboboxOption } from './ui/SearchableCombobox';
 import {
@@ -60,14 +62,19 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
         FECHA: '',
         FECHA_EFECTIVA: '',
         Canal: 'Todos',
-        GrupoAlmacen: null as number | null
+        GrupoAlmacen: null as number | null,
+        CodAlmacen: null as string | null
     });
+
+    // Toggle between 'grupo' and 'almacen' selection mode
+    const [storeMode, setStoreMode] = useState<'grupo' | 'almacen'>('grupo');
 
     const user = getUser();
 
     // Combobox options for Canal and Grupo Almacén
     const [canalesOptions, setCanalesOptions] = useState<ComboboxOption[]>([]);
     const [gruposOptions, setGruposOptions] = useState<ComboboxOption[]>([]);
+    const [almacenesOptions, setAlmacenesOptions] = useState<ComboboxOption[]>([]);
 
     useEffect(() => {
         loadEventos();
@@ -81,6 +88,9 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
         }).catch(() => { });
         fetchGruposAlmacen().then(grupos => {
             setGruposOptions(grupos.map(g => ({ value: String(g.IDGRUPO), label: g.DESCRIPCION })));
+        }).catch(() => { });
+        fetchAvailableAlmacenes().then(stores => {
+            setAlmacenesOptions(stores.map(s => ({ value: s.CODALMACEN, label: `${s.CODALMACEN} - ${s.NOMBRE}` })));
         }).catch(() => { });
     }, []);
 
@@ -175,11 +185,12 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                 fechaEfectiva: fechaForm.FECHA_EFECTIVA,
                 canal: fechaForm.Canal,
                 grupoAlmacen: fechaForm.GrupoAlmacen,
+                codAlmacen: fechaForm.CodAlmacen,
                 usuario: user?.email || 'admin'
             });
             setSuccess('Fecha agregada exitosamente');
             setShowFechaForm(false);
-            setFechaForm({ FECHA: '', FECHA_EFECTIVA: '', Canal: 'Todos', GrupoAlmacen: null });
+            setFechaForm({ FECHA: '', FECHA_EFECTIVA: '', Canal: 'Todos', GrupoAlmacen: null, CodAlmacen: null });
             loadEventoFechas(selectedEvento);
         } catch (err: any) {
             setError(err.message);
@@ -197,6 +208,7 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                 fechaEfectiva: fechaForm.FECHA_EFECTIVA,
                 canal: fechaForm.Canal,
                 grupoAlmacen: fechaForm.GrupoAlmacen,
+                codAlmacen: fechaForm.CodAlmacen,
                 usuario: user?.email || 'admin'
             });
             setSuccess('Fecha actualizada exitosamente');
@@ -228,8 +240,15 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
             FECHA: fecha.FECHA ? fecha.FECHA.split('T')[0] : '',
             FECHA_EFECTIVA: fecha.FECHA_EFECTIVA ? fecha.FECHA_EFECTIVA.split('T')[0] : '',
             Canal: fecha.Canal,
-            GrupoAlmacen: fecha.GrupoAlmacen
+            GrupoAlmacen: fecha.GrupoAlmacen,
+            CodAlmacen: fecha.CodAlmacen || null
         });
+        // Set the correct mode based on what's stored
+        if (fecha.CodAlmacen) {
+            setStoreMode('almacen');
+        } else {
+            setStoreMode('grupo');
+        }
         setShowFechaForm(true);
     };
 
@@ -239,7 +258,8 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
         setEditingEvento(null);
         setEditingFecha(null);
         setEventoForm({ EVENTO: '', ESFERIADO: 'N', USARENPRESUPUESTO: 'S', ESINTERNO: 'N' });
-        setFechaForm({ FECHA: '', FECHA_EFECTIVA: '', Canal: 'Todos', GrupoAlmacen: null });
+        setFechaForm({ FECHA: '', FECHA_EFECTIVA: '', Canal: 'Todos', GrupoAlmacen: null, CodAlmacen: null });
+        setStoreMode('grupo');
     };
 
     const safeFormatDate = (dateStr: string | null | undefined, fallback = '(sin fecha)') => {
@@ -513,13 +533,39 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Grupo Almacén</label>
-                                                <SearchableCombobox
-                                                    options={gruposOptions}
-                                                    value={fechaForm.GrupoAlmacen ? String(fechaForm.GrupoAlmacen) : ''}
-                                                    onChange={(v) => setFechaForm({ ...fechaForm, GrupoAlmacen: v ? parseInt(v) : null })}
-                                                    placeholder="Opcional"
-                                                />
+                                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Grupo / Almacén</label>
+                                                {/* Mode toggle tabs */}
+                                                <div className="flex mb-2 rounded-lg overflow-hidden border border-gray-200">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setStoreMode('grupo'); setFechaForm({ ...fechaForm, CodAlmacen: null }); }}
+                                                        className={`flex-1 px-2 py-1 text-xs font-medium transition-all ${storeMode === 'grupo' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                                    >
+                                                        Grupo
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setStoreMode('almacen'); setFechaForm({ ...fechaForm, GrupoAlmacen: null }); }}
+                                                        className={`flex-1 px-2 py-1 text-xs font-medium transition-all ${storeMode === 'almacen' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                                    >
+                                                        Almacén
+                                                    </button>
+                                                </div>
+                                                {storeMode === 'grupo' ? (
+                                                    <SearchableCombobox
+                                                        options={gruposOptions}
+                                                        value={fechaForm.GrupoAlmacen ? String(fechaForm.GrupoAlmacen) : ''}
+                                                        onChange={(v) => setFechaForm({ ...fechaForm, GrupoAlmacen: v ? parseInt(v) : null, CodAlmacen: null })}
+                                                        placeholder="Opcional"
+                                                    />
+                                                ) : (
+                                                    <SearchableCombobox
+                                                        options={almacenesOptions}
+                                                        value={fechaForm.CodAlmacen || ''}
+                                                        onChange={(v) => setFechaForm({ ...fechaForm, CodAlmacen: v || null, GrupoAlmacen: null })}
+                                                        placeholder="Opcional"
+                                                    />
+                                                )}
                                             </div>
                                         </div>
 

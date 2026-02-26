@@ -277,8 +277,12 @@ export function DeployManagement() {
             { step: 'Registrando versión', status: 'pending' },
             { step: 'Instalando dependencias backend', status: 'pending' },
             { step: 'Construyendo frontend', status: 'pending' },
+            { step: 'Verificando web.config', status: 'pending' },
+            { step: 'Garantizando PORT=3000', status: 'pending' },
+            { step: 'Verificando infraestructura', status: 'pending' },
             { step: 'Reiniciando servicio', status: 'pending' },
             { step: 'Verificando API', status: 'pending' },
+            { step: 'Verificando sitio web', status: 'pending' },
         );
         setDeploySteps(initialSteps);
 
@@ -502,6 +506,7 @@ export function DeployManagement() {
         switch (status) {
             case 'success': return 'text-green-600 bg-green-50 border-green-200';
             case 'error': return 'text-red-600 bg-red-50 border-red-200';
+            case 'warning': return 'text-orange-600 bg-orange-50 border-orange-200';
             case 'running':
             case 'deploying': return 'text-amber-600 bg-amber-50 border-amber-200';
             default: return 'text-gray-500 bg-gray-50 border-gray-200';

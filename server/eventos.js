@@ -27,8 +27,27 @@ async function ensureOrdenColumn() {
     }
 }
 
-// Run on module load and store the promise
+/**
+ * Ensure CodAlmacen column exists in DIM_EVENTOS_FECHAS
+ */
+async function ensureCodAlmacenColumn() {
+    try {
+        const pool = await poolPromise;
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DIM_EVENTOS_FECHAS') AND name = 'CodAlmacen')
+            BEGIN
+                ALTER TABLE DIM_EVENTOS_FECHAS ADD CodAlmacen NVARCHAR(10) NULL;
+            END
+        `);
+        console.log('✅ CodAlmacen column ready in DIM_EVENTOS_FECHAS');
+    } catch (err) {
+        console.warn('Warning: Could not ensure CodAlmacen column:', err.message);
+    }
+}
+
+// Run on module load and store the promises
 _ordenReady = ensureOrdenColumn();
+let _codAlmacenReady = ensureCodAlmacenColumn();
 
 /**
  * Get all events from DIM_EVENTOS ordered by ORDEN
@@ -129,6 +148,7 @@ async function deleteEvento(id) {
  * Get all dates for a specific event
  */
 async function getEventoFechas(idEvento) {
+    if (_codAlmacenReady) await _codAlmacenReady;
     const pool = await poolPromise;
     const result = await pool.request()
         .input('idEvento', sql.Int, idEvento)
@@ -140,6 +160,7 @@ async function getEventoFechas(idEvento) {
                 FECHA_EFECTIVA,
                 Canal,
                 GrupoAlmacen,
+                CodAlmacen,
                 USUARIO_MODIFICACION,
                 FECHA_MODIFICACION
             FROM DIM_EVENTOS_FECHAS
@@ -152,7 +173,8 @@ async function getEventoFechas(idEvento) {
 /**
  * Create a new event date
  */
-async function createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, usuario) {
+async function createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen, usuario) {
+    if (_codAlmacenReady) await _codAlmacenReady;
     const pool = await poolPromise;
     await pool.request()
         .input('idEvento', sql.Int, idEvento)
@@ -160,12 +182,13 @@ async function createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlm
         .input('fechaEfectiva', sql.Date, fechaEfectiva)
         .input('canal', sql.NChar(100), canal)
         .input('grupoAlmacen', sql.Int, grupoAlmacen)
+        .input('codAlmacen', sql.NVarChar(10), codAlmacen || null)
         .input('usuario', sql.NVarChar(200), usuario)
         .input('fechaModificacion', sql.DateTime, new Date())
         .query(`
             INSERT INTO DIM_EVENTOS_FECHAS 
-            (IDEVENTO, FECHA, FECHA_EFECTIVA, Canal, GrupoAlmacen, USUARIO_MODIFICACION, FECHA_MODIFICACION)
-            VALUES (@idEvento, @fecha, @fechaEfectiva, @canal, @grupoAlmacen, @usuario, @fechaModificacion)
+            (IDEVENTO, FECHA, FECHA_EFECTIVA, Canal, GrupoAlmacen, CodAlmacen, USUARIO_MODIFICACION, FECHA_MODIFICACION)
+            VALUES (@idEvento, @fecha, @fechaEfectiva, @canal, @grupoAlmacen, @codAlmacen, @usuario, @fechaModificacion)
         `);
 }
 
@@ -173,7 +196,8 @@ async function createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlm
  * Update an existing event date
  * Note: Since DIM_EVENTOS_FECHAS doesn't have a primary key, we identify records by all fields
  */
-async function updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, usuario) {
+async function updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen, usuario) {
+    if (_codAlmacenReady) await _codAlmacenReady;
     const pool = await poolPromise;
     await pool.request()
         .input('idEvento', sql.Int, idEvento)
@@ -182,6 +206,7 @@ async function updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, ca
         .input('fechaEfectiva', sql.Date, fechaEfectiva)
         .input('canal', sql.NChar(100), canal)
         .input('grupoAlmacen', sql.Int, grupoAlmacen)
+        .input('codAlmacen', sql.NVarChar(10), codAlmacen || null)
         .input('usuario', sql.NVarChar(200), usuario)
         .input('fechaModificacion', sql.DateTime, new Date())
         .query(`
@@ -190,6 +215,7 @@ async function updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, ca
                 FECHA_EFECTIVA = @fechaEfectiva,
                 Canal = @canal,
                 GrupoAlmacen = @grupoAlmacen,
+                CodAlmacen = @codAlmacen,
                 USUARIO_MODIFICACION = @usuario,
                 FECHA_MODIFICACION = @fechaModificacion
             WHERE IDEVENTO = @idEvento AND FECHA = @oldFecha

@@ -6,11 +6,13 @@ import {
     fetchEventos,
     fetchAvailableCanales,
     fetchGruposAlmacen,
+    fetchAvailableAlmacenes,
     sendEventosEmail,
     getUser,
     type EventoAjustePeriodo,
     type Evento,
-    type GrupoAlmacen
+    type GrupoAlmacen,
+    type AlmacenOption
 } from '../api';
 import { SearchableCombobox, type ComboboxOption } from './ui/SearchableCombobox';
 import {
@@ -59,12 +61,14 @@ export const EventosPeriodView: React.FC = () => {
     // Add reference state
     const [showAddForm, setShowAddForm] = useState(false);
     const [eventos, setEventos] = useState<Evento[]>([]);
-    const [addForm, setAddForm] = useState({ idEvento: 0, fecha: '', fechaEfectiva: '', canal: 'Todos', grupoAlmacen: null as number | null });
+    const [addForm, setAddForm] = useState({ idEvento: 0, fecha: '', fechaEfectiva: '', canal: 'Todos', grupoAlmacen: null as number | null, codAlmacen: null as string | null });
     const [addSaving, setAddSaving] = useState(false);
+    const [addStoreMode, setAddStoreMode] = useState<'grupo' | 'almacen'>('grupo');
 
     // Combobox options
     const [canalesOptions, setCanalesOptions] = useState<ComboboxOption[]>([]);
     const [gruposOptions, setGruposOptions] = useState<ComboboxOption[]>([]);
+    const [almacenesOptions, setAlmacenesOptions] = useState<ComboboxOption[]>([]);
 
     // Email state
     const [showEmailModal, setShowEmailModal] = useState(false);
@@ -86,6 +90,9 @@ export const EventosPeriodView: React.FC = () => {
         }).catch(() => { });
         fetchGruposAlmacen().then(grupos => {
             setGruposOptions(grupos.map(g => ({ value: String(g.IDGRUPO), label: g.DESCRIPCION })));
+        }).catch(() => { });
+        fetchAvailableAlmacenes().then(stores => {
+            setAlmacenesOptions(stores.map(s => ({ value: s.CODALMACEN, label: `${s.CODALMACEN} - ${s.NOMBRE}` })));
         }).catch(() => { });
     }, []);
 
@@ -133,6 +140,7 @@ export const EventosPeriodView: React.FC = () => {
                 fechaEfectiva: editRef,
                 canal: item.Canal,
                 grupoAlmacen: item.GrupoAlmacen,
+                codAlmacen: item.CodAlmacen || null,
                 usuario: user?.email || 'admin'
             });
             // Update local state
@@ -593,18 +601,43 @@ export const EventosPeriodView: React.FC = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Grupo Almacén</label>
-                                    <SearchableCombobox
-                                        options={gruposOptions}
-                                        value={addForm.grupoAlmacen ? String(addForm.grupoAlmacen) : ''}
-                                        onChange={v => setAddForm({ ...addForm, grupoAlmacen: v ? parseInt(v) : null })}
-                                        placeholder="Opcional"
-                                    />
+                                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Grupo / Almacén</label>
+                                    <div className="flex mb-2 rounded-lg overflow-hidden border border-gray-200">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setAddStoreMode('grupo'); setAddForm({ ...addForm, codAlmacen: null }); }}
+                                            className={`flex-1 px-2 py-1 text-xs font-medium transition-all ${addStoreMode === 'grupo' ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                        >
+                                            Grupo
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setAddStoreMode('almacen'); setAddForm({ ...addForm, grupoAlmacen: null }); }}
+                                            className={`flex-1 px-2 py-1 text-xs font-medium transition-all ${addStoreMode === 'almacen' ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                        >
+                                            Almacén
+                                        </button>
+                                    </div>
+                                    {addStoreMode === 'grupo' ? (
+                                        <SearchableCombobox
+                                            options={gruposOptions}
+                                            value={addForm.grupoAlmacen ? String(addForm.grupoAlmacen) : ''}
+                                            onChange={v => setAddForm({ ...addForm, grupoAlmacen: v ? parseInt(v) : null, codAlmacen: null })}
+                                            placeholder="Opcional"
+                                        />
+                                    ) : (
+                                        <SearchableCombobox
+                                            options={almacenesOptions}
+                                            value={addForm.codAlmacen || ''}
+                                            onChange={v => setAddForm({ ...addForm, codAlmacen: v || null, grupoAlmacen: null })}
+                                            placeholder="Opcional"
+                                        />
+                                    )}
                                 </div>
                             </div>
                             <div className="flex gap-2 mt-3">
                                 <button
-                                    onClick={() => { setShowAddForm(false); setAddForm({ idEvento: 0, fecha: '', fechaEfectiva: '', canal: 'Todos', grupoAlmacen: null }); }}
+                                    onClick={() => { setShowAddForm(false); setAddForm({ idEvento: 0, fecha: '', fechaEfectiva: '', canal: 'Todos', grupoAlmacen: null, codAlmacen: null }); setAddStoreMode('grupo'); }}
                                     className="flex-1 px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-all"
                                 >
                                     Cancelar
@@ -624,12 +657,13 @@ export const EventosPeriodView: React.FC = () => {
                                                 fechaEfectiva: addForm.fechaEfectiva,
                                                 canal: addForm.canal,
                                                 grupoAlmacen: addForm.grupoAlmacen,
+                                                codAlmacen: addForm.codAlmacen,
                                                 usuario: user?.email || 'admin'
                                             });
                                             setSuccess('Referencia creada exitosamente');
                                             setTimeout(() => setSuccess(''), 3000);
                                             setShowAddForm(false);
-                                            setAddForm({ idEvento: 0, fecha: '', fechaEfectiva: '', canal: 'Todos', grupoAlmacen: null });
+                                            setAddForm({ idEvento: 0, fecha: '', fechaEfectiva: '', canal: 'Todos', grupoAlmacen: null, codAlmacen: null });
                                             loadData();
                                         } catch (err: any) {
                                             setError(err.message);

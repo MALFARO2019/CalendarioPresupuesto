@@ -514,6 +514,23 @@ async function _runDeployScenario(serverIp, user, password, appDir, deployVersio
             return { success: false, steps, timing: buildTiming(startTime) };
         }
 
+        // Step 4a-pre: Verify dist/index.html exists (prevents IIS 500 if build silently failed)
+        try {
+            const distCheck = await runPowerShell(
+                `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+                `$idx = Join-Path '${appDir}' 'web-app\\dist\\index.html'; ` +
+                `if (Test-Path $idx) { $c = (Get-ChildItem (Join-Path '${appDir}' 'web-app\\dist') -Recurse -File).Count; Write-Output "OK:$c" } ` +
+                `else { Write-Output 'MISSING' } }`
+            );
+            if (distCheck.trim().startsWith('MISSING')) {
+                steps.push({ step: 'Verificando dist/', status: 'error', detail: 'dist/index.html no existe. El build pudo haber fallado silenciosamente.' });
+                return { success: false, steps, timing: buildTiming(startTime) };
+            }
+            // dist OK, don't add a visible step to keep the list clean
+        } catch (e) {
+            // Non-fatal: if we can't check, continue and hope for the best
+        }
+
         // Step 4a: Copy web.config to dist (build wipes dist/, IIS needs web.config for URL Rewrite proxy)
         // CRITICAL FIX: If web.config doesn't exist, the whole deploy must fail to prevent a 404 outage in IIS
         steps.push({ step: 'Verificando web.config', status: 'running' });
@@ -562,63 +579,48 @@ async function _runDeployScenario(serverIp, user, password, appDir, deployVersio
             steps[steps.length - 1] = { step: 'Garantizando PORT=3000', status: 'warning', detail: `Error: ${e.message.substring(0, 200)}` };
         }
 
-        // Step 4c: Validate and auto-fix server infrastructure (NSSM paths + IIS VDir + web.config)
-        steps.push({ step: 'Configurando infraestructura', status: 'running' });
+        // Step 4c: Verify server infrastructure (NSSM paths + IIS VDir) — REPORT ONLY, never modify
+        // Lesson learned: auto-fixing NSSM paths broke the server when appDir ≠ NSSM directory
+        steps.push({ step: 'Verificando infraestructura', status: 'running' });
         try {
             const infraResult = await runPowerShell(
                 `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock {` +
-                ` $fixes = @();` +
+                ` $info = @();` +
                 ` $appDir = '${appDir}';` +
-                ` $serverDir = Join-Path $appDir 'server';` +
-                ` $distDir = Join-Path $appDir 'web-app\\dist';` +
-                // --- NSSM AppDirectory ---
+                // --- NSSM paths (read-only) ---
                 ` $regPath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\CalendarioPresupuesto-API\\Parameters';` +
                 ` $reg = Get-ItemProperty $regPath -ErrorAction SilentlyContinue;` +
                 ` if ($reg) {` +
-                `   if ($reg.AppDirectory -ne $serverDir) {` +
-                `     Set-ItemProperty $regPath -Name 'AppDirectory' -Value $serverDir;` +
-                `     $fixes += "NSSM AppDirectory: $($reg.AppDirectory) -> $serverDir";` +
-                `   }` +
-                `   $expectedParams = Join-Path $serverDir 'server.js';` +
-                `   if ($reg.AppParameters -and $reg.AppParameters -ne $expectedParams) {` +
-                `     Set-ItemProperty $regPath -Name 'AppParameters' -Value $expectedParams;` +
-                `     $fixes += "NSSM AppParams: $($reg.AppParameters) -> $expectedParams";` +
-                `   }` +
-                ` } else { $fixes += 'NSSM: no service found (OK if not using NSSM)' };` +
-                // --- IIS VDir ---
+                `   $info += "NSSM: $($reg.AppDirectory)";` +
+                ` } else { $info += 'NSSM: no service' };` +
+                // --- IIS VDir (read-only) ---
                 ` $vdir = & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' list vdir 'CalendarioPresupuesto/' /text:physicalPath 2>$null;` +
-                ` if ($vdir -and $vdir.Trim() -ne $distDir) {` +
-                `   & 'C:\\Windows\\System32\\inetsrv\\appcmd.exe' set vdir 'CalendarioPresupuesto/' /physicalPath:$distDir 2>$null;` +
-                `   $fixes += "IIS VDir: $($vdir.Trim()) -> $distDir";` +
-                ` };` +
-                // --- web.config in dist ---
+                ` if ($vdir) { $info += "IIS: $($vdir.Trim())" } else { $info += 'IIS: no VDir' };` +
+                // --- web.config in dist (this one we DO fix since build wipes dist/) ---
+                ` $distDir = Join-Path $appDir 'web-app\\dist';` +
                 ` $wcSrc = Join-Path $appDir 'web-app\\web.config';` +
                 ` $wcDst = Join-Path $distDir 'web.config';` +
                 ` if ((Test-Path $wcSrc) -and -not (Test-Path $wcDst)) {` +
                 `   Copy-Item $wcSrc $wcDst -Force;` +
-                `   $fixes += 'web.config copiado a dist';` +
+                `   $info += 'web.config restaurado en dist';` +
                 ` } elseif ((Test-Path $wcSrc) -and (Test-Path $wcDst)) {` +
                 `   $srcHash = (Get-FileHash $wcSrc).Hash;` +
                 `   $dstHash = (Get-FileHash $wcDst).Hash;` +
                 `   if ($srcHash -ne $dstHash) {` +
                 `     Copy-Item $wcSrc $wcDst -Force;` +
-                `     $fixes += 'web.config actualizado en dist';` +
-                `   }` +
+                `     $info += 'web.config actualizado';` +
+                `   } else { $info += 'web.config OK' }` +
                 ` };` +
-                ` if ($fixes.Count -eq 0) { Write-Output 'Sin cambios necesarios' }` +
-                ` else { Write-Output ($fixes -join '; ') }` +
-                ` }`
+                ` Write-Output ($info -join ' | ') }`
             );
-            const detail = infraResult.trim();
-            const hasChanges = detail !== 'Sin cambios necesarios';
-            steps[steps.length - 1] = { step: 'Configurando infraestructura', status: 'success', detail: hasChanges ? `✅ ${detail}` : '✓ Rutas NSSM, IIS y web.config correctas' };
+            steps[steps.length - 1] = { step: 'Verificando infraestructura', status: 'success', detail: infraResult.trim() };
         } catch (e) {
             steps[steps.length - 1] = {
-                step: 'Configurando infraestructura',
+                step: 'Verificando infraestructura',
                 status: 'warning',
-                detail: `No se pudo validar infraestructura (no fatal): ${e.message.substring(0, 200)}`
+                detail: `No se pudo verificar (no fatal): ${e.message.substring(0, 200)}`
             };
-            // Non-fatal — continue with the deploy; the service may still work with existing paths
+            // Non-fatal — continue with the deploy
         }
     }
 
@@ -707,6 +709,29 @@ async function _runDeployScenario(serverIp, user, password, appDir, deployVersio
     } catch (e) {
         steps[steps.length - 1] = { step: 'Verificando API', status: 'error', detail: `No se pudo verificar: ${e.message.substring(0, 150)}` };
         return { success: false, steps, timing: buildTiming(startTime) };
+    }
+
+    // Step 7: Web health check — verify frontend loads (IIS serves index.html)
+    steps.push({ step: 'Verificando sitio web', status: 'running' });
+    try {
+        const webCheck = await runPowerShell(
+            `${credBlock}; Invoke-Command -ComputerName ${serverIp} -Credential $cred -ScriptBlock { ` +
+            `Start-Sleep -Seconds 3; ` +
+            `try { $r = Invoke-WebRequest -Uri 'http://localhost/' -TimeoutSec 10 -UseBasicParsing; ` +
+            `  if ($r.StatusCode -eq 200) { Write-Output "OK:$($r.Content.Length)" } ` +
+            `  else { Write-Output "WARN:HTTP$($r.StatusCode)" } ` +
+            `} catch { Write-Output "FAIL:$($_.Exception.Message)" } }`
+        );
+        const webResult = webCheck.trim();
+        if (webResult.startsWith('OK:')) {
+            steps[steps.length - 1] = { step: 'Verificando sitio web', status: 'success', detail: `Sitio web carga correctamente (${webResult.split(':')[1]} bytes) ✓` };
+        } else if (webResult.startsWith('WARN:')) {
+            steps[steps.length - 1] = { step: 'Verificando sitio web', status: 'warning', detail: `Respuesta inesperada: ${webResult}` };
+        } else {
+            steps[steps.length - 1] = { step: 'Verificando sitio web', status: 'warning', detail: `Frontend no disponible aún: ${webResult.substring(0, 150)}` };
+        }
+    } catch (e) {
+        steps[steps.length - 1] = { step: 'Verificando sitio web', status: 'warning', detail: `No se pudo verificar web (no fatal): ${e.message.substring(0, 150)}` };
     }
 
     // Record the deployed version for this server

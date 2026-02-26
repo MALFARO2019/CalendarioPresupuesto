@@ -569,7 +569,8 @@ WHERE cab.CODVISIBLE = 20;';
                         ELSE LTRIM(RTRIM(CONVERT(nvarchar(200), fT.Canal)))
                     END,
                 GrupoAlmacen = fT.GrupoAlmacen,
-                Prio = (CASE WHEN fT.GrupoAlmacen IS NULL THEN 0 ELSE 1 END)
+                CodAlmacenDirecto = RTRIM(fT.CodAlmacen),
+                Prio = (CASE WHEN fT.GrupoAlmacen IS NULL AND fT.CodAlmacen IS NULL THEN 0 ELSE 1 END)
                      + (CASE WHEN fT.Canal IS NULL OR LTRIM(RTRIM(CONVERT(nvarchar(200), fT.Canal))) = N'' THEN 0 ELSE 2 END)
             FROM dbo.DIM_EVENTOS_FECHAS fT
             WHERE fT.FECHA_EFECTIVA IS NOT NULL
@@ -598,9 +599,10 @@ WHERE cab.CODVISIBLE = 20;';
         ExpandCod AS
         (
             SELECT
-                e.IDEVENTO, e.FechaTarget, e.FechaBase, e.CanalRule, e.GrupoAlmacen, e.Prio,
+                e.IDEVENTO, e.FechaTarget, e.FechaBase, e.CanalRule, e.GrupoAlmacen, e.CodAlmacenDirecto, e.Prio,
                 CodAlmacen =
                     CASE
+                        WHEN e.CodAlmacenDirecto IS NOT NULL THEN e.CodAlmacenDirecto
                         WHEN e.GrupoAlmacen IS NULL THEN c.CodAlmacen
                         ELSE gm.CodAlmacen
                     END
@@ -610,6 +612,7 @@ WHERE cab.CODVISIBLE = 20;';
               ON gm.IDGRUPO = e.GrupoAlmacen
             WHERE e.FechaBase IS NOT NULL
               AND (e.GrupoAlmacen IS NULL OR gm.CodAlmacen IS NOT NULL)
+              AND (e.CodAlmacenDirecto IS NULL OR e.CodAlmacenDirecto = c.CodAlmacen)
         ),
         ExpandCanal AS
         (
@@ -1064,7 +1067,8 @@ HAVING
                         ELSE LTRIM(RTRIM(CONVERT(nvarchar(200), f.Canal)))
                     END,
                 GrupoAlmacen = f.GrupoAlmacen,
-                Prio = (CASE WHEN f.GrupoAlmacen IS NULL THEN 0 ELSE 1 END)
+                CodAlmacenDirecto = RTRIM(f.CodAlmacen),
+                Prio = (CASE WHEN f.GrupoAlmacen IS NULL AND f.CodAlmacen IS NULL THEN 0 ELSE 1 END)
                      + (CASE WHEN f.Canal IS NULL OR LTRIM(RTRIM(CONVERT(nvarchar(200), f.Canal)))=N'' THEN 0 ELSE 2 END)
             FROM dbo.DIM_EVENTOS_FECHAS f
             WHERE f.IDEVENTO IN (24,25,26)
@@ -1075,12 +1079,17 @@ HAVING
         ExpandCod AS
         (
             SELECT
-                r.IDEVENTO,r.FechaX,r.FechaE,r.CanalRule,r.GrupoAlmacen,r.Prio,
-                CodAlmacen = CASE WHEN r.GrupoAlmacen IS NULL THEN c.CodAlmacen ELSE gm.CodAlmacen END
+                r.IDEVENTO,r.FechaX,r.FechaE,r.CanalRule,r.GrupoAlmacen,r.CodAlmacenDirecto,r.Prio,
+                CodAlmacen = CASE
+                    WHEN r.CodAlmacenDirecto IS NOT NULL THEN r.CodAlmacenDirecto
+                    WHEN r.GrupoAlmacen IS NULL THEN c.CodAlmacen
+                    ELSE gm.CodAlmacen
+                END
             FROM Rules r
             CROSS JOIN (SELECT CodAlmacen FROM #Cods) c
             LEFT JOIN #GrupoMiembros gm ON gm.IDGRUPO=r.GrupoAlmacen
             WHERE (r.GrupoAlmacen IS NULL OR gm.CodAlmacen IS NOT NULL)
+              AND (r.CodAlmacenDirecto IS NULL OR r.CodAlmacenDirecto = c.CodAlmacen)
         ),
         ExpandCanal AS
         (

@@ -9,7 +9,7 @@ module.exports = function registerGruposAlmacenEndpoints(app, authMiddleware) {
     // GET /api/admin/grupos-almacen — list all groups with member count
     app.get('/api/admin/grupos-almacen', authMiddleware, async (req, res) => {
         try {
-            if (!req.user.esAdmin && !req.user.accesoGruposAlmacen) return res.status(403).json({ error: 'Sin permisos' });
+            if (!req.user.esAdmin && !req.user.accesoGruposAlmacen && !req.user.accesoEventos) return res.status(403).json({ error: 'Sin permisos' });
             const grupos = await db.getGrupos();
             res.json(grupos);
         } catch (err) {
@@ -20,7 +20,7 @@ module.exports = function registerGruposAlmacenEndpoints(app, authMiddleware) {
     // GET /api/admin/grupos-almacen/stores — available stores for selects
     app.get('/api/admin/grupos-almacen/stores', authMiddleware, async (req, res) => {
         try {
-            if (!req.user.esAdmin && !req.user.accesoGruposAlmacen) return res.status(403).json({ error: 'Sin permisos' });
+            if (!req.user.esAdmin && !req.user.accesoGruposAlmacen && !req.user.accesoEventos) return res.status(403).json({ error: 'Sin permisos' });
             const stores = await db.getAvailableStores();
             res.json(stores);
         } catch (err) {

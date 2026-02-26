@@ -80,8 +80,8 @@ app.post('/api/eventos-fechas', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, usuario } = req.body;
-        await createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, usuario);
+        const { idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen, usuario } = req.body;
+        await createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen || null, usuario);
         res.json({ success: true });
     } catch (err) {
         console.error('Error creating evento fecha:', err);
@@ -95,8 +95,8 @@ app.put('/api/eventos-fechas', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, usuario } = req.body;
-        await updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, usuario);
+        const { idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen, usuario } = req.body;
+        await updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen || null, usuario);
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating evento fecha:', err);

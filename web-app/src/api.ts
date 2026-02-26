@@ -358,6 +358,24 @@ export async function fetchGruposAlmacen(): Promise<GrupoAlmacen[]> {
     }
 }
 
+// GET /api/admin/grupos-almacen/stores - Fetch available individual stores
+export interface AlmacenOption {
+    CODALMACEN: string;
+    NOMBRE: string;
+}
+
+export async function fetchAvailableAlmacenes(): Promise<AlmacenOption[]> {
+    try {
+        const response = await fetch(`${API_BASE}/admin/grupos-almacen/stores`, {
+            headers: authHeaders()
+        });
+        if (!response.ok) return [];
+        return response.json();
+    } catch {
+        return [];
+    }
+}
+
 // ==========================================
 // Data API (authenticated)
 // ==========================================
@@ -539,6 +557,7 @@ export interface EventoFecha {
     FECHA_EFECTIVA: string;
     Canal: string;
     GrupoAlmacen: number | null;
+    CodAlmacen: string | null;
     USUARIO_MODIFICACION: string | null;
     FECHA_MODIFICACION: string | null;
 }
@@ -607,6 +626,7 @@ export async function createEventoFecha(data: {
     fechaEfectiva: string;
     canal: string;
     grupoAlmacen: number | null;
+    codAlmacen: string | null;
     usuario: string;
 }): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/eventos-fechas`, {
@@ -625,6 +645,7 @@ export async function updateEventoFecha(data: {
     fechaEfectiva: string;
     canal: string;
     grupoAlmacen: number | null;
+    codAlmacen: string | null;
     usuario: string;
 }): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/eventos-fechas`, {
@@ -748,6 +769,7 @@ export interface EventoAjustePeriodo {
     FECHA_EFECTIVA: string | null;
     Canal: string;
     GrupoAlmacen: number | null;
+    CodAlmacen: string | null;
     USUARIO_MODIFICACION: string | null;
     FECHA_MODIFICACION: string | null;
 }
