@@ -295,6 +295,9 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     app.put('/api/modelo-presupuesto/ajustes/:id/desactivar', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
+            if (!req.user.esAdmin) {
+                return res.status(403).json({ error: 'Solo los administradores pueden borrar ajustes' });
+            }
             const usuario = req.user.email || req.user.nombre;
             await modeloPresupuesto.desactivarAjuste(parseInt(req.params.id), usuario);
             res.json({ success: true });

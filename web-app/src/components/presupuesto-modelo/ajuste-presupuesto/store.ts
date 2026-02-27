@@ -26,6 +26,7 @@ import * as services from './services';
 
 interface AjusteStoreState {
     // Auth
+    isAdmin: boolean;
     canAdjust: boolean;
     canApprove: boolean;
 
@@ -102,6 +103,7 @@ interface AjusteStoreState {
 
 export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
     // Initial state
+    isAdmin: false,
     canAdjust: false,
     canApprove: false,
     presupuestos: [],
@@ -143,8 +145,9 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
             set({ loading: true, error: null });
 
             const user = services.getUser();
-            const canAdjust = !!(user?.esAdmin || (user as any)?.ajustarCurva);
-            const canApprove = !!(user?.esAdmin || (user as any)?.aprobarAjustes);
+            const isAdmin = !!user?.esAdmin;
+            const canAdjust = !!(isAdmin || (user as any)?.ajustarCurva);
+            const canApprove = !!(isAdmin || (user as any)?.aprobarAjustes);
 
 
             const [presupuestos, locales, gruposLocales] = await Promise.all([
@@ -159,6 +162,7 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
 
 
             set({
+                isAdmin,
                 canAdjust,
                 canApprove,
                 presupuestos,

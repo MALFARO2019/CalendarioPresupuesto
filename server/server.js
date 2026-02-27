@@ -2350,7 +2350,6 @@ app.delete('/api/eventos-fechas', authMiddleware, async (req, res) => {
 // PUT /api/eventos-fechas/estado - Change event date status (Aprobar/Rechazar)
 app.put('/api/eventos-fechas/estado', authMiddleware, async (req, res) => {
     try {
-        if (!requireModuleAccess(req, res)) return;
         if (!req.user.aprobarAjustes && !req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permiso para aprobar/rechazar eventos' });
         }
@@ -2993,7 +2992,9 @@ app.get('/api/eventos/por-ano', authMiddleware, async (req, res) => {
 // GET /api/eventos-fechas/resumen?year=2026 - Resumen anual de fechas para tabla de administración
 app.get('/api/eventos-fechas/resumen', authMiddleware, async (req, res) => {
     try {
-        if (!requireModuleAccess(req, res)) return;
+        if (!req.user.accesoEventos && !req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
+        }
 
         const year = parseInt(req.query.year) || new Date().getFullYear();
         const pool = await poolPromise;
@@ -3023,6 +3024,7 @@ app.get('/api/eventos-fechas/resumen', authMiddleware, async (req, res) => {
             `);
 
         res.json({ fechas: result.recordset });
+        console.log(`[API] /eventos-fechas/resumen year=${year} rows=${result.recordset?.length}`);
     } catch (err) {
         console.error('Error in /api/eventos-fechas/resumen:', err);
         res.status(500).json({ error: err.message });

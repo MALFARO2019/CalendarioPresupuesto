@@ -11,10 +11,11 @@ import { REDISTRIBUCION_LABELS } from './types';
 import type { AjustePresupuesto } from './types';
 
 export const AjusteListaPanel: React.FC = () => {
-    const { ajustes, selectedAjusteId, canAdjust, canApprove } = useAjusteStore(
+    const { ajustes, selectedAjusteId, isAdmin, canAdjust, canApprove } = useAjusteStore(
         useShallow(s => ({
             ajustes: s.ajustes,
             selectedAjusteId: s.selectedAjusteId,
+            isAdmin: s.isAdmin,
             canAdjust: s.canAdjust,
             canApprove: s.canApprove,
         }))
@@ -91,6 +92,7 @@ export const AjusteListaPanel: React.FC = () => {
                             ajuste={ajuste}
                             isSelected={selectedAjusteId === ajuste.id}
                             isDeleteConfirm={deleteConfirm === ajuste.id}
+                            isAdmin={isAdmin}
                             canAdjust={canAdjust}
                             canApprove={canApprove}
                             onSelect={() => selectAjuste(ajuste.id === selectedAjusteId ? null : ajuste.id)}
@@ -114,6 +116,7 @@ const AjusteItem: React.FC<{
     ajuste: AjustePresupuesto;
     isSelected: boolean;
     isDeleteConfirm: boolean;
+    isAdmin: boolean;
     canAdjust: boolean;
     canApprove: boolean;
     onSelect: () => void;
@@ -123,7 +126,7 @@ const AjusteItem: React.FC<{
     onDisassociate: () => void;
     onAprobar: () => void;
     onRechazar: () => void;
-}> = ({ ajuste, isSelected, isDeleteConfirm, canAdjust, canApprove, onSelect, onEdit, onDelete, onCopy, onDisassociate, onAprobar, onRechazar }) => {
+}> = ({ ajuste, isSelected, isDeleteConfirm, isAdmin, canAdjust, canApprove, onSelect, onEdit, onDelete, onCopy, onDisassociate, onAprobar, onRechazar }) => {
     const isPendiente = ajuste.estado === 'Pendiente';
 
     return (
@@ -190,15 +193,17 @@ const AjusteItem: React.FC<{
                     >
                         <Pencil className="w-3 h-3" /> Editar
                     </button>
-                    <button
-                        onClick={e => { e.stopPropagation(); onDelete(); }}
-                        className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-md transition-colors ${isDeleteConfirm
-                            ? 'bg-red-600 text-white'
-                            : 'text-gray-600 bg-gray-100 hover:bg-red-50 hover:text-red-600'
-                            }`}
-                    >
-                        <Trash2 className="w-3 h-3" /> {isDeleteConfirm ? '¿Confirmar?' : 'Borrar'}
-                    </button>
+                    {isAdmin && (
+                        <button
+                            onClick={e => { e.stopPropagation(); onDelete(); }}
+                            className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-md transition-colors ${isDeleteConfirm
+                                ? 'bg-red-600 text-white'
+                                : 'text-gray-600 bg-gray-100 hover:bg-red-50 hover:text-red-600'
+                                }`}
+                        >
+                            <Trash2 className="w-3 h-3" /> {isDeleteConfirm ? '¿Confirmar?' : 'Borrar'}
+                        </button>
+                    )}
                     {ajuste.estado === 'Asociado' && (
                         <button
                             onClick={e => { e.stopPropagation(); onDisassociate(); }}

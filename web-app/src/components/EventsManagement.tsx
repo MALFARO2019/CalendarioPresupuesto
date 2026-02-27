@@ -25,7 +25,7 @@ import {
 import { SearchableCombobox, type ComboboxOption } from './ui/SearchableCombobox';
 import {
     Calendar, Plus, Trash2, Edit2, X, Loader2, AlertCircle,
-    CheckCircle, CalendarDays, Search, ArrowUpDown
+    CheckCircle, CalendarDays, Search, ArrowUpDown, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -53,6 +53,7 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
     const [resumenFechas, setResumenFechas] = useState<EventoFechaResumen[]>([]);
     const [resumenLoading, setResumenLoading] = useState(false);
     const [resumenFilter, setResumenFilter] = useState<'Todos' | 'Pendiente' | 'Aprobado' | 'Rechazado'>('Todos');
+    const [isResumenOpen, setIsResumenOpen] = useState(false);
 
     // Estado para modal de rechazo
     const [rechazoModal, setRechazoModal] = useState<{ idEvento: number, fecha: string } | null>(null);
@@ -744,10 +745,18 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
 
             {/* Resumen Anual Section */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mt-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div
+                        className="flex items-center gap-2 cursor-pointer select-none group"
+                        onClick={() => setIsResumenOpen(!isResumenOpen)}
+                    >
+                        {isResumenOpen ? (
+                            <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 transition-colors" />
+                        ) : (
+                            <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 transition-colors" />
+                        )}
                         <CalendarDays className="w-5 h-5 text-indigo-600" />
-                        <h2 className="text-lg font-bold text-gray-800">Resumen Anual de Eventos</h2>
+                        <h2 className="text-lg font-bold text-gray-800 group-hover:text-indigo-600 transition-colors">Resumen Anual de Eventos</h2>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
@@ -784,104 +793,108 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                     </div>
                 </div>
 
-                {resumenLoading ? (
-                    <div className="flex justify-center py-12">
-                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-                    </div>
-                ) : resumenFechas.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                        No hay eventos registrados para el año {resumenYear}
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto rounded-xl border border-gray-200">
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-700 uppercase bg-gray-100">
-                                <tr>
-                                    <th className="px-4 py-3">Fecha</th>
-                                    <th className="px-4 py-3">Evento</th>
-                                    <th className="px-4 py-3">Tipo</th>
-                                    <th className="px-4 py-3">Alcance</th>
-                                    <th className="px-4 py-3">Estado</th>
-                                    <th className="px-4 py-3 text-right">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {resumenFechas
-                                    .filter(f => resumenFilter === 'Todos' || (f.Estado || 'Pendiente') === resumenFilter)
-                                    .map((fecha, idx) => (
-                                        <tr key={idx} className="bg-white border-b hover:bg-gray-50 whitespace-nowrap">
-                                            <td className="px-4 py-3 font-medium text-gray-900">
-                                                {safeFormatDate(fecha.FECHA)}
-                                                {fecha.FECHA_EFECTIVA && fecha.FECHA_EFECTIVA !== fecha.FECHA && (
-                                                    <div className="text-xs text-gray-500 font-normal">
-                                                        Ref: {safeFormatDate(fecha.FECHA_EFECTIVA)}
-                                                    </div>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="font-semibold text-gray-800">{fecha.EVENTO}</div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex gap-1">
-                                                    {fecha.ESFERIADO === 'S' && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Feriado</span>}
-                                                    {fecha.ESINTERNO === 'S' && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">Interno</span>}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="text-xs">
-                                                    <span className="font-semibold text-gray-700">{fecha.Canal || 'Todos'}</span>
-                                                    {(fecha.CodAlmacen || fecha.GrupoAlmacen) && (
-                                                        <span className="text-gray-500 ml-1">
-                                                            ({fecha.CodAlmacen ? `Almacén ${fecha.CodAlmacen}` : `Grupo ${fecha.GrupoAlmacen}`})
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className={`px-2 py-0.5 w-max text-xs font-semibold inline-flex items-center gap-1 rounded-full ${fecha.Estado === 'Aprobado' ? 'bg-green-100 text-green-700' :
-                                                        fecha.Estado === 'Rechazado' ? 'bg-red-100 text-red-700' :
-                                                            'bg-yellow-100 text-yellow-700'
-                                                        }`}>
-                                                        &#9679; {fecha.Estado || 'Pendiente'}
-                                                    </span>
-                                                    {(fecha.UsuarioCrea || fecha.USUARIO_MODIFICACION) && (
-                                                        <span className="text-[10px] text-gray-500 uppercase font-medium">Crea: {fecha.UsuarioCrea || fecha.USUARIO_MODIFICACION}</span>
-                                                    )}
-                                                    {fecha.UsuarioAprueba && (
-                                                        <span className="text-[10px] text-gray-400 uppercase font-medium">Aprob: {fecha.UsuarioAprueba}</span>
-                                                    )}
-                                                </div>
-                                                {fecha.Estado === 'Rechazado' && fecha.MotivoRechazo && (
-                                                    <div className="text-xs text-red-500 italic mt-1 w-48 overflow-hidden text-ellipsis whitespace-normal">
-                                                        "{fecha.MotivoRechazo}"
-                                                    </div>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <div className="flex justify-end gap-1">
-                                                    {(user?.aprobarAjustes || user?.esAdmin) && fecha.Estado !== 'Aprobado' && (
-                                                        <button
-                                                            onClick={() => handleCambiarEstado(fecha.IDEVENTO, fecha.FECHA, 'Aprobado')}
-                                                            className="px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors"
-                                                        >
-                                                            Aprobar
-                                                        </button>
-                                                    )}
-                                                    {(user?.aprobarAjustes || user?.esAdmin) && fecha.Estado !== 'Rechazado' && (
-                                                        <button
-                                                            onClick={() => setRechazoModal({ idEvento: fecha.IDEVENTO, fecha: fecha.FECHA })}
-                                                            className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded text-xs font-medium transition-colors"
-                                                        >
-                                                            Rechazar
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </td>
+                {isResumenOpen && (
+                    <div className="mt-6 border-t border-gray-100 pt-6">
+                        {resumenLoading ? (
+                            <div className="flex justify-center py-12">
+                                <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                            </div>
+                        ) : resumenFechas.length === 0 ? (
+                            <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                No hay eventos registrados para el año {resumenYear}
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto rounded-xl border border-gray-200">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                                        <tr>
+                                            <th className="px-4 py-3">Fecha</th>
+                                            <th className="px-4 py-3">Evento</th>
+                                            <th className="px-4 py-3">Tipo</th>
+                                            <th className="px-4 py-3">Alcance</th>
+                                            <th className="px-4 py-3">Estado</th>
+                                            <th className="px-4 py-3 text-right">Acciones</th>
                                         </tr>
-                                    ))}
-                            </tbody>
-                        </table>
+                                    </thead>
+                                    <tbody>
+                                        {resumenFechas
+                                            .filter(f => resumenFilter === 'Todos' || (f.Estado || 'Pendiente') === resumenFilter)
+                                            .map((fecha, idx) => (
+                                                <tr key={idx} className="bg-white border-b hover:bg-gray-50 whitespace-nowrap">
+                                                    <td className="px-4 py-3 font-medium text-gray-900">
+                                                        {safeFormatDate(fecha.FECHA)}
+                                                        {fecha.FECHA_EFECTIVA && fecha.FECHA_EFECTIVA !== fecha.FECHA && (
+                                                            <div className="text-xs text-gray-500 font-normal">
+                                                                Ref: {safeFormatDate(fecha.FECHA_EFECTIVA)}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-semibold text-gray-800">{fecha.EVENTO}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex gap-1">
+                                                            {fecha.ESFERIADO === 'S' && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Feriado</span>}
+                                                            {fecha.ESINTERNO === 'S' && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">Interno</span>}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="text-xs">
+                                                            <span className="font-semibold text-gray-700">{fecha.Canal || 'Todos'}</span>
+                                                            {(fecha.CodAlmacen || fecha.GrupoAlmacen) && (
+                                                                <span className="text-gray-500 ml-1">
+                                                                    ({fecha.CodAlmacen ? `Almacén ${fecha.CodAlmacen}` : `Grupo ${fecha.GrupoAlmacen}`})
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className={`px-2 py-0.5 w-max text-xs font-semibold inline-flex items-center gap-1 rounded-full ${fecha.Estado === 'Aprobado' ? 'bg-green-100 text-green-700' :
+                                                                fecha.Estado === 'Rechazado' ? 'bg-red-100 text-red-700' :
+                                                                    'bg-yellow-100 text-yellow-700'
+                                                                }`}>
+                                                                &#9679; {fecha.Estado || 'Pendiente'}
+                                                            </span>
+                                                            {(fecha.UsuarioCrea || fecha.USUARIO_MODIFICACION) && (
+                                                                <span className="text-[10px] text-gray-500 uppercase font-medium">Crea: {fecha.UsuarioCrea || fecha.USUARIO_MODIFICACION}</span>
+                                                            )}
+                                                            {fecha.UsuarioAprueba && (
+                                                                <span className="text-[10px] text-gray-400 uppercase font-medium">Aprob: {fecha.UsuarioAprueba}</span>
+                                                            )}
+                                                        </div>
+                                                        {fecha.Estado === 'Rechazado' && fecha.MotivoRechazo && (
+                                                            <div className="text-xs text-red-500 italic mt-1 w-48 overflow-hidden text-ellipsis whitespace-normal">
+                                                                "{fecha.MotivoRechazo}"
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <div className="flex justify-end gap-1">
+                                                            {(user?.aprobarAjustes || user?.esAdmin) && fecha.Estado !== 'Aprobado' && (
+                                                                <button
+                                                                    onClick={() => handleCambiarEstado(fecha.IDEVENTO, fecha.FECHA, 'Aprobado')}
+                                                                    className="px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors"
+                                                                >
+                                                                    Aprobar
+                                                                </button>
+                                                            )}
+                                                            {(user?.aprobarAjustes || user?.esAdmin) && fecha.Estado !== 'Rechazado' && (
+                                                                <button
+                                                                    onClick={() => setRechazoModal({ idEvento: fecha.IDEVENTO, fecha: fecha.FECHA })}
+                                                                    className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded text-xs font-medium transition-colors"
+                                                                >
+                                                                    Rechazar
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

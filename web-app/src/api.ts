@@ -1733,6 +1733,13 @@ export interface AjustePresupuesto {
     fechaAplicacion: string;
     usuario: string;
     activo: boolean;
+    estado?: string;
+    fechaCreacion?: string | null;
+    usuarioAprueba?: string | null;
+    fechaAprobacion?: string | null;
+    usuarioRechaza?: string | null;
+    fechaRechazo?: string | null;
+    motivoRechazo?: string | null;
 }
 
 export interface VersionPresupuesto {
