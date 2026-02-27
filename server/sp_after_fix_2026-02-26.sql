@@ -926,10 +926,14 @@ BEGIN
         BEGIN TRY
             INSERT INTO #GrpInfo(IDGRUPO, CodGrupo, NombreGrupo, IdLocalGrupo, SerieNum)
             SELECT cab.IDGRUPO,
-                N'G'+RIGHT(N'0'+CAST(cab.IDGRUPO-3000 AS NVARCHAR(2)),2),
+                N'G' + CASE WHEN cab.IDGRUPO >= 3000 AND (cab.IDGRUPO - 3000) <= 99 
+                            THEN RIGHT(N'0' + CAST(cab.IDGRUPO - 3000 AS NVARCHAR(2)), 2)
+                            ELSE CAST(cab.IDGRUPO AS NVARCHAR(9)) END,
                 LTRIM(RTRIM(cab.DESCRIPCION)),
                 cab.IDGRUPO,
-                CAST(cab.IDGRUPO-3000 AS VARCHAR(2))
+                CASE WHEN cab.IDGRUPO >= 3000 AND (cab.IDGRUPO - 3000) <= 99 
+                     THEN CAST(cab.IDGRUPO - 3000 AS VARCHAR(2))
+                     ELSE CAST(cab.IDGRUPO % 100 AS VARCHAR(2)) END
             FROM ROSTIPOLLOS_P.dbo.GRUPOSALMACENCAB cab WITH (NOLOCK)
             WHERE cab.CODVISIBLE = 20;
         END TRY
