@@ -6,20 +6,22 @@ import React, { useState } from 'react';
 import { Plus, Pencil, Trash2, Copy, Unlink, Link2, Check, X } from 'lucide-react';
 import { useAjusteStore } from './store';
 import { useShallow } from 'zustand/react/shallow';
-import { fmtFull, fmtPct, getEstadoBadgeClass, formatFecha } from './helpers';
+import { fmtFull, fmtPct, getEstadoBadgeClass, formatFecha, formatFechaHora } from './helpers';
 import { REDISTRIBUCION_LABELS } from './types';
 import type { AjustePresupuesto } from './types';
 
 export const AjusteListaPanel: React.FC = () => {
-    const { ajustes, selectedAjusteId, isAdmin, canAdjust, canApprove } = useAjusteStore(
+    const { ajustes, ajustesAno, selectedAjusteId, isAdmin, canAdjust, canApprove } = useAjusteStore(
         useShallow(s => ({
             ajustes: s.ajustes,
+            ajustesAno: s.ajustesAno,
             selectedAjusteId: s.selectedAjusteId,
             isAdmin: s.isAdmin,
             canAdjust: s.canAdjust,
             canApprove: s.canApprove,
         }))
     );
+    const [viewMode, setViewMode] = useState<'mes' | 'ano'>('mes');
     const selectAjuste = useAjusteStore(s => s.selectAjuste);
     const openCreateForm = useAjusteStore(s => s.openCreateForm);
     const openEditForm = useAjusteStore(s => s.openEditForm);
@@ -62,10 +64,21 @@ export const AjusteListaPanel: React.FC = () => {
             {/* Header */}
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                 <div>
-                    <h3 className="font-bold text-gray-800 text-sm">Ajustes del mes</h3>
-                    <p className="text-[10px] text-gray-400">
-                        Historial visible, editable y borrable
-                    </p>
+                    <h3 className="font-bold text-gray-800 text-sm">Ajustes del {viewMode === 'mes' ? 'mes' : 'año'}</h3>
+                    <div className="flex bg-gray-100 p-0.5 rounded-lg w-max mt-1 border border-gray-200">
+                        <button
+                            onClick={() => setViewMode('mes')}
+                            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'mes' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Este mes
+                        </button>
+                        <button
+                            onClick={() => setViewMode('ano')}
+                            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'ano' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Todo el año
+                        </button>
+                    </div>
                 </div>
                 {canAdjust && (
                     <button
@@ -80,13 +93,13 @@ export const AjusteListaPanel: React.FC = () => {
 
             {/* List */}
             <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-                {ajustes.length === 0 ? (
+                {(viewMode === 'mes' ? ajustes : ajustesAno).length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                         <span className="text-3xl mb-2 opacity-30">📋</span>
-                        <p className="text-sm">No hay ajustes para este mes</p>
+                        <p className="text-sm">No hay ajustes para este {viewMode === 'mes' ? 'mes' : 'año'}</p>
                     </div>
                 ) : (
-                    ajustes.map(ajuste => (
+                    (viewMode === 'mes' ? ajustes : ajustesAno).map(ajuste => (
                         <AjusteItem
                             key={ajuste.id}
                             ajuste={ajuste}
@@ -95,6 +108,7 @@ export const AjusteListaPanel: React.FC = () => {
                             isAdmin={isAdmin}
                             canAdjust={canAdjust}
                             canApprove={canApprove}
+                            showMonth={viewMode === 'ano'}
                             onSelect={() => selectAjuste(ajuste.id === selectedAjusteId ? null : ajuste.id)}
                             onEdit={() => openEditForm(ajuste)}
                             onDelete={() => handleDelete(ajuste.id)}
@@ -119,6 +133,7 @@ const AjusteItem: React.FC<{
     isAdmin: boolean;
     canAdjust: boolean;
     canApprove: boolean;
+    showMonth?: boolean;
     onSelect: () => void;
     onEdit: () => void;
     onDelete: () => void;
@@ -126,7 +141,7 @@ const AjusteItem: React.FC<{
     onDisassociate: () => void;
     onAprobar: () => void;
     onRechazar: () => void;
-}> = ({ ajuste, isSelected, isDeleteConfirm, isAdmin, canAdjust, canApprove, onSelect, onEdit, onDelete, onCopy, onDisassociate, onAprobar, onRechazar }) => {
+}> = ({ ajuste, isSelected, isDeleteConfirm, isAdmin, canAdjust, canApprove, showMonth, onSelect, onEdit, onDelete, onCopy, onDisassociate, onAprobar, onRechazar }) => {
     const isPendiente = ajuste.estado === 'Pendiente';
 
     return (
@@ -137,8 +152,15 @@ const AjusteItem: React.FC<{
         >
             {/* Top row: ID + Estado */}
             <div className="flex items-center justify-between mb-1.5">
-                <span className="font-bold text-sm text-gray-800">{ajuste.idFormateado}</span>
-                <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${getEstadoBadgeClass(ajuste.estado)}`}>
+                <div className="flex flex-col">
+                    <span className="font-bold text-sm text-gray-800">{ajuste.idFormateado}</span>
+                    {showMonth && (
+                        <span className="text-xs font-bold text-indigo-600 capitalize">
+                            {new Date(ajuste.fechaAplicacion).toLocaleDateString('es-CR', { month: 'long', timeZone: 'UTC' })}
+                        </span>
+                    )}
+                </div>
+                <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full h-max ${getEstadoBadgeClass(ajuste.estado)}`}>
                     {ajuste.estado}
                 </span>
             </div>
@@ -148,9 +170,17 @@ const AjusteItem: React.FC<{
                 <div className="leading-tight">
                     <span className="text-gray-400">{formatFecha(ajuste.fechaAplicacion)}</span><br />
                     Creado por: <strong className="font-medium text-gray-600">{ajuste.usuario}</strong>
+                    {ajuste.fechaCreacion && <span className="text-gray-400 ml-1">({formatFechaHora(ajuste.fechaCreacion)})</span>}
                     {ajuste.usuarioAprueba && (
                         <>
                             <br />Aprobado por: <strong className="font-medium text-gray-600">{ajuste.usuarioAprueba}</strong>
+                            {ajuste.fechaAprobacion && <span className="text-gray-400 ml-1">({formatFechaHora(ajuste.fechaAprobacion)})</span>}
+                        </>
+                    )}
+                    {ajuste.usuarioRechaza && (
+                        <>
+                            <br />Rechazado por: <strong className="font-medium text-gray-600">{ajuste.usuarioRechaza}</strong>
+                            {ajuste.fechaRechazo && <span className="text-gray-400 ml-1">({formatFechaHora(ajuste.fechaRechazo)})</span>}
                         </>
                     )}
                 </div>

@@ -55,6 +55,19 @@ export function formatFecha(d: string): string {
     });
 }
 
+export function formatFechaHora(d: string | null | undefined): string {
+    if (!d) return '';
+    // SQL Server GETDATE() does not include 'Z', but fetch might return ISO string
+    return new Date(d).toLocaleString('es-CR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+    });
+}
+
 export function formatFechaCorta(d: string | Date): string {
     const date = d instanceof Date ? d : new Date(d);
     if (isNaN(date.getTime())) return String(d);

@@ -40,6 +40,7 @@ interface AjusteStoreState {
 
     // Data
     seriesData: BudgetSeriesPoint[];
+    ajustesAno: AjustePresupuesto[];
     ajustes: AjustePresupuesto[];
 
     // Events (raw, for building series)
@@ -118,6 +119,7 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
         canal: 'Todos',
     },
     seriesData: [],
+    ajustesAno: [],
     ajustes: [],
     eventosActual: {},
     eventosAA: {},
@@ -237,18 +239,19 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
 
 
 
-            const ajustes = await services.getAjustesMes(
+            const ajustesAno = await services.getAjustesAno(
                 filtros.nombrePresupuesto,
                 filtros.codAlmacen,
-                filtros.mes,
                 filtros.ano,
             );
 
-            const seriesData = buildSeriesData(dailyData, ajustes, eventosActual, eventosAA, eventosAjuste);
+            const ajustes = ajustesAno.filter(a => a.mes === filtros.mes);
 
+            const seriesData = buildSeriesData(dailyData, ajustes, eventosActual, eventosAA, eventosAjuste);
 
             set({
                 seriesData,
+                ajustesAno,
                 ajustes,
                 eventosActual,
                 eventosAA,
@@ -266,13 +269,13 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
         const { filtros } = get();
         if (!filtros.nombrePresupuesto || !filtros.codAlmacen) return;
         try {
-            const ajustes = await services.getAjustesMes(
+            const ajustesAno = await services.getAjustesAno(
                 filtros.nombrePresupuesto,
                 filtros.codAlmacen,
-                filtros.mes,
                 filtros.ano,
             );
-            set({ ajustes });
+            const ajustes = ajustesAno.filter(a => a.mes === filtros.mes);
+            set({ ajustesAno, ajustes });
         } catch { /* silent */ }
     },
 

@@ -351,7 +351,9 @@ async function getAjustes(nombrePresupuesto) {
                    MetodoDistribucion as metodoDistribucion, Motivo as motivo,
                    FechaAplicacion as fechaAplicacion, Usuario as usuario,
                    UsuarioAprueba as usuarioAprueba,
-                   Activo as activo, Estado as estado, MotivoRechazo as motivoRechazo
+                   Activo as activo, Estado as estado, MotivoRechazo as motivoRechazo,
+                   FechaCreacion as fechaCreacion, FechaAprobacion as fechaAprobacion,
+                   UsuarioRechaza as usuarioRechaza, FechaRechazo as fechaRechazo
             FROM MODELO_PRESUPUESTO_AJUSTES
             WHERE NombrePresupuesto = @nombrePresupuesto
             ORDER BY FechaAplicacion DESC
@@ -537,9 +539,14 @@ async function aprobarRechazarAjuste(id, estado, motivoRechazo, usuario) {
         .input('estado', sql.VarChar(20), estado)
         .input('motivoRechazo', sql.NVarChar(sql.MAX), motivoRechazo || null)
         .input('usuarioAprueba', sql.NVarChar(200), estado === 'Aprobado' ? usuario : null)
+        .input('fechaAprobacion', sql.DateTime, estado === 'Aprobado' ? new Date() : null)
+        .input('usuarioRechaza', sql.NVarChar(200), estado === 'Rechazado' ? usuario : null)
+        .input('fechaRechazo', sql.DateTime, estado === 'Rechazado' ? new Date() : null)
         .query(`
             UPDATE MODELO_PRESUPUESTO_AJUSTES
-            SET Estado = @estado, MotivoRechazo = @motivoRechazo, UsuarioAprueba = @usuarioAprueba
+            SET Estado = @estado, MotivoRechazo = @motivoRechazo, 
+                UsuarioAprueba = @usuarioAprueba, FechaAprobacion = @fechaAprobacion,
+                UsuarioRechaza = @usuarioRechaza, FechaRechazo = @fechaRechazo
             WHERE Id = @id
         `);
 
@@ -567,9 +574,10 @@ async function aplicarPendientes(nombrePresupuesto, usuario) {
     await pool.request()
         .input('nombre', sql.NVarChar(100), nombrePresupuesto)
         .input('usuarioAprueba', sql.NVarChar(200), usuario)
+        .input('fechaAprobacion', sql.DateTime, new Date())
         .query(`
             UPDATE MODELO_PRESUPUESTO_AJUSTES
-            SET Estado = 'Aprobado', UsuarioAprueba = @usuarioAprueba
+            SET Estado = 'Aprobado', UsuarioAprueba = @usuarioAprueba, FechaAprobacion = @fechaAprobacion
             WHERE NombrePresupuesto = @nombre AND Estado = 'Pendiente' AND Activo = 1
         `);
 

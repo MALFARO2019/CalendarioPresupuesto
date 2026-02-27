@@ -109,6 +109,17 @@ export async function getAjustesMes(
         .map(a => transformAjuste(a, ano));
 }
 
+export async function getAjustesAno(
+    nombrePresupuesto: string,
+    codAlmacen: string,
+    ano: number,
+): Promise<AjustePresupuesto[]> {
+    const raw = await fetchAjustesApi(nombrePresupuesto);
+    return raw
+        .filter(a => a.codAlmacen === codAlmacen && a.activo)
+        .map(a => transformAjuste(a, ano));
+}
+
 function transformAjuste(a: AjustePresupuestoBase, ano: number): AjustePresupuesto {
     const raw = a as any;
     return {
