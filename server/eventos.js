@@ -161,8 +161,12 @@ async function getEventoFechas(idEvento) {
                 Canal,
                 GrupoAlmacen,
                 CodAlmacen,
+                UsuarioCrea,
                 USUARIO_MODIFICACION,
-                FECHA_MODIFICACION
+                FECHA_MODIFICACION,
+                Estado,
+                UsuarioAprueba,
+                MotivoRechazo
             FROM DIM_EVENTOS_FECHAS
             WHERE IDEVENTO = @idEvento
             ORDER BY FECHA
@@ -173,7 +177,7 @@ async function getEventoFechas(idEvento) {
 /**
  * Create a new event date
  */
-async function createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen, usuario) {
+async function createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen, usuario, estado = 'Pendiente', usuarioAprueba = null) {
     if (_codAlmacenReady) await _codAlmacenReady;
     const pool = await poolPromise;
     await pool.request()
@@ -183,12 +187,15 @@ async function createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlm
         .input('canal', sql.NChar(100), canal)
         .input('grupoAlmacen', sql.Int, grupoAlmacen)
         .input('codAlmacen', sql.NVarChar(10), codAlmacen || null)
+        .input('usuarioCrea', sql.NVarChar(200), usuario)
         .input('usuario', sql.NVarChar(200), usuario)
         .input('fechaModificacion', sql.DateTime, new Date())
+        .input('estado', sql.VarChar(20), estado)
+        .input('usuarioAprueba', sql.NVarChar(200), usuarioAprueba)
         .query(`
             INSERT INTO DIM_EVENTOS_FECHAS 
-            (IDEVENTO, FECHA, FECHA_EFECTIVA, Canal, GrupoAlmacen, CodAlmacen, USUARIO_MODIFICACION, FECHA_MODIFICACION)
-            VALUES (@idEvento, @fecha, @fechaEfectiva, @canal, @grupoAlmacen, @codAlmacen, @usuario, @fechaModificacion)
+            (IDEVENTO, FECHA, FECHA_EFECTIVA, Canal, GrupoAlmacen, CodAlmacen, UsuarioCrea, USUARIO_MODIFICACION, FECHA_MODIFICACION, Estado, UsuarioAprueba)
+            VALUES (@idEvento, @fecha, @fechaEfectiva, @canal, @grupoAlmacen, @codAlmacen, @usuarioCrea, @usuario, @fechaModificacion, @estado, @usuarioAprueba)
         `);
 }
 
@@ -254,6 +261,26 @@ async function reorderEventos(items) {
     }
 }
 
+/**
+ * Change event state (Aprobado/Rechazado)
+ */
+async function cambiarEstadoEventoFecha(idEvento, fechaStr, estado, motivoRechazo, usuarioAprueba) {
+    const pool = await poolPromise;
+    await pool.request()
+        .input('idEvento', sql.Int, idEvento)
+        .input('fecha', sql.Date, fechaStr)
+        .input('estado', sql.VarChar(20), estado)
+        .input('motivoRechazo', sql.NVarChar(sql.MAX), motivoRechazo || null)
+        .input('usuarioAprueba', sql.NVarChar(200), usuarioAprueba || null)
+        .query(`
+            UPDATE DIM_EVENTOS_FECHAS
+            SET Estado = @estado,
+                MotivoRechazo = @motivoRechazo,
+                UsuarioAprueba = @usuarioAprueba
+            WHERE IDEVENTO = @idEvento AND FECHA = @fecha
+        `);
+}
+
 module.exports = {
     getAllEventos,
     createEvento,
@@ -263,5 +290,6 @@ module.exports = {
     createEventoFecha,
     updateEventoFecha,
     deleteEventoFecha,
-    reorderEventos
+    reorderEventos,
+    cambiarEstadoEventoFecha
 };

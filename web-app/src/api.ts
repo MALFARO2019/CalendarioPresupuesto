@@ -570,6 +570,10 @@ export interface EventoFecha {
     Canal: string;
     GrupoAlmacen: number | null;
     CodAlmacen: string | null;
+    UsuarioCrea?: string | null;
+    Estado?: 'Pendiente' | 'Aprobado' | 'Rechazado';
+    UsuarioAprueba?: string | null;
+    MotivoRechazo?: string | null;
     USUARIO_MODIFICACION: string | null;
     FECHA_MODIFICACION: string | null;
 }
@@ -632,6 +636,33 @@ export async function fetchEventoFechas(idEvento: number): Promise<EventoFecha[]
     return response.json();
 }
 
+export interface EventoFechaResumen {
+    IDEVENTO: number;
+    EVENTO: string;
+    ESFERIADO: string;
+    ESINTERNO: string;
+    FECHA: string;
+    FECHA_EFECTIVA: string;
+    Canal: string;
+    CodAlmacen: string | null;
+    GrupoAlmacen: number | null;
+    UsuarioCrea?: string | null;
+    Estado: 'Pendiente' | 'Aprobado' | 'Rechazado';
+    UsuarioAprueba: string | null;
+    MotivoRechazo: string | null;
+    USUARIO_MODIFICACION: string | null;
+    FECHA_MODIFICACION: string | null;
+}
+
+export async function fetchEventosFechasResumen(year: number): Promise<EventoFechaResumen[]> {
+    const response = await fetch(`${API_BASE}/eventos-fechas/resumen?year=${year}`, {
+        headers: authHeaders()
+    });
+    if (!response.ok) throw new Error('Error al obtener el resumen de fechas');
+    const data = await response.json();
+    return data.fechas;
+}
+
 export async function createEventoFecha(data: {
     idEvento: number;
     fecha: string;
@@ -675,6 +706,29 @@ export async function deleteEventoFecha(idEvento: number, fecha: string): Promis
         headers: authHeaders()
     });
     if (!response.ok) throw new Error('Error deleting evento fecha');
+    return response.json();
+}
+
+export async function cambiarEstadoEventoFecha(
+    idEvento: number,
+    fecha: string,
+    estado: 'Pendiente' | 'Aprobado' | 'Rechazado',
+    motivoRechazo?: string
+): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/eventos-fechas/estado`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({
+            idEvento,
+            fecha,
+            estado,
+            motivoRechazo
+        })
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error cambiando estado');
+    }
     return response.json();
 }
 

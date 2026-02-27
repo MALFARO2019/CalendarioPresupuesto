@@ -10,12 +10,15 @@ import {
     createEventoFecha,
     updateEventoFecha,
     deleteEventoFecha,
+    cambiarEstadoEventoFecha,
     fetchAvailableCanales,
     fetchGruposAlmacen,
     fetchAvailableAlmacenes,
     getUser,
+    fetchEventosFechasResumen,
     type Evento,
     type EventoFecha,
+    type EventoFechaResumen,
     type GrupoAlmacen,
     type AlmacenOption
 } from '../api';
@@ -44,6 +47,16 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
     const [success, setSuccess] = useState('');
     const [searchFilter, setSearchFilter] = useState('');
     const [showReorderModal, setShowReorderModal] = useState(false);
+
+    // Resumen Anual state
+    const [resumenYear, setResumenYear] = useState(new Date().getFullYear());
+    const [resumenFechas, setResumenFechas] = useState<EventoFechaResumen[]>([]);
+    const [resumenLoading, setResumenLoading] = useState(false);
+    const [resumenFilter, setResumenFilter] = useState<'Todos' | 'Pendiente' | 'Aprobado' | 'Rechazado'>('Todos');
+
+    // Estado para modal de rechazo
+    const [rechazoModal, setRechazoModal] = useState<{ idEvento: number, fecha: string } | null>(null);
+    const [motivoRechazo, setMotivoRechazo] = useState('');
 
     // Event form state
     const [showEventForm, setShowEventForm] = useState(false);
@@ -99,6 +112,22 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
             loadEventoFechas(selectedEvento);
         }
     }, [selectedEvento]);
+
+    useEffect(() => {
+        loadResumenAnual();
+    }, [resumenYear]);
+
+    const loadResumenAnual = async () => {
+        try {
+            setResumenLoading(true);
+            const data = await fetchEventosFechasResumen(resumenYear);
+            setResumenFechas(data);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setResumenLoading(false);
+        }
+    };
 
     const loadEventos = async () => {
         try {
@@ -229,6 +258,23 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
             if (selectedEvento) {
                 loadEventoFechas(selectedEvento);
             }
+            loadResumenAnual();
+        } catch (err: any) {
+            setError(err.message);
+        }
+    };
+
+    const handleCambiarEstado = async (idEvento: number, fecha: string, estado: 'Aprobado' | 'Rechazado', motivo?: string) => {
+        try {
+            setError('');
+            await cambiarEstadoEventoFecha(idEvento, fecha, estado, motivo);
+            setSuccess(`Evento ${estado.toLowerCase()} exitosamente`);
+            if (selectedEvento === idEvento) {
+                loadEventoFechas(idEvento);
+            }
+            loadResumenAnual();
+            setRechazoModal(null);
+            setMotivoRechazo('');
         } catch (err: any) {
             setError(err.message);
         }
@@ -595,7 +641,12 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                     eventoFechas.map((fecha) => (
                                         <div
                                             key={`${fecha.IDEVENTO}-${fecha.FECHA}`}
-                                            className="p-3 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-all"
+                                            className={`p-3 rounded-lg border-2 transition-all ${fecha.Estado === 'Rechazado'
+                                                ? 'bg-red-50/50 border-red-100 hover:bg-red-50'
+                                                : fecha.Estado === 'Aprobado'
+                                                    ? 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                                    : 'bg-yellow-50/50 border-yellow-100 hover:bg-yellow-50'
+                                                }`}
                                         >
                                             <div className="flex items-start justify-between">
                                                 <div className="flex-1">
@@ -615,6 +666,29 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                                             Referencia: {safeFormatDate(fecha.FECHA_EFECTIVA)}
                                                             {fecha.FECHA_EFECTIVA && (() => { try { const d = parseISO(fecha.FECHA_EFECTIVA.split('T')[0]); return <span className="ml-1 text-indigo-400 capitalize">({format(d, 'EEEE', { locale: es })})</span>; } catch { return null; } })()}
                                                         </div>
+                                                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                            <span className={`font-medium ${fecha.Estado === 'Aprobado' ? 'text-green-600' :
+                                                                fecha.Estado === 'Rechazado' ? 'text-red-600' :
+                                                                    'text-yellow-600'
+                                                                }`}>
+                                                                &#9679; {fecha.Estado || 'Pendiente'}
+                                                            </span>
+                                                            {(fecha.UsuarioCrea || fecha.USUARIO_MODIFICACION) && (
+                                                                <span className="text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold">
+                                                                    Creado por {fecha.UsuarioCrea || fecha.USUARIO_MODIFICACION}
+                                                                </span>
+                                                            )}
+                                                            {fecha.UsuarioAprueba && (
+                                                                <span className="text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold border border-gray-100">
+                                                                    Aprobado por {fecha.UsuarioAprueba}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {fecha.Estado === 'Rechazado' && fecha.MotivoRechazo && (
+                                                            <div className="mt-1 text-red-600 italic">
+                                                                "{fecha.MotivoRechazo}"
+                                                            </div>
+                                                        )}
                                                         {fecha.USUARIO_MODIFICACION && (
                                                             <div className="mt-1 text-gray-400">
                                                                 Modificado por {fecha.USUARIO_MODIFICACION} el {fecha.FECHA_MODIFICACION && format(new Date(fecha.FECHA_MODIFICACION), 'PPpp', { locale: es })}
@@ -622,21 +696,41 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                                                         )}
                                                     </div>
                                                 </div>
-                                                <div className="flex gap-1 ml-2">
-                                                    <button
-                                                        onClick={() => handleEditFecha(fecha)}
-                                                        className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
-                                                        title="Editar"
-                                                    >
-                                                        <Edit2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteFecha(fecha.IDEVENTO, fecha.FECHA)}
-                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                                        title="Eliminar"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
+                                                <div className="flex flex-col items-end gap-2 ml-2">
+                                                    <div className="flex gap-1">
+                                                        {(user?.aprobarAjustes || user?.esAdmin) && fecha.Estado !== 'Aprobado' && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleCambiarEstado(fecha.IDEVENTO, fecha.FECHA, 'Aprobado'); }}
+                                                                className="px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-xs font-semibold transition-all flex items-center gap-1"
+                                                            >
+                                                                <CheckCircle className="w-3 h-3" /> Aprobar
+                                                            </button>
+                                                        )}
+                                                        {(user?.aprobarAjustes || user?.esAdmin) && fecha.Estado !== 'Rechazado' && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setRechazoModal({ idEvento: fecha.IDEVENTO, fecha: fecha.FECHA }); }}
+                                                                className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-semibold transition-all flex items-center gap-1"
+                                                            >
+                                                                <X className="w-3 h-3" /> Rechazar
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        <button
+                                                            onClick={() => handleEditFecha(fecha)}
+                                                            className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                                                            title="Editar"
+                                                        >
+                                                            <Edit2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteFecha(fecha.IDEVENTO, fecha.FECHA)}
+                                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                            title="Eliminar"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -646,6 +740,150 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                         </>
                     )}
                 </div>
+            </div>
+
+            {/* Resumen Anual Section */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mt-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div className="flex items-center gap-2">
+                        <CalendarDays className="w-5 h-5 text-indigo-600" />
+                        <h2 className="text-lg font-bold text-gray-800">Resumen Anual de Eventos</h2>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Year Selector */}
+                        <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                            <button
+                                onClick={() => setResumenYear(y => y - 1)}
+                                className="px-3 py-1 text-gray-600 hover:bg-white hover:shadow-sm rounded-md transition-all text-sm font-medium"
+                            >
+                                {resumenYear - 1}
+                            </button>
+                            <span className="px-4 py-1 font-bold text-gray-800 bg-white shadow-sm rounded-md">
+                                {resumenYear}
+                            </span>
+                            <button
+                                onClick={() => setResumenYear(y => y + 1)}
+                                className="px-3 py-1 text-gray-600 hover:bg-white hover:shadow-sm rounded-md transition-all text-sm font-medium"
+                            >
+                                {resumenYear + 1}
+                            </button>
+                        </div>
+
+                        {/* Status Filter */}
+                        <select
+                            value={resumenFilter}
+                            onChange={(e) => setResumenFilter(e.target.value as any)}
+                            className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block px-3 py-2"
+                        >
+                            <option value="Todos">Todos los Estados</option>
+                            <option value="Pendiente">Pendientes</option>
+                            <option value="Aprobado">Aprobados</option>
+                            <option value="Rechazado">Rechazados</option>
+                        </select>
+                    </div>
+                </div>
+
+                {resumenLoading ? (
+                    <div className="flex justify-center py-12">
+                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                    </div>
+                ) : resumenFechas.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                        No hay eventos registrados para el año {resumenYear}
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto rounded-xl border border-gray-200">
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                                <tr>
+                                    <th className="px-4 py-3">Fecha</th>
+                                    <th className="px-4 py-3">Evento</th>
+                                    <th className="px-4 py-3">Tipo</th>
+                                    <th className="px-4 py-3">Alcance</th>
+                                    <th className="px-4 py-3">Estado</th>
+                                    <th className="px-4 py-3 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {resumenFechas
+                                    .filter(f => resumenFilter === 'Todos' || (f.Estado || 'Pendiente') === resumenFilter)
+                                    .map((fecha, idx) => (
+                                        <tr key={idx} className="bg-white border-b hover:bg-gray-50 whitespace-nowrap">
+                                            <td className="px-4 py-3 font-medium text-gray-900">
+                                                {safeFormatDate(fecha.FECHA)}
+                                                {fecha.FECHA_EFECTIVA && fecha.FECHA_EFECTIVA !== fecha.FECHA && (
+                                                    <div className="text-xs text-gray-500 font-normal">
+                                                        Ref: {safeFormatDate(fecha.FECHA_EFECTIVA)}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="font-semibold text-gray-800">{fecha.EVENTO}</div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex gap-1">
+                                                    {fecha.ESFERIADO === 'S' && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Feriado</span>}
+                                                    {fecha.ESINTERNO === 'S' && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">Interno</span>}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="text-xs">
+                                                    <span className="font-semibold text-gray-700">{fecha.Canal || 'Todos'}</span>
+                                                    {(fecha.CodAlmacen || fecha.GrupoAlmacen) && (
+                                                        <span className="text-gray-500 ml-1">
+                                                            ({fecha.CodAlmacen ? `Almacén ${fecha.CodAlmacen}` : `Grupo ${fecha.GrupoAlmacen}`})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex flex-col gap-1">
+                                                    <span className={`px-2 py-0.5 w-max text-xs font-semibold inline-flex items-center gap-1 rounded-full ${fecha.Estado === 'Aprobado' ? 'bg-green-100 text-green-700' :
+                                                        fecha.Estado === 'Rechazado' ? 'bg-red-100 text-red-700' :
+                                                            'bg-yellow-100 text-yellow-700'
+                                                        }`}>
+                                                        &#9679; {fecha.Estado || 'Pendiente'}
+                                                    </span>
+                                                    {(fecha.UsuarioCrea || fecha.USUARIO_MODIFICACION) && (
+                                                        <span className="text-[10px] text-gray-500 uppercase font-medium">Crea: {fecha.UsuarioCrea || fecha.USUARIO_MODIFICACION}</span>
+                                                    )}
+                                                    {fecha.UsuarioAprueba && (
+                                                        <span className="text-[10px] text-gray-400 uppercase font-medium">Aprob: {fecha.UsuarioAprueba}</span>
+                                                    )}
+                                                </div>
+                                                {fecha.Estado === 'Rechazado' && fecha.MotivoRechazo && (
+                                                    <div className="text-xs text-red-500 italic mt-1 w-48 overflow-hidden text-ellipsis whitespace-normal">
+                                                        "{fecha.MotivoRechazo}"
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <div className="flex justify-end gap-1">
+                                                    {(user?.aprobarAjustes || user?.esAdmin) && fecha.Estado !== 'Aprobado' && (
+                                                        <button
+                                                            onClick={() => handleCambiarEstado(fecha.IDEVENTO, fecha.FECHA, 'Aprobado')}
+                                                            className="px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors"
+                                                        >
+                                                            Aprobar
+                                                        </button>
+                                                    )}
+                                                    {(user?.aprobarAjustes || user?.esAdmin) && fecha.Estado !== 'Rechazado' && (
+                                                        <button
+                                                            onClick={() => setRechazoModal({ idEvento: fecha.IDEVENTO, fecha: fecha.FECHA })}
+                                                            className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded text-xs font-medium transition-colors"
+                                                        >
+                                                            Rechazar
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
 
             {/* Period-based adjustments view */}
@@ -665,6 +903,38 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
                     onClose={() => setShowReorderModal(false)}
                 />
             )}
+            {/* Modal de Rechazo */}
+            {rechazoModal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-gray-100 p-6">
+                        <h3 className="text-lg font-bold text-gray-800 mb-2">Rechazar Evento</h3>
+                        <p className="text-sm text-gray-500 mb-4">Ingrese un motivo para rechazar este evento.</p>
+                        <textarea
+                            className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm mb-4 resize-none"
+                            rows={3}
+                            placeholder="Ej: Ya pasó la fecha, datos incorrectos..."
+                            value={motivoRechazo}
+                            onChange={(e) => setMotivoRechazo(e.target.value)}
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => { setRechazoModal(null); setMotivoRechazo(''); }}
+                                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-sm transition-all"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => handleCambiarEstado(rechazoModal.idEvento, rechazoModal.fecha, 'Rechazado', motivoRechazo)}
+                                disabled={!motivoRechazo.trim()}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50"
+                            >
+                                Confirmar Rechazo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

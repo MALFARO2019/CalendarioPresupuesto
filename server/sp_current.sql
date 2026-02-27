@@ -203,15 +203,17 @@ BEGIN
                  + (CASE WHEN fT.GrupoAlmacen IS NULL THEN 0 ELSE 1 END)
         FROM dbo.DIM_EVENTOS_FECHAS fT
         WHERE fT.FECHA_EFECTIVA IS NOT NULL
-          AND ISNULL(fT.Estado, 'Aprobado') = 'Aprobado'
+          AND fT.Estado = 'Aprobado'
           AND YEAR(fT.FECHA_EFECTIVA)=@AnoModelo
           AND (@Mes IS NULL OR MONTH(fT.FECHA_EFECTIVA)=@Mes)
+          AND fT.IDEVENTO NOT IN (24,25,26)
     ),
     EBase AS (
         SELECT eT.*,
             FechaBase = (SELECT TOP(1) fB.FECHA_EFECTIVA FROM dbo.DIM_EVENTOS_FECHAS fB
-                WHERE fB.IDEVENTO=eT.IDEVENTO AND fB.FECHA_EFECTIVA IS NOT NULL AND YEAR(fB.FECHA_EFECTIVA)=@AnoAnterior
-                AND ISNULL(fB.Estado, 'Aprobado') = 'Aprobado'
+                WHERE fB.IDEVENTO=eT.IDEVENTO AND fB.FECHA_EFECTIVA IS NOT NULL 
+                AND fB.Estado = 'Aprobado'
+                AND YEAR(fB.FECHA_EFECTIVA)=@AnoAnterior
                 ORDER BY CASE WHEN (fB.Canal IS NULL OR LTRIM(RTRIM(CONVERT(NVARCHAR(200),fB.Canal)))=N'') THEN 0 ELSE 4 END DESC,
                          CASE WHEN fB.CodAlmacen IS NULL THEN 0 ELSE 2 END DESC,
                          CASE WHEN fB.GrupoAlmacen IS NULL THEN 0 ELSE 1 END DESC)
@@ -553,7 +555,7 @@ BEGIN
                  + (CASE WHEN f.GrupoAlmacen IS NULL THEN 0 ELSE 1 END)
         FROM dbo.DIM_EVENTOS_FECHAS f
         WHERE f.IDEVENTO IN (24,25,26) AND f.FECHA IS NOT NULL AND f.FECHA_EFECTIVA IS NOT NULL
-          AND ISNULL(f.Estado, 'Aprobado') = 'Aprobado'
+          AND f.Estado = 'Aprobado'
           AND YEAR(f.FECHA)=@AnoModelo AND (@Mes IS NULL OR MONTH(f.FECHA)=@Mes)
     ),
     ExpandCod AS (
@@ -1228,7 +1230,7 @@ BEGIN
                 Fecha, idLocal, [Local], Serie, idDia, Dia, Mes, Monto,
                 CodAlmacen, Participacion, Canal, Año, Tipo,
                 FechaAnterior, MontoAnterior, ParticipacionAnterior,
-                FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
+   FechaAnteriorAjustada, MontoAnteriorAjustado, ParticipacionAnteriorAjustado,
                 MontoReal, ParticipacionReal, NombrePresupuesto
             )
             SELECT

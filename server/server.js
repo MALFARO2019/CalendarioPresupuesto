@@ -36,7 +36,8 @@ const {
     createEventoFecha,
     updateEventoFecha,
     deleteEventoFecha,
-    reorderEventos
+    reorderEventos,
+    cambiarEstadoEventoFecha
 } = require('./eventos');
 const { ensureDBConfigTable } = require('./ensureDBConfig');
 const invgateDb = require('./invgateDb');
@@ -2290,8 +2291,24 @@ app.post('/api/eventos-fechas', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, usuario } = req.body;
-        await createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, usuario);
+        const { idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen, usuario } = req.body;
+
+        // Determinar estado inicial y aprobador
+        const estadoInicial = (req.user.aprobarAjustes || req.user.esAdmin) ? 'Aprobado' : 'Pendiente';
+        const usuarioAprueba = estadoInicial === 'Aprobado' ? (req.user.email || req.user.nombre) : null;
+        const usuarioCrea = req.user.email || req.user.nombre;
+
+        await createEventoFecha(
+            idEvento,
+            fecha,
+            fechaEfectiva,
+            canal,
+            grupoAlmacen,
+            codAlmacen || null,
+            usuarioCrea, // Este será usado tanto para UsuarioCrea como USUARIO_MODIFICACION
+            estadoInicial,
+            usuarioAprueba
+        );
         res.json({ success: true });
     } catch (err) {
         console.error('Error creating evento fecha:', err);
@@ -2305,8 +2322,9 @@ app.put('/api/eventos-fechas', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, usuario } = req.body;
-        await updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, usuario);
+        const { idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen } = req.body;
+        const usuario = req.user.email || req.user.nombre;
+        await updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen, usuario);
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating evento fecha:', err);
@@ -2325,6 +2343,32 @@ app.delete('/api/eventos-fechas', authMiddleware, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('Error deleting evento fecha:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/eventos-fechas/estado - Change event date status (Aprobar/Rechazar)
+app.put('/api/eventos-fechas/estado', authMiddleware, async (req, res) => {
+    try {
+        if (!requireModuleAccess(req, res)) return;
+        if (!req.user.aprobarAjustes && !req.user.esAdmin) {
+            return res.status(403).json({ error: 'No tiene permiso para aprobar/rechazar eventos' });
+        }
+        const { idEvento, fecha, estado, motivoRechazo } = req.body;
+
+        if (!['Pendiente', 'Aprobado', 'Rechazado'].includes(estado)) {
+            return res.status(400).json({ error: 'Estado no válido' });
+        }
+
+        if (estado === 'Rechazado' && !motivoRechazo) {
+            return res.status(400).json({ error: 'Debe indicar un motivo para rechazar' });
+        }
+
+        const usuarioAprueba = (req.user.email || req.user.nombre);
+        await cambiarEstadoEventoFecha(parseInt(idEvento), fecha, estado, motivoRechazo, usuarioAprueba);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error changing event state:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -2804,8 +2848,23 @@ app.post('/api/eventos-fechas', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos && !req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, usuario } = req.body;
-        await createEventoFecha(idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, usuario);
+        const { idEvento, fecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen } = req.body;
+
+        const estadoInicial = (req.user.aprobarAjustes || req.user.esAdmin) ? 'Aprobado' : 'Pendiente';
+        const usuarioLogueado = req.user.email || req.user.nombre;
+        const usuarioAprueba = estadoInicial === 'Aprobado' ? usuarioLogueado : null;
+
+        await createEventoFecha(
+            idEvento,
+            fecha,
+            fechaEfectiva,
+            canal,
+            grupoAlmacen,
+            codAlmacen || null,
+            usuarioLogueado,
+            estadoInicial,
+            usuarioAprueba
+        );
         res.json({ success: true });
     } catch (err) {
         console.error('Error creating evento fecha:', err);
@@ -2819,8 +2878,9 @@ app.put('/api/eventos-fechas', authMiddleware, async (req, res) => {
         if (!req.user.accesoEventos && !req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos para gestionar eventos' });
         }
-        const { idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, usuario } = req.body;
-        await updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, usuario);
+        const { idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen } = req.body;
+        const usuario = req.user.email || req.user.nombre;
+        await updateEventoFecha(idEvento, oldFecha, newFecha, fechaEfectiva, canal, grupoAlmacen, codAlmacen || null, usuario);
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating evento fecha:', err);
@@ -2926,6 +2986,45 @@ app.get('/api/eventos/por-ano', authMiddleware, async (req, res) => {
         res.json({ byDate });
     } catch (err) {
         console.error('Error in /api/eventos/por-ano:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/eventos-fechas/resumen?year=2026 - Resumen anual de fechas para tabla de administración
+app.get('/api/eventos-fechas/resumen', authMiddleware, async (req, res) => {
+    try {
+        if (!requireModuleAccess(req, res)) return;
+
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const pool = await poolPromise;
+
+        const result = await pool.request()
+            .input('year', sql.Int, year)
+            .query(`
+                SELECT 
+                    EF.IDEVENTO,
+                    E.EVENTO,
+                    E.ESFERIADO,
+                    E.ESINTERNO,
+                    EF.FECHA,
+                    EF.FECHA_EFECTIVA,
+                    EF.Canal,
+                    EF.CodAlmacen,
+                    EF.GrupoAlmacen,
+                    EF.Estado,
+                    EF.UsuarioAprueba,
+                    EF.MotivoRechazo,
+                    EF.USUARIO_MODIFICACION,
+                    EF.FECHA_MODIFICACION
+                FROM DIM_EVENTOS_FECHAS EF
+                INNER JOIN DIM_EVENTOS E ON E.IDEVENTO = EF.IDEVENTO
+                WHERE YEAR(EF.FECHA) = @year
+                ORDER BY EF.FECHA DESC
+            `);
+
+        res.json({ fechas: result.recordset });
+    } catch (err) {
+        console.error('Error in /api/eventos-fechas/resumen:', err);
         res.status(500).json({ error: err.message });
     }
 });
