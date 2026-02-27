@@ -649,7 +649,9 @@ export const EventsManagement: React.FC<EventsManagementProps> = () => {
             </div>
 
             {/* Period-based adjustments view */}
-            <EventosPeriodView />
+            {(user?.esAdmin || user?.ajustarCurva || user?.verAjustePresupuesto) && (
+                <EventosPeriodView />
+            )}
 
             {/* Reorder Modal */}
             {showReorderModal && (

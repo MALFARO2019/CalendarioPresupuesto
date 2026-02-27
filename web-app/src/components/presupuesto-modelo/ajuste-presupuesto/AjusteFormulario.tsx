@@ -44,11 +44,14 @@ export const AjusteFormulario: React.FC = () => {
     const pct = chartDragPct;
     const redistLabel = REDISTRIBUCION_LABELS[chartRedistribucion] || chartRedistribucion;
 
-    const dateStr = fecha
-        ? new Date(fecha + 'T00:00:00').toLocaleDateString('es-CR', {
+    const formatValidDate = (d: string) => {
+        const [yyyy, mm, dd] = d.split('T')[0].split('-');
+        return new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd)).toLocaleDateString('es-CR', {
             weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
-        })
-        : '—';
+        });
+    };
+
+    const dateStr = fecha ? formatValidDate(fecha) : '—';
 
     const createdStr = new Date().toLocaleDateString('es-CR', {
         day: '2-digit', month: 'short', year: 'numeric',
@@ -140,7 +143,7 @@ export const AjusteFormulario: React.FC = () => {
 
                 {/* Hint */}
                 <p className="text-[10px] text-gray-400 text-center">
-                    Modifica el ajuste en la gráfica. Presiona <span className="font-bold text-indigo-500">Aplicar</span> para guardar.
+                    Modifica el ajuste en la gráfica. Presiona <span className="font-bold text-indigo-500">Guardar</span> para confirmar los valores.
                 </p>
             </div>
         </div>

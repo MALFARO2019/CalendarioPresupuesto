@@ -716,7 +716,7 @@ function App() {
             )}
 
             {/* Admin/Events/Modelo/Config button - for admin, eventos, modelo, asignaciones, or grupos users */}
-            {(user?.esAdmin || user?.accesoEventos || user?.accesoAsignaciones || user?.accesoGruposAlmacen || user?.accesoModeloPresupuesto || user?.ajustarCurva || user?.verAjustePresupuesto || user?.verConfigModelo || user?.verConsolidadoMensual || user?.verVersiones || user?.verBitacora || user?.verReferencias || user?.editarConsolidado || user?.ejecutarRecalculo || user?.restaurarVersiones) && (
+            {(user?.esAdmin || user?.accesoEventos || user?.accesoAsignaciones || user?.accesoGruposAlmacen || user?.accesoModeloPresupuesto || user?.ajustarCurva || user?.aprobarAjustes || user?.verAjustePresupuesto || user?.verConfigModelo || user?.verConsolidadoMensual || user?.verVersiones || user?.verBitacora || user?.verReferencias || user?.editarConsolidado || user?.ejecutarRecalculo || user?.restaurarVersiones) && (
               <button
                 onClick={() => setView('admin')}
                 className="touch-target p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"

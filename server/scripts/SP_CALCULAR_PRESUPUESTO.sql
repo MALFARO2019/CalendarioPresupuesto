@@ -1093,6 +1093,7 @@ BEGIN
         SELECT Id, CodAlmacen, Mes, Canal, Tipo, MetodoAjuste, ValorAjuste, MetodoDistribucion
         FROM MODELO_PRESUPUESTO_AJUSTES
         WHERE NombrePresupuesto=@NombrePresupuesto AND Activo=1
+          AND Estado = 'Aprobado'
           AND (@CodAlmacen IS NULL OR CodAlmacen=@CodAlmacen)
           AND (@Mes IS NULL OR Mes=@Mes)
         ORDER BY FechaAplicacion;

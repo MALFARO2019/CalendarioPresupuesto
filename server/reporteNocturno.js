@@ -14,13 +14,44 @@ require('dotenv').config();
 const LOGO_PATH = path.resolve(__dirname, '..', 'web-app', 'public', 'LogoRosti.png');
 
 // ── Utilidades ─────────────────────────────────────────────────────────────────
-function fmt(n) {
+// ── Utilidades ─────────────────────────────────────────────────────────────────
+function fmt(n, prefs = {}) {
   if (n == null || isNaN(n)) return '₡0';
-  return new Intl.NumberFormat('es-CR', { style: 'currency', currency: 'CRC', maximumFractionDigits: 0 }).format(n);
+
+  const mode = prefs.valueDisplayMode || 'completo';
+  const decimals = prefs.valueDecimals != null ? prefs.valueDecimals : 0;
+
+  let val = n;
+  let suffix = '';
+
+  if (mode === 'miles') {
+    val = n / 1000;
+  } else if (mode === 'millones') {
+    val = n / 1000000;
+  }
+
+  const formatted = new Intl.NumberFormat('es-CR', {
+    style: 'decimal',
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  }).format(val);
+
+  return `₡${formatted}`;
 }
-function fmtPct(n) {
+
+function fmtPct(n, prefs = {}) {
   if (n == null || isNaN(n) || !isFinite(n)) return '—';
-  return n.toFixed(1) + '%';
+
+  const mode = prefs.pctDisplayMode || 'base100';
+  const decimals = prefs.pctDecimals != null ? prefs.pctDecimals : 1;
+
+  if (mode === 'differential') {
+    const diff = n - 100;
+    const sign = diff > 0 ? '+' : '';
+    return sign + diff.toFixed(decimals) + '%';
+  }
+
+  return n.toFixed(decimals) + '%';
 }
 function semaforo(pct) {
   if (pct == null || isNaN(pct) || !isFinite(pct)) return '#64748b'; // gris
@@ -303,18 +334,12 @@ function fmtCompact(n) {
   return fmt(n);
 }
 
-// ── Generador de tablas HTML (Estilo Stitch) ──────────────────────────────────
-function buildTableHTML(titulo, datos) {
+// ── HTML de cada tabla ─────────────────────────────────────────────────────────
+function buildTableHTML(titulo, datos, prefs = {}) {
   if (!datos || datos.length === 0) return '';
-
   return `
-        <div style="margin-bottom:24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-            <tr>
-              <td style="width:4px;background:#E55B13;border-radius:2px;">&nbsp;</td>
-              <td style="padding-left:10px;font-size:12px;font-weight:700;color:#344054;text-transform:uppercase;letter-spacing:1px;">${titulo}</td>
-            </tr>
-          </table>
+        <div class="card-box" style="background:#FFFFFF;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06);">
+          <h3 style="margin:0 0 12px 0;color:#101828;font-size:14px;font-weight:600;">${titulo}</h3>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
             <thead>
               <tr>
@@ -336,10 +361,10 @@ function buildTableHTML(titulo, datos) {
                   ${r.label}
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:${fontWeight};border-bottom:1px solid #F2F4F7;">
-                  ${fmt(r.venta)}
+                  ${fmt(r.venta, prefs)}
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  ${r.pct != null ? `<span style="font-size:12px;font-weight:600;color:${kpiColor};">${r.pct >= 0 && r.vsAnterior != null ? (r.vsAnterior >= 0 ? '+' : '') + r.vsAnterior.toFixed(1) + '%' : fmtPct(r.pct)}</span>` : '—'}
+                  ${r.pct != null ? `<span style="font-size:12px;font-weight:600;color:${kpiColor};">${r.pct >= 0 && r.vsAnterior != null ? (r.vsAnterior >= 0 ? '+' : '') + r.vsAnterior.toFixed(1) + '%' : fmtPct(r.pct, prefs)}</span>` : '—'}
                 </td>
               </tr>`;
   }).join('')}
@@ -355,6 +380,7 @@ function buildHTML(hoy, periodos, kpis, config = {}) {
   const icono = config.icono || '🌙';
   const fechaStr = hoy.toLocaleDateString('es-CR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const fechaCapitalized = fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
+  const prefs = config.preferences || {};
 
   // KPI rápidos por período (formato compacto)
   const quickMetrics = periodos.map(p => {
@@ -365,9 +391,9 @@ function buildHTML(hoy, periodos, kpis, config = {}) {
   // Build sections: grupos + canales for each period
   let sections = '';
   for (const p of periodos) {
-    sections += buildTableHTML(p.nombre + ' — Por Canal', p.grupos);
+    sections += buildTableHTML(p.nombre + ' — Por Canal', p.grupos, prefs);
     if (p.canales && p.canales.length > 0) {
-      sections += buildTableHTML(p.nombre + ' — Por Grupo de Producto', p.canales);
+      sections += buildTableHTML(p.nombre + ' — Por Grupo de Producto', p.canales, prefs);
     }
   }
 
@@ -436,7 +462,7 @@ function buildHTML(hoy, periodos, kpis, config = {}) {
               <!-- % Alcance como elemento HÉROE -->
               <div style="text-align:center;margin-bottom:8px;">
                 <div style="font-size:10px;font-weight:700;color:#98A2B3;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">% ALCANCE DEL MES</div>
-                <div class="kpi-pct-hero" style="font-size:52px;font-weight:900;color:${progressColor};line-height:1;letter-spacing:-1px;">${fmtPct(kpis.pctMes)}</div>
+                <div class="kpi-pct-hero" style="font-size:52px;font-weight:900;color:${progressColor};line-height:1;letter-spacing:-1px;">${fmtPct(kpis.pctMes, prefs)}</div>
               </div>
 
               <!-- Barra de progreso (gruesa) -->
@@ -451,7 +477,7 @@ function buildHTML(hoy, periodos, kpis, config = {}) {
               <!-- Venta acumulada debajo -->
               <div style="text-align:center;margin-top:14px;">
                 <div style="font-size:10px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">VENTA ACUMULADA MES</div>
-                <div class="kpi-big-number" style="font-size:26px;font-weight:800;color:#101828;line-height:1.1;">${fmt(kpis.ventaMes)}</div>
+                <div class="kpi-big-number" style="font-size:26px;font-weight:800;color:#101828;line-height:1.1;">${fmt(kpis.ventaMes, prefs)}</div>
               </div>
             </td>
           </tr>
@@ -464,7 +490,7 @@ function buildHTML(hoy, periodos, kpis, config = {}) {
                   <td width="48%" style="padding-right:6px;">
                     <div class="card-box" style="background:#F9FAFB;border-radius:10px;padding:12px 14px;border:1px solid #EAECF0;">
                       <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1px;">PRESUPUESTO</div>
-                      <div class="card-box-value" style="font-size:16px;font-weight:800;color:#101828;margin-top:4px;word-break:break-all;">${fmt(kpis.presupuestoMes)}</div>
+                      <div class="card-box-value" style="font-size:16px;font-weight:800;color:#101828;margin-top:4px;word-break:break-all;">${fmt(kpis.presupuestoMes, prefs)}</div>
                     </div>
                   </td>
                   <td width="48%" style="padding-left:6px;">
@@ -486,7 +512,7 @@ function buildHTML(hoy, periodos, kpis, config = {}) {
                   ${quickMetrics.map(m => `
                   <td style="text-align:center;padding:0 3px;">
                     <div class="metric-label" style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">${m.nombre}</div>
-                    <div class="metric-value" style="font-size:13px;font-weight:800;color:#101828;margin-top:2px;">${fmtCompact(m.venta)}</div>
+                    <div class="metric-value" style="font-size:13px;font-weight:800;color:#101828;margin-top:2px;">${fmt(m.venta, prefs)}</div>
                   </td>`).join('')}
                 </tr>
               </table>
@@ -658,15 +684,17 @@ async function test() {
 
   // Log summary
   console.log('\n📊 === RESUMEN DE DATOS ===');
+  const testPrefs = { valueDisplayMode: 'completo', valueDecimals: 0, pctDisplayMode: 'base100', pctDecimals: 1 };
+
   for (const p of periodos) {
     console.log(`\n${p.icono} ${p.nombre}:`);
     for (const g of p.grupos) {
-      console.log(`  ${g.icono} ${g.label}: Venta=${fmt(g.venta)} | Ppto=${fmt(g.presupuesto)} | %=${fmtPct(g.pct)} | vsAnt=${g.vsAnterior != null ? g.vsAnterior.toFixed(1) + '%' : '—'}`);
+      console.log(`  ${g.icono} ${g.label}: Venta=${fmt(g.venta, testPrefs)} | Ppto=${fmt(g.presupuesto, testPrefs)} | %=${fmtPct(g.pct, testPrefs)} | vsAnt=${g.vsAnterior != null ? testPrefs.pctDisplayMode === 'differential' ? (g.vsAnterior > 0 ? '+' : '') + g.vsAnterior.toFixed(testPrefs.pctDecimals) + '%' : g.vsAnterior.toFixed(testPrefs.pctDecimals) + '%' : '—'}`);
     }
     if (p.canales?.length > 0) {
       console.log('  --- Canales ---');
       for (const c of p.canales) {
-        console.log(`  ${c.icono} ${c.label}: Venta=${fmt(c.venta)} | Ppto=${fmt(c.presupuesto)} | %=${fmtPct(c.pct)}`);
+        console.log(`  ${c.icono} ${c.label}: Venta=${fmt(c.venta, testPrefs)} | Ppto=${fmt(c.presupuesto, testPrefs)} | %=${fmtPct(c.pct, testPrefs)}`);
       }
     }
   }

@@ -224,6 +224,38 @@ async function getAvailableStores() {
     return result.recordset;
 }
 
+// ── Store details update (edit alias inline) ──────────────────────────
+
+async function updateStoreName(codalmacen, nombre) {
+    const pool = await poolPromise;
+    await pool.request()
+        .input('codalmacen', sql.NChar(10), codalmacen)
+        .input('nombre', sql.NVarChar(200), nombre)
+        .query(`
+            IF EXISTS (SELECT 1 FROM DIM_NOMBRES_ALMACEN WHERE CODALMACEN = @codalmacen)
+            BEGIN
+                UPDATE DIM_NOMBRES_ALMACEN
+                SET NOMBRE_CONTA = @nombre,
+                    NOMBRE_INOCUIDAD = ISNULL(NOMBRE_INOCUIDAD, @nombre),
+                    NOMBRE_MERCADEO = ISNULL(NOMBRE_MERCADEO, @nombre),
+                    NOMBRE_QUEJAS = ISNULL(NOMBRE_QUEJAS, @nombre),
+                    NOMBRE_JUSTO = ISNULL(NOMBRE_JUSTO, @nombre),
+                    NOMBRE_CALIDAD = ISNULL(NOMBRE_CALIDAD, @nombre),
+                    NOMBRE_OPERACIONES = ISNULL(NOMBRE_OPERACIONES, @nombre),
+                    NOMBRE_GENERAL = ISNULL(NOMBRE_GENERAL, @nombre)
+                WHERE CODALMACEN = @codalmacen
+            END
+            ELSE
+            BEGIN
+                INSERT INTO DIM_NOMBRES_ALMACEN 
+                (CODALMACEN, NOMBRE_CONTA, NOMBRE_INOCUIDAD, NOMBRE_MERCADEO, NOMBRE_QUEJAS, NOMBRE_JUSTO, NOMBRE_CALIDAD, NOMBRE_OPERACIONES, NOMBRE_GENERAL)
+                VALUES 
+                (@codalmacen, @nombre, @nombre, @nombre, @nombre, @nombre, @nombre, @nombre, @nombre)
+            END
+        `);
+    return { success: true };
+}
+
 module.exports = {
     ensureGruposAlmacenTables,
     importFromRostipollos,
@@ -235,5 +267,6 @@ module.exports = {
     getLineas,
     addLinea,
     removeLinea,
-    getAvailableStores
+    getAvailableStores,
+    updateStoreName
 };

@@ -739,8 +739,8 @@ app.post('/api/admin/users', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, accesoReportes } = req.body;
-        const modeloPresupuestoPerms = { accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones };
+        const { email, nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, aprobarAjustes, restaurarVersiones, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, accesoReportes } = req.body;
+        const modeloPresupuestoPerms = { accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, aprobarAjustes, restaurarVersiones };
         const result = await createUser(email.trim().toLowerCase(), nombre, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, modeloPresupuestoPerms, perfilId || null, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, accesoReportes);
         res.json({ success: true, userId: result.userId, clave: result.clave });
     } catch (err) {
@@ -759,8 +759,8 @@ app.put('/api/admin/users/:id', authMiddleware, async (req, res) => {
         if (!req.user.esAdmin) {
             return res.status(403).json({ error: 'No tiene permisos de administrador' });
         }
-        const { email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, accesoReportes } = req.body;
-        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, accesoReportes);
+        const { email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, aprobarAjustes, restaurarVersiones, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, accesoReportes } = req.body;
+        await updateUser(parseInt(req.params.id), email.trim().toLowerCase(), nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, aprobarAjustes, restaurarVersiones, cedula, telefono, accesoAsignaciones, accesoGruposAlmacen, accesoReportes);
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating user:', err);
@@ -1265,7 +1265,9 @@ app.post('/api/admin/db-sync', authMiddleware, async (req, res) => {
                     AccesoEventos BIT DEFAULT 0, AccesoPresupuesto BIT DEFAULT 1,
                     AccesoTiempos BIT DEFAULT 0, AccesoEvaluaciones BIT DEFAULT 0,
                     AccesoInventarios BIT DEFAULT 0, EsAdmin BIT DEFAULT 0, EsProtegido BIT DEFAULT 0,
-                    DashboardLocales NVARCHAR(MAX), ComparativePeriod VARCHAR(20) DEFAULT 'Month'
+                    DashboardLocales NVARCHAR(MAX), ComparativePeriod VARCHAR(20) DEFAULT 'Month',
+                    PctDisplayMode VARCHAR(20) DEFAULT 'base100', PctDecimals INT DEFAULT 1,
+                    ValueDisplayMode VARCHAR(20) DEFAULT 'completo', ValueDecimals INT DEFAULT 0
                 )
             `);
             if (usuariosData.recordset.length > 0) {
@@ -1280,8 +1282,12 @@ app.post('/api/admin/db-sync', authMiddleware, async (req, res) => {
                         .input('AccesoPresupuesto', mssql.Bit, user.AccesoPresupuesto)
                         .input('AccesoTendencia', mssql.Bit, user.AccesoTendencia)
                         .input('EsProtegido', mssql.Bit, user.EsProtegido)
-                        .query(`INSERT INTO APP_USUARIOS (Email,Nombre,Clave,Activo,EsAdmin,AccesoPresupuesto,AccesoTendencia,EsProtegido)
-                                VALUES (@Email,@Nombre,@Clave,@Activo,@EsAdmin,@AccesoPresupuesto,@AccesoTendencia,@EsProtegido)`);
+                        .input('PctDisplayMode', mssql.VarChar, user.PctDisplayMode || 'base100')
+                        .input('PctDecimals', mssql.Int, user.PctDecimals !== null ? user.PctDecimals : 1)
+                        .input('ValueDisplayMode', mssql.VarChar, user.ValueDisplayMode || 'completo')
+                        .input('ValueDecimals', mssql.Int, user.ValueDecimals !== null ? user.ValueDecimals : 0)
+                        .query(`INSERT INTO APP_USUARIOS (Email,Nombre,Clave,Activo,EsAdmin,AccesoPresupuesto,AccesoTendencia,EsProtegido,PctDisplayMode,PctDecimals,ValueDisplayMode,ValueDecimals)
+                                VALUES (@Email,@Nombre,@Clave,@Activo,@EsAdmin,@AccesoPresupuesto,@AccesoTendencia,@EsProtegido,@PctDisplayMode,@PctDecimals,@ValueDisplayMode,@ValueDecimals)`);
                 }
             }
             syncStats.APP_USUARIOS = usuariosData.recordset.length;
@@ -2491,7 +2497,7 @@ app.get('/api/user/dashboard-config', authMiddleware, async (req, res) => {
         const pool = await poolPromise;
         const result = await pool.request()
             .input('userId', sql.Int, req.user.userId)
-            .query('SELECT DashboardLocales, ComparativePeriod FROM APP_USUARIOS WHERE Id = @userId');
+            .query('SELECT DashboardLocales, ComparativePeriod, PctDisplayMode, PctDecimals, ValueDisplayMode, ValueDecimals FROM APP_USUARIOS WHERE Id = @userId');
 
         if (result.recordset.length === 0) {
             return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -2500,8 +2506,12 @@ app.get('/api/user/dashboard-config', authMiddleware, async (req, res) => {
         const dashboardLocalesJson = result.recordset[0].DashboardLocales;
         const dashboardLocales = dashboardLocalesJson ? JSON.parse(dashboardLocalesJson) : [];
         const comparativePeriod = result.recordset[0].ComparativePeriod || 'Month';
+        const pctDisplayMode = result.recordset[0].PctDisplayMode || 'base100';
+        const pctDecimals = result.recordset[0].PctDecimals !== null ? result.recordset[0].PctDecimals : 1;
+        const valueDisplayMode = result.recordset[0].ValueDisplayMode || 'completo';
+        const valueDecimals = result.recordset[0].ValueDecimals !== null ? result.recordset[0].ValueDecimals : 0;
 
-        res.json({ dashboardLocales, comparativePeriod });
+        res.json({ dashboardLocales, comparativePeriod, pctDisplayMode, pctDecimals, valueDisplayMode, valueDecimals });
     } catch (err) {
         console.error('Error in GET /api/user/dashboard-config:', err);
         res.status(500).json({ error: err.message });
@@ -2511,7 +2521,7 @@ app.get('/api/user/dashboard-config', authMiddleware, async (req, res) => {
 // PUT /api/user/dashboard-config - Save current user's dashboard preferences
 app.put('/api/user/dashboard-config', authMiddleware, async (req, res) => {
     try {
-        const { dashboardLocales, comparativePeriod } = req.body;
+        const { dashboardLocales, comparativePeriod, pctDisplayMode, pctDecimals, valueDisplayMode, valueDecimals } = req.body;
 
         // Validate dashboardLocales: must be array, max 5 items
         if (dashboardLocales !== undefined) {
@@ -2542,18 +2552,38 @@ app.put('/api/user/dashboard-config', authMiddleware, async (req, res) => {
             updates.push('ComparativePeriod = @comparativePeriod');
             inputs.comparativePeriod = comparativePeriod;
         }
+        if (pctDisplayMode !== undefined) {
+            updates.push('PctDisplayMode = @pctDisplayMode');
+            inputs.pctDisplayMode = pctDisplayMode;
+        }
+        if (pctDecimals !== undefined) {
+            updates.push('PctDecimals = @pctDecimals');
+            inputs.pctDecimals = pctDecimals;
+        }
+        if (valueDisplayMode !== undefined) {
+            updates.push('ValueDisplayMode = @valueDisplayMode');
+            inputs.valueDisplayMode = valueDisplayMode;
+        }
+        if (valueDecimals !== undefined) {
+            updates.push('ValueDecimals = @valueDecimals');
+            inputs.valueDecimals = valueDecimals;
+        }
 
         if (updates.length > 0) {
             const request = pool.request();
             request.input('userId', sql.Int, inputs.userId);
-            if (inputs.dashboardLocales) request.input('dashboardLocales', sql.NVarChar, inputs.dashboardLocales);
-            if (inputs.comparativePeriod) request.input('comparativePeriod', sql.VarChar, inputs.comparativePeriod);
+            if (inputs.dashboardLocales !== undefined) request.input('dashboardLocales', sql.NVarChar, inputs.dashboardLocales);
+            if (inputs.comparativePeriod !== undefined) request.input('comparativePeriod', sql.VarChar, inputs.comparativePeriod);
+            if (inputs.pctDisplayMode !== undefined) request.input('pctDisplayMode', sql.VarChar, inputs.pctDisplayMode);
+            if (inputs.pctDecimals !== undefined) request.input('pctDecimals', sql.Int, inputs.pctDecimals);
+            if (inputs.valueDisplayMode !== undefined) request.input('valueDisplayMode', sql.VarChar, inputs.valueDisplayMode);
+            if (inputs.valueDecimals !== undefined) request.input('valueDecimals', sql.Int, inputs.valueDecimals);
 
             await request.query(`UPDATE APP_USUARIOS SET ${updates.join(', ')} WHERE Id = @userId`);
         }
 
-        console.log(`âœ… Dashboard config saved for user ${req.user.email}:`, { dashboardLocales, comparativePeriod });
-        res.json({ success: true, dashboardLocales, comparativePeriod });
+        console.log(`✅ Dashboard config saved for user ${req.user.email}:`, { dashboardLocales, comparativePeriod, pctDisplayMode, pctDecimals, valueDisplayMode, valueDecimals });
+        res.json({ success: true, dashboardLocales, comparativePeriod, pctDisplayMode, pctDecimals, valueDisplayMode, valueDecimals });
     } catch (err) {
         console.error('Error in PUT /api/user/dashboard-config:', err);
         res.status(500).json({ error: err.message });

@@ -17,14 +17,22 @@ async function getTendenciaData(req, res) {
     console.log('📊 getTendenciaData called');
     console.log('   Query params:', req.query);
     try {
-        const { startDate, endDate, kpi = 'Ventas', channel = 'Total', local, yearType = 'anterior' } = req.query;
+        const { startDate, endDate, kpi = 'Ventas', channel = 'Total', local, yearType = 'anterior', table } = req.query;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'startDate and endDate are required' });
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+        let alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+
+        // Override with explicit table parameter if provided and valid
+        const { isAllowedTable } = require('./alcanceConfig');
+        if (table && isAllowedTable(table)) {
+            alcanceTable = table;
+            console.log(`🔄 Table overridden via parameter: ${alcanceTable}`);
+        }
+
         const dbCanal = channel === 'Total' ? 'Todos' : channel;
         // Use DAILY fields (not accumulated) since we SUM them ourselves
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
@@ -567,14 +575,22 @@ async function getResumenCanal(req, res) {
     console.log('📊 getResumenCanal called');
     console.log('   Query params:', req.query);
     try {
-        const { startDate, endDate, kpi = 'Ventas', local, yearType = 'anterior' } = req.query;
+        const { startDate, endDate, kpi = 'Ventas', local, yearType = 'anterior', table } = req.query;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'startDate and endDate are required' });
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+        let alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+
+        // Override with explicit table parameter if provided and valid
+        const { isAllowedTable } = require('./alcanceConfig');
+        if (table && isAllowedTable(table)) {
+            alcanceTable = table;
+            console.log(`🔄 Table overridden via parameter: ${alcanceTable}`);
+        }
+
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 
         // If a group is selected, find member stores (same logic as getTendenciaData)
@@ -715,7 +731,7 @@ async function getResumenGrupos(req, res) {
     console.log('📊 getResumenGrupos called');
     console.log('   Query params:', req.query);
     try {
-        const { startDate, endDate, kpi = 'Ventas', groups: groupsParam, yearType = 'anterior', channel = 'Total' } = req.query;
+        const { startDate, endDate, kpi = 'Ventas', groups: groupsParam, yearType = 'anterior', channel = 'Total', table } = req.query;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'startDate and endDate are required' });
@@ -725,7 +741,15 @@ async function getResumenGrupos(req, res) {
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+        let alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+
+        // Override with explicit table parameter if provided and valid
+        const { isAllowedTable } = require('./alcanceConfig');
+        if (table && isAllowedTable(table)) {
+            alcanceTable = table;
+            console.log(`🔄 Table overridden via parameter: ${alcanceTable}`);
+        }
+
         const dbCanal = channel === 'Total' ? 'Todos' : channel;
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 

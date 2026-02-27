@@ -28,7 +28,9 @@ export const IncrementCard: React.FC<IncrementCardProps> = ({ data, currentDate,
             remainingDays = new Date(currentYear, viewingMonth + 1, 0).getDate();
         } else {
             // Current month: count only future days without data
-            remainingDays = monthData.filter(d => d.Dia > today.getDate()).length;
+            // Use dateRange.endDate if available to avoid using system date if data is delayed
+            const dataEndDate = dateRange?.endDate ? parseInt(dateRange.endDate.split('-')[2], 10) : today.getDate();
+            remainingDays = monthData.filter(d => d.Dia > dataEndDate).length;
         }
 
         // Calculate totals for the month

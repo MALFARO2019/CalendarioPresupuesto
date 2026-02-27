@@ -57,14 +57,31 @@ function registerReportsEndpoints(app, authMiddleware) {
 
             // Special type reports return HTML directly
             if (report.TipoEspecial === 'alcance-nocturno') {
+                const pool = await poolPromise;
+                const userResult = await pool.request()
+                    .input('userId', sql.Int, req.user.userId)
+                    .query('SELECT PctDisplayMode, PctDecimals, ValueDisplayMode, ValueDecimals FROM APP_USUARIOS WHERE Id = @userId');
+                const prefs = userResult.recordset[0] || {};
+
                 const userPerms = {
                     allowedStores: req.user.allowedStores || [],
-                    allowedCanales: req.user.allowedCanales || []
+                    allowedCanales: req.user.allowedCanales || [],
+                    preferences: {
+                        pctDisplayMode: prefs.PctDisplayMode || 'base100',
+                        pctDecimals: prefs.PctDecimals !== null ? prefs.PctDecimals : 1,
+                        valueDisplayMode: prefs.ValueDisplayMode || 'completo',
+                        valueDecimals: prefs.ValueDecimals !== null ? prefs.ValueDecimals : 0
+                    }
                 };
+
                 // Generate without sending email - just return HTML
                 const { generarReporteAlcancePreview } = require('./reporteNocturno');
                 if (generarReporteAlcancePreview) {
-                    const config = { nombre: report.Nombre, icono: report.Icono || '📊' };
+                    const config = {
+                        nombre: report.Nombre,
+                        icono: report.Icono || '📊',
+                        preferences: userPerms.preferences
+                    };
                     const html = await generarReporteAlcancePreview(userPerms, config);
                     return res.json({ html, isSpecial: true, filtrosDisponibles: report.FiltrosDisponibles || '' });
                 }

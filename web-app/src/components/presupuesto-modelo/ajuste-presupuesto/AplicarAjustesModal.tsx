@@ -3,7 +3,7 @@
 // ============================================================
 
 import React from 'react';
-import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, X, Database } from 'lucide-react';
 import { useAjusteStore, useResumen } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { fmtFull, fmtDelta } from './helpers';
@@ -22,6 +22,7 @@ export const AplicarAjustesModal: React.FC = () => {
     if (activeModal !== 'aplicar') return null;
 
     const hasChanges = resumen.totalAjustes > 0;
+    const [tablaDestino, setTablaDestino] = React.useState('RSM_ALCANCE_DIARIO');
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -81,6 +82,26 @@ export const AplicarAjustesModal: React.FC = () => {
                                 <strong>Nota:</strong> Los ajustes se aplicarán con el método de distribución configurado en cada uno.
                                 El delta aplica al canal y período definido en cada ajuste individual.
                             </div>
+
+                            {/* Selección de Tabla */}
+                            <div className="space-y-2 pt-3 border-t border-gray-100">
+                                <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
+                                    <Database className="w-3.5 h-3.5 text-indigo-500" />
+                                    Tabla destino del recálculo
+                                </label>
+                                <select
+                                    value={tablaDestino}
+                                    onChange={e => setTablaDestino(e.target.value)}
+                                    className="w-full text-sm border-gray-200 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                                >
+                                    <option value="RSM_ALCANCE_DIARIO">RSM_ALCANCE_DIARIO (Oficial Producción)</option>
+                                    <option value="PRESUPUESTO_BETA">PRESUPUESTO_BETA (Sandbox Testing)</option>
+                                    <option value="PRESUPUESTO_TEST">PRESUPUESTO_TEST (Opciones de prueba)</option>
+                                </select>
+                                <p className="text-[10px] text-gray-400">
+                                    Selecciona si quieres impactar la bd de producción u otra para verificar la curva primero en modo Sandbox.
+                                </p>
+                            </div>
                         </>
                     )}
                 </div>
@@ -95,12 +116,12 @@ export const AplicarAjustesModal: React.FC = () => {
                     </button>
                     {hasChanges && (
                         <button
-                            onClick={applyAllAjustes}
+                            onClick={() => applyAllAjustes(tablaDestino)}
                             disabled={chartLoading}
                             className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
                         >
                             <CheckCircle2 className="w-4 h-4" />
-                            {chartLoading ? 'Aplicando...' : 'Sí, aplicar ajustes'}
+                            {chartLoading ? 'Aplicando...' : 'Sí, aprobar y aplicar'}
                         </button>
                     )}
                 </div>

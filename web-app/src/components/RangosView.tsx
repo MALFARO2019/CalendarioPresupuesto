@@ -103,6 +103,7 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
     const [startDate, setStartDate] = useState(formatDate(monthStart));
     const [endDate, setEndDate] = useState(formatDate(monthEnd));
     const [groupBy, setGroupBy] = useState<GroupByType>('day');
+    const [selectedTable, setSelectedTable] = useState<string>('RSM_ALCANCE_DIARIO');
     const [data, setData] = useState<RangosResponse | null>(null);
     const [canalData, setCanalData] = useState<CanalResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -121,7 +122,7 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
 
         try {
             const yearTypeParam = yearType === 'Año Anterior Ajustado' ? 'ajustado' : 'anterior';
-            const url = `${API_BASE}/rangos?startDate=${startDate}&endDate=${endDate}&groupBy=${groupBy}&kpi=${filterKpi}&canal=${filterCanal}&local=${filterLocal}&yearType=${yearTypeParam}`;
+            const url = `${API_BASE}/rangos?startDate=${startDate}&endDate=${endDate}&groupBy=${groupBy}&kpi=${filterKpi}&canal=${filterCanal}&local=${filterLocal}&yearType=${yearTypeParam}&table=${selectedTable}`;
 
             console.log('🔵 Fetching rangos data:', url);
 
@@ -151,7 +152,7 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
 
         try {
             const yearTypeParam = yearType === 'Año Anterior Ajustado' ? 'ajustado' : 'anterior';
-            const url = `${API_BASE}/rangos/resumen-canal?startDate=${startDate}&endDate=${endDate}&kpi=${filterKpi}&local=${filterLocal}&yearType=${yearTypeParam}`;
+            const url = `${API_BASE}/rangos/resumen-canal?startDate=${startDate}&endDate=${endDate}&kpi=${filterKpi}&local=${filterLocal}&yearType=${yearTypeParam}&table=${selectedTable}`;
 
             console.log('🔵 Fetching canal data:', url);
 
@@ -179,7 +180,7 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
         if (activeTab === 'canal') {
             fetchCanalData();
         }
-    }, [startDate, endDate, groupBy, filterLocal, filterCanal, filterKpi, yearType]);
+    }, [startDate, endDate, groupBy, filterLocal, filterCanal, filterKpi, yearType, selectedTable]);
 
     // Fetch canal data when switching to canal tab
     useEffect(() => {
@@ -284,6 +285,20 @@ export function RangosView({ year, filterLocal, filterCanal, filterKpi, yearType
                         Eventos
                     </button>
                 )}
+                {/* Tabla de Origen (Database) */}
+                <div className="flex-none">
+                    <div className="relative">
+                        <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}
+                            className="pl-8 pr-4 py-2 border border-indigo-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50 text-indigo-700 w-full sm:w-auto min-w-[150px]">
+                            <option value="RSM_ALCANCE_DIARIO">Producción</option>
+                            <option value="PRESUPUESTO_BETA">BETA (Sandbox)</option>
+                            <option value="PRESUPUESTO_TEST">TEST</option>
+                        </select>
+                        <svg className="w-4 h-4 text-indigo-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                        </svg>
+                    </div>
+                </div>
             </div>
 
             {/* Grouping Selector */}

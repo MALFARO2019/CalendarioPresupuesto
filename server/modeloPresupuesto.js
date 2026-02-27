@@ -350,7 +350,8 @@ async function getAjustes(nombrePresupuesto) {
                    MetodoAjuste as metodoAjuste, ValorAjuste as valorAjuste,
                    MetodoDistribucion as metodoDistribucion, Motivo as motivo,
                    FechaAplicacion as fechaAplicacion, Usuario as usuario,
-                   Activo as activo
+                   UsuarioAprueba as usuarioAprueba,
+                   Activo as activo, Estado as estado, MotivoRechazo as motivoRechazo
             FROM MODELO_PRESUPUESTO_AJUSTES
             WHERE NombrePresupuesto = @nombrePresupuesto
             ORDER BY FechaAplicacion DESC
@@ -399,7 +400,7 @@ async function aplicarAjuste(data) {
         .input('nombrePresupuesto', sql.NVarChar(100), data.nombrePresupuesto)
         .input('codAlmacen', sql.NVarChar(10), data.codAlmacen)
         .input('mes', sql.Int, data.mes)
-        .input('dia', sql.Int, diaSemana)
+        .input('diaSemana', sql.Int, diaSemana)
         .input('canal', sql.NVarChar(200), data.canal)
         .input('tipo', sql.NVarChar(100), data.tipo)
         .input('metodoAjuste', sql.NVarChar(50), data.metodoAjuste)
@@ -409,6 +410,8 @@ async function aplicarAjuste(data) {
         .input('fechaFin', sql.Date, fechaFin)
         .input('usuario', sql.NVarChar(200), data.usuario)
         .input('motivo', sql.NVarChar(500), data.motivo || '')
+        .input('estado', sql.VarChar(20), data.estado || 'Pendiente')
+        .input('usuarioAprueba', sql.NVarChar(200), data.estado === 'Aprobado' ? data.usuario : null)
         .execute('SP_AJUSTAR_PRESUPUESTO');
 
     return result;
@@ -521,6 +524,64 @@ async function desactivarAjuste(id, usuario) {
             SELECT TOP 1 NombrePresupuesto, @usuario, 'DesactivarAjuste', 'Manual',
                    '{"ajusteId": ' + CAST(@ajusteId AS NVARCHAR) + '}'
             FROM MODELO_PRESUPUESTO_CONFIG WHERE Activo = 1
+        `);
+}
+
+/**
+ * Change the status of an adjustment (Aprobado/Rechazado)
+ */
+async function aprobarRechazarAjuste(id, estado, motivoRechazo, usuario) {
+    const pool = await poolPromise;
+    await pool.request()
+        .input('id', sql.Int, id)
+        .input('estado', sql.VarChar(20), estado)
+        .input('motivoRechazo', sql.NVarChar(sql.MAX), motivoRechazo || null)
+        .input('usuarioAprueba', sql.NVarChar(200), estado === 'Aprobado' ? usuario : null)
+        .query(`
+            UPDATE MODELO_PRESUPUESTO_AJUSTES
+            SET Estado = @estado, MotivoRechazo = @motivoRechazo, UsuarioAprueba = @usuarioAprueba
+            WHERE Id = @id
+        `);
+
+    const detalleObj = { ajusteId: id, estado };
+    if (motivoRechazo) detalleObj.motivoRechazo = motivoRechazo;
+
+    // Log to bitacora
+    await pool.request()
+        .input('usuario', sql.NVarChar(200), usuario)
+        .input('ajusteId', sql.Int, id)
+        .input('detalle', sql.NVarChar(sql.MAX), JSON.stringify(detalleObj))
+        .query(`
+            INSERT INTO MODELO_PRESUPUESTO_BITACORA
+                (NombrePresupuesto, Usuario, Accion, Origen, Detalle)
+            SELECT TOP 1 NombrePresupuesto, @usuario, 'CambioEstadoAjuste', 'Manual', @detalle
+            FROM MODELO_PRESUPUESTO_AJUSTES WHERE Id = @ajusteId
+        `);
+}
+
+/**
+ * Update all pending adjustments to approved for a given budget model
+ */
+async function aplicarPendientes(nombrePresupuesto, usuario) {
+    const pool = await poolPromise;
+    await pool.request()
+        .input('nombre', sql.NVarChar(100), nombrePresupuesto)
+        .input('usuarioAprueba', sql.NVarChar(200), usuario)
+        .query(`
+            UPDATE MODELO_PRESUPUESTO_AJUSTES
+            SET Estado = 'Aprobado', UsuarioAprueba = @usuarioAprueba
+            WHERE NombrePresupuesto = @nombre AND Estado = 'Pendiente' AND Activo = 1
+        `);
+
+    // Log to bitacora
+    await pool.request()
+        .input('usuario', sql.NVarChar(200), usuario)
+        .input('nombre', sql.NVarChar(100), nombrePresupuesto)
+        .query(`
+            INSERT INTO MODELO_PRESUPUESTO_BITACORA
+                (NombrePresupuesto, Usuario, Accion, Origen, Detalle)
+            VALUES (@nombre, @usuario, 'AprobarAjustesPendientes', 'Manual',
+                   '{"nombrePresupuesto": "' + @nombre + '"}')
         `);
 }
 
@@ -1055,6 +1116,8 @@ module.exports = {
     aplicarAjuste,
     previewAjuste,
     desactivarAjuste,
+    aprobarRechazarAjuste,
+    aplicarPendientes,
     getDatosAjuste,
     // Versiones
     getVersiones,

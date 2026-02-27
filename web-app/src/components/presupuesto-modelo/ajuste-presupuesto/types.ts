@@ -16,12 +16,12 @@ export type { DatosAjusteDia, StoreItem, ModeloConfig, EventoItem, EventosByDate
 
 // ── Enums / Union types ──
 
-export type AjusteEstado = 'Pendiente' | 'Aplicado' | 'Asociado';
+export type AjusteEstado = 'Pendiente' | 'Aprobado' | 'Rechazado' | 'Asociado' | 'Aplicado';
 export type AjusteTipo = 'Monto' | 'Porcentaje';
 export type RedistribucionTipo = 'TodosLosDias' | 'Semana' | 'MismoDiaSemana';
 
 export const REDISTRIBUCION_LABELS: Record<RedistribucionTipo, string> = {
-    TodosLosDias: 'Todos los días',
+    TodosLosDias: 'Todo el mes',
     Semana: 'Semana',
     MismoDiaSemana: 'Mismo día de semana',
 };
@@ -37,6 +37,9 @@ export const MESES = [
 // ── Ajuste extendido ──
 
 export interface AjustePresupuesto extends AjustePresupuestoBase {
+    motivo: string;
+    usuarioAprueba?: string;
+    motivoRechazo?: string; // New field for rejection reason
     estado: AjusteEstado;
     ajustePrincipalId: string | null;
     idFormateado: string;

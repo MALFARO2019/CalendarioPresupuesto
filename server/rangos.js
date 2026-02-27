@@ -19,7 +19,8 @@ async function getRangosData(req, res) {
             kpi = 'Ventas',
             canal = 'Todos',
             local,
-            yearType = 'anterior'
+            yearType = 'anterior',
+            table
         } = req.query;
 
         if (!startDate || !endDate) {
@@ -27,7 +28,15 @@ async function getRangosData(req, res) {
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+        let alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+
+        // Override with explicit table parameter if provided and valid
+        const { isAllowedTable } = require('./alcanceConfig');
+        if (table && isAllowedTable(table)) {
+            alcanceTable = table;
+            console.log(`🔄 Table overridden via parameter: ${alcanceTable}`);
+        }
+
         const dbCanal = canal === 'Total' ? 'Todos' : canal;
         const anteriorField = yearType === 'ajustado' ? 'MontoAnteriorAjustado' : 'MontoAnterior';
 
@@ -290,14 +299,22 @@ async function getRangosResumenCanal(req, res) {
     console.log('📊 getRangosResumenCanal called');
     console.log('   Query params:', req.query);
     try {
-        const { startDate, endDate, kpi = 'Ventas', canal = 'Todos', local, yearType = 'anterior' } = req.query;
+        const { startDate, endDate, kpi = 'Ventas', canal = 'Todos', local, yearType = 'anterior', table } = req.query;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'startDate and endDate are required' });
         }
 
         const pool = await poolPromise;
-        const alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+        let alcanceTable = await getAlcanceTableNameForUser(pool, req.user?.userId);
+
+        // Override with explicit table parameter if provided and valid
+        const { isAllowedTable } = require('./alcanceConfig');
+        if (table && isAllowedTable(table)) {
+            alcanceTable = table;
+            console.log(`🔄 Table overridden via parameter: ${alcanceTable}`);
+        }
+
         const anteriorField = yearType === 'ajustado' ? 'ISNULL(MontoAnteriorAjustado, 0)' : 'MontoAnterior';
 
         // Build local filter

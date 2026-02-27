@@ -591,7 +591,7 @@ async function loginUser(email, clave, ip, userAgent) {
     const pool = await poolPromise;
     const result = await pool.request()
         .input('email', sql.NVarChar, email)
-        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(restaurarVersiones,0) as restaurarVersiones, ISNULL(AccesoAsignaciones,0) as AccesoAsignaciones, ISNULL(AccesoGruposAlmacen,0) as AccesoGruposAlmacen, ISNULL(AccesoReportes,0) as AccesoReportes, ISNULL(accesoNotificaciones,0) as accesoNotificaciones, ISNULL(crearNotificaciones,0) as crearNotificaciones FROM APP_USUARIOS WHERE Email = @email');
+        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(aprobarAjustes,0) as aprobarAjustes, ISNULL(restaurarVersiones,0) as restaurarVersiones, ISNULL(AccesoAsignaciones,0) as AccesoAsignaciones, ISNULL(AccesoGruposAlmacen,0) as AccesoGruposAlmacen, ISNULL(AccesoReportes,0) as AccesoReportes, ISNULL(accesoNotificaciones,0) as accesoNotificaciones, ISNULL(crearNotificaciones,0) as crearNotificaciones FROM APP_USUARIOS WHERE Email = @email');
 
     if (result.recordset.length === 0) {
         logLoginEvent(email, null, false, 'Usuario no encontrado', ip, userAgent);
@@ -664,6 +664,7 @@ async function loginUser(email, clave, ip, userAgent) {
             editarConsolidado: user.editarConsolidado,
             ejecutarRecalculo: user.ejecutarRecalculo,
             ajustarCurva: user.ajustarCurva,
+            aprobarAjustes: user.aprobarAjustes,
             restaurarVersiones: user.restaurarVersiones,
             accesoAsignaciones: user.AccesoAsignaciones,
             accesoGruposAlmacen: user.AccesoGruposAlmacen,
@@ -709,6 +710,7 @@ async function loginUser(email, clave, ip, userAgent) {
             editarConsolidado: user.editarConsolidado,
             ejecutarRecalculo: user.ejecutarRecalculo,
             ajustarCurva: user.ajustarCurva,
+            aprobarAjustes: user.aprobarAjustes,
             restaurarVersiones: user.restaurarVersiones,
             accesoAsignaciones: user.AccesoAsignaciones,
             accesoGruposAlmacen: user.AccesoGruposAlmacen,
@@ -804,6 +806,8 @@ async function getAllUsers() {
                ISNULL(u.editarConsolidado, 0) as editarConsolidado,
                ISNULL(u.ejecutarRecalculo, 0) as ejecutarRecalculo,
                ISNULL(u.ajustarCurva, 0) as ajustarCurva,
+               ISNULL(u.aprobarAjustes, 0) as aprobarAjustes,
+               ISNULL(u.aprobarAjustes, 0) as aprobarAjustes,
                ISNULL(u.restaurarVersiones, 0) as restaurarVersiones,
                ISNULL(u.AccesoAsignaciones, 0) as AccesoAsignaciones,
                ISNULL(u.AccesoGruposAlmacen, 0) as AccesoGruposAlmacen,
@@ -845,6 +849,8 @@ async function getAllUsers() {
         editarConsolidado: user.editarConsolidado,
         ejecutarRecalculo: user.ejecutarRecalculo,
         ajustarCurva: user.ajustarCurva,
+        aprobarAjustes: user.aprobarAjustes,
+        aprobarAjustes: user.aprobarAjustes,
         restaurarVersiones: user.restaurarVersiones,
         accesoAsignaciones: user.AccesoAsignaciones,
         accesoGruposAlmacen: user.AccesoGruposAlmacen,
@@ -908,6 +914,7 @@ async function createUser(email, nombre, clave, stores, canales, accesoTendencia
         .input('editarConsolidado', sql.Bit, modeloPresupuestoPerms.editarConsolidado || false)
         .input('ejecutarRecalculo', sql.Bit, modeloPresupuestoPerms.ejecutarRecalculo || false)
         .input('ajustarCurva', sql.Bit, modeloPresupuestoPerms.ajustarCurva || false)
+        .input('aprobarAjustes', sql.Bit, modeloPresupuestoPerms.aprobarAjustes || false)
         .input('restaurarVersiones', sql.Bit, modeloPresupuestoPerms.restaurarVersiones || false)
         .input('perfilId', sql.Int, perfilId)
         .input('cedula', sql.NVarChar, cedula || null)
@@ -916,13 +923,35 @@ async function createUser(email, nombre, clave, stores, canales, accesoTendencia
         .input('accesoGruposAlmacen', sql.Bit, accesoGruposAlmacen)
         .input('accesoReportes', sql.Bit, accesoReportes)
         .query(`
-            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, PerfilId, Cedula, Telefono, AccesoAsignaciones, AccesoGruposAlmacen, AccesoReportes) 
+            INSERT INTO APP_USUARIOS (Email, Nombre, Clave, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, aprobarAjustes, restaurarVersiones, PerfilId, Cedula, Telefono, AccesoAsignaciones, AccesoGruposAlmacen, AccesoReportes) 
             OUTPUT INSERTED.Id, INSERTED.Clave
-            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @accesoPresupuesto, @accesoPresupuestoMensual, @accesoPresupuestoAnual, @accesoPresupuestoRangos, @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @accesoPersonal, @esAdmin, @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual, @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias, @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones, @perfilId, @cedula, @telefono, @accesoAsignaciones, @accesoGruposAlmacen, @accesoReportes)
+            VALUES (@email, @nombre, @clave, @accesoTendencia, @accesoTactica, @accesoEventos, @accesoPresupuesto, @accesoPresupuestoMensual, @accesoPresupuestoAnual, @accesoPresupuestoRangos, @accesoTiempos, @accesoEvaluaciones, @accesoInventarios, @accesoPersonal, @esAdmin, @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual, @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias, @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @aprobarAjustes, @restaurarVersiones, @perfilId, @cedula, @telefono, @accesoAsignaciones, @accesoGruposAlmacen, @accesoReportes)
         `);
 
     const userId = userResult.recordset[0].Id;
     const generatedPin = userResult.recordset[0].Clave;
+
+    // Sync profile permissions if a profile was assigned
+    if (perfilId) {
+        await pool.request()
+            .input('userId', sql.Int, userId)
+            .query(`
+                UPDATE APP_USUARIOS
+                SET AccesoTendencia = p.AccesoTendencia, AccesoTactica = p.AccesoTactica, AccesoEventos = p.AccesoEventos,
+                    AccesoPresupuesto = p.AccesoPresupuesto, AccesoPresupuestoMensual = p.AccesoPresupuestoMensual,
+                    AccesoPresupuestoAnual = p.AccesoPresupuestoAnual, AccesoPresupuestoRangos = p.AccesoPresupuestoRangos,
+                    AccesoTiempos = p.AccesoTiempos, AccesoEvaluaciones = p.AccesoEvaluaciones, AccesoInventarios = p.AccesoInventarios,
+                    AccesoPersonal = p.AccesoPersonal, EsAdmin = p.EsAdmin, accesoModeloPresupuesto = p.accesoModeloPresupuesto,
+                    verConfigModelo = p.verConfigModelo, verConsolidadoMensual = p.verConsolidadoMensual, verAjustePresupuesto = p.verAjustePresupuesto,
+                    verVersiones = p.verVersiones, verBitacora = p.verBitacora, verReferencias = p.verReferencias,
+                    editarConsolidado = p.editarConsolidado, ejecutarRecalculo = p.ejecutarRecalculo, ajustarCurva = p.ajustarCurva,
+                    aprobarAjustes = p.aprobarAjustes, restaurarVersiones = p.restaurarVersiones, AccesoAsignaciones = p.AccesoAsignaciones,
+                    AccesoGruposAlmacen = p.AccesoGruposAlmacen, AccesoReportes = p.AccesoReportes
+                FROM APP_USUARIOS u
+                INNER JOIN APP_PERFILES p ON u.PerfilId = p.Id
+                WHERE u.Id = @userId
+            `);
+    }
 
     // Insert store access
     if (stores && stores.length > 0) {
@@ -948,7 +977,7 @@ async function createUser(email, nombre, clave, stores, canales, accesoTendencia
 /**
  * Update user (including PIN change)
  */
-async function updateUser(userId, email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId = null, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones, cedula = null, telefono = null, accesoAsignaciones = false, accesoGruposAlmacen = false, accesoReportes = false) {
+async function updateUser(userId, email, nombre, activo, clave, stores, canales, accesoTendencia, accesoTactica, accesoEventos, accesoPresupuesto, accesoPresupuestoMensual, accesoPresupuestoAnual, accesoPresupuestoRangos, accesoTiempos, accesoEvaluaciones, accesoInventarios, accesoPersonal, esAdmin, permitirEnvioClave, perfilId = null, accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual, verAjustePresupuesto, verVersiones, verBitacora, verReferencias, editarConsolidado, ejecutarRecalculo, ajustarCurva, aprobarAjustes, restaurarVersiones, cedula = null, telefono = null, accesoAsignaciones = false, accesoGruposAlmacen = false, accesoReportes = false) {
     const pool = await poolPromise;
 
     // Protect superadmin user
@@ -990,6 +1019,7 @@ async function updateUser(userId, email, nombre, activo, clave, stores, canales,
             editarConsolidado = @editarConsolidado,
             ejecutarRecalculo = @ejecutarRecalculo,
             ajustarCurva = @ajustarCurva,
+            aprobarAjustes = @aprobarAjustes,
             restaurarVersiones = @restaurarVersiones,
             AccesoAsignaciones = @accesoAsignaciones,
             AccesoGruposAlmacen = @accesoGruposAlmacen,
@@ -1027,6 +1057,7 @@ async function updateUser(userId, email, nombre, activo, clave, stores, canales,
         .input('editarConsolidado', sql.Bit, editarConsolidado || false)
         .input('ejecutarRecalculo', sql.Bit, ejecutarRecalculo || false)
         .input('ajustarCurva', sql.Bit, ajustarCurva || false)
+        .input('aprobarAjustes', sql.Bit, aprobarAjustes || false)
         .input('restaurarVersiones', sql.Bit, restaurarVersiones || false)
         .input('accesoAsignaciones', sql.Bit, accesoAsignaciones || false)
         .input('accesoGruposAlmacen', sql.Bit, accesoGruposAlmacen || false)
@@ -1039,6 +1070,28 @@ async function updateUser(userId, email, nombre, activo, clave, stores, canales,
 
     updateQuery += ' WHERE Id = @id';
     await request.query(updateQuery);
+
+    // Sync profile permissions if a profile is assigned
+    if (perfilId) {
+        await pool.request()
+            .input('userId', sql.Int, userId)
+            .query(`
+                UPDATE APP_USUARIOS
+                SET AccesoTendencia = p.AccesoTendencia, AccesoTactica = p.AccesoTactica, AccesoEventos = p.AccesoEventos,
+                    AccesoPresupuesto = p.AccesoPresupuesto, AccesoPresupuestoMensual = p.AccesoPresupuestoMensual,
+                    AccesoPresupuestoAnual = p.AccesoPresupuestoAnual, AccesoPresupuestoRangos = p.AccesoPresupuestoRangos,
+                    AccesoTiempos = p.AccesoTiempos, AccesoEvaluaciones = p.AccesoEvaluaciones, AccesoInventarios = p.AccesoInventarios,
+                    AccesoPersonal = p.AccesoPersonal, EsAdmin = p.EsAdmin, accesoModeloPresupuesto = p.accesoModeloPresupuesto,
+                    verConfigModelo = p.verConfigModelo, verConsolidadoMensual = p.verConsolidadoMensual, verAjustePresupuesto = p.verAjustePresupuesto,
+                    verVersiones = p.verVersiones, verBitacora = p.verBitacora, verReferencias = p.verReferencias,
+                    editarConsolidado = p.editarConsolidado, ejecutarRecalculo = p.ejecutarRecalculo, ajustarCurva = p.ajustarCurva,
+                    aprobarAjustes = p.aprobarAjustes, restaurarVersiones = p.restaurarVersiones, AccesoAsignaciones = p.AccesoAsignaciones,
+                    AccesoGruposAlmacen = p.AccesoGruposAlmacen, AccesoReportes = p.AccesoReportes
+                FROM APP_USUARIOS u
+                INNER JOIN APP_PERFILES p ON u.PerfilId = p.Id
+                WHERE u.Id = @userId
+            `);
+    }
 
     // Replace stores
     await pool.request()
@@ -1127,6 +1180,7 @@ async function getAllProfiles() {
         editarConsolidado: p.editarConsolidado || false,
         ejecutarRecalculo: p.ejecutarRecalculo || false,
         ajustarCurva: p.ajustarCurva || false,
+        aprobarAjustes: p.aprobarAjustes || false,
         restaurarVersiones: p.restaurarVersiones || false,
         // Configuración permissions
         accesoAsignaciones: p.AccesoAsignaciones || false,
@@ -1189,6 +1243,7 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
         .input('editarConsolidado', sql.Bit, permisos.editarConsolidado || false)
         .input('ejecutarRecalculo', sql.Bit, permisos.ejecutarRecalculo || false)
         .input('ajustarCurva', sql.Bit, permisos.ajustarCurva || false)
+        .input('aprobarAjustes', sql.Bit, permisos.aprobarAjustes || false)
         .input('restaurarVersiones', sql.Bit, permisos.restaurarVersiones || false)
         .input('apareceEnTituloAlcance', sql.Bit, permisos.apareceEnTituloAlcance !== undefined ? permisos.apareceEnTituloAlcance : true)
         .input('apareceEnTituloMensual', sql.Bit, permisos.apareceEnTituloMensual !== undefined ? permisos.apareceEnTituloMensual : true)
@@ -1206,7 +1261,7 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
                 EsAdmin, PermitirEnvioClave, UsuarioCreador,
                 accesoModeloPresupuesto, verConfigModelo, verConsolidadoMensual,
                 verAjustePresupuesto, verVersiones, verBitacora, verReferencias,
-                editarConsolidado, ejecutarRecalculo, ajustarCurva, restaurarVersiones,
+                editarConsolidado, ejecutarRecalculo, ajustarCurva, aprobarAjustes, restaurarVersiones,
                 ApareceEnTituloAlcance, ApareceEnTituloMensual, ApareceEnTituloAnual,
                 ApareceEnTituloTendencia, ApareceEnTituloRangos,
                 AccesoAsignaciones, AccesoGruposAlmacen, AccesoReportes
@@ -1219,7 +1274,7 @@ async function createProfile(nombre, descripcion, permisos, usuarioCreador) {
                 @esAdmin, @permitirEnvioClave, @usuarioCreador,
                 @accesoModeloPresupuesto, @verConfigModelo, @verConsolidadoMensual,
                 @verAjustePresupuesto, @verVersiones, @verBitacora, @verReferencias,
-                @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @restaurarVersiones,
+                @editarConsolidado, @ejecutarRecalculo, @ajustarCurva, @aprobarAjustes, @restaurarVersiones,
                 @apareceEnTituloAlcance, @apareceEnTituloMensual, @apareceEnTituloAnual,
                 @apareceEnTituloTendencia, @apareceEnTituloRangos,
                 @accesoAsignaciones, @accesoGruposAlmacen, @accesoReportes
@@ -1285,6 +1340,7 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
         .input('editarConsolidado', sql.Bit, permisos.editarConsolidado || false)
         .input('ejecutarRecalculo', sql.Bit, permisos.ejecutarRecalculo || false)
         .input('ajustarCurva', sql.Bit, permisos.ajustarCurva || false)
+        .input('aprobarAjustes', sql.Bit, permisos.aprobarAjustes || false)
         .input('restaurarVersiones', sql.Bit, permisos.restaurarVersiones || false)
         .input('apareceEnTituloAlcance', sql.Bit, permisos.apareceEnTituloAlcance !== undefined ? permisos.apareceEnTituloAlcance : true)
         .input('apareceEnTituloMensual', sql.Bit, permisos.apareceEnTituloMensual !== undefined ? permisos.apareceEnTituloMensual : true)
@@ -1321,6 +1377,7 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
                 editarConsolidado = @editarConsolidado,
                 ejecutarRecalculo = @ejecutarRecalculo,
                 ajustarCurva = @ajustarCurva,
+                aprobarAjustes = @aprobarAjustes,
                 restaurarVersiones = @restaurarVersiones,
                 ApareceEnTituloAlcance = @apareceEnTituloAlcance,
                 ApareceEnTituloMensual = @apareceEnTituloMensual,
@@ -1334,6 +1391,25 @@ async function updateProfile(perfilId, nombre, descripcion, permisos) {
             WHERE Id = @id
         `);
 
+    // Force sync all users assigned to this profile
+    await pool.request()
+        .input('id', sql.Int, perfilId)
+        .query(`
+            UPDATE APP_USUARIOS
+            SET AccesoTendencia = p.AccesoTendencia, AccesoTactica = p.AccesoTactica, AccesoEventos = p.AccesoEventos,
+                AccesoPresupuesto = p.AccesoPresupuesto, AccesoPresupuestoMensual = p.AccesoPresupuestoMensual,
+                AccesoPresupuestoAnual = p.AccesoPresupuestoAnual, AccesoPresupuestoRangos = p.AccesoPresupuestoRangos,
+                AccesoTiempos = p.AccesoTiempos, AccesoEvaluaciones = p.AccesoEvaluaciones, AccesoInventarios = p.AccesoInventarios,
+                AccesoPersonal = p.AccesoPersonal, EsAdmin = p.EsAdmin, accesoModeloPresupuesto = p.accesoModeloPresupuesto,
+                verConfigModelo = p.verConfigModelo, verConsolidadoMensual = p.verConsolidadoMensual, verAjustePresupuesto = p.verAjustePresupuesto,
+                verVersiones = p.verVersiones, verBitacora = p.verBitacora, verReferencias = p.verReferencias,
+                editarConsolidado = p.editarConsolidado, ejecutarRecalculo = p.ejecutarRecalculo, ajustarCurva = p.ajustarCurva,
+                aprobarAjustes = p.aprobarAjustes, restaurarVersiones = p.restaurarVersiones, AccesoAsignaciones = p.AccesoAsignaciones,
+                AccesoGruposAlmacen = p.AccesoGruposAlmacen, AccesoReportes = p.AccesoReportes
+            FROM APP_USUARIOS u
+            INNER JOIN APP_PERFILES p ON u.PerfilId = p.Id
+            WHERE p.Id = @id
+        `);
 }
 
 /**
@@ -1472,6 +1548,7 @@ async function syncProfilePermissions(perfilId) {
         .input('editarConsolidado', sql.Bit, profile.editarConsolidado || false)
         .input('ejecutarRecalculo', sql.Bit, profile.ejecutarRecalculo || false)
         .input('ajustarCurva', sql.Bit, profile.ajustarCurva || false)
+        .input('aprobarAjustes', sql.Bit, profile.aprobarAjustes || false)
         .input('restaurarVersiones', sql.Bit, profile.restaurarVersiones || false)
         .input('accesoAsignaciones', sql.Bit, profile.AccesoAsignaciones || false)
         .input('accesoGruposAlmacen', sql.Bit, profile.AccesoGruposAlmacen || false)
@@ -1501,6 +1578,7 @@ async function syncProfilePermissions(perfilId) {
                 editarConsolidado = @editarConsolidado,
                 ejecutarRecalculo = @ejecutarRecalculo,
                 ajustarCurva = @ajustarCurva,
+                aprobarAjustes = @aprobarAjustes,
                 restaurarVersiones = @restaurarVersiones,
                 AccesoAsignaciones = @accesoAsignaciones,
                 AccesoGruposAlmacen = @accesoGruposAlmacen,
@@ -1537,7 +1615,7 @@ async function impersonateUser(adminEmail, adminClave, targetUserId, ip, userAge
     const pool = await poolPromise;
     const result = await pool.request()
         .input('id', sql.Int, targetUserId)
-        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(restaurarVersiones,0) as restaurarVersiones, ISNULL(AccesoAsignaciones,0) as AccesoAsignaciones, ISNULL(AccesoGruposAlmacen,0) as AccesoGruposAlmacen, ISNULL(AccesoReportes,0) as AccesoReportes FROM APP_USUARIOS WHERE Id = @id');
+        .query('SELECT Id, Email, Nombre, Clave, Activo, AccesoTendencia, AccesoTactica, AccesoEventos, AccesoPresupuesto, AccesoPresupuestoMensual, AccesoPresupuestoAnual, AccesoPresupuestoRangos, AccesoTiempos, AccesoEvaluaciones, AccesoInventarios, AccesoPersonal, EsAdmin, EsProtegido, ISNULL(accesoModeloPresupuesto,0) as accesoModeloPresupuesto, ISNULL(verConfigModelo,0) as verConfigModelo, ISNULL(verConsolidadoMensual,0) as verConsolidadoMensual, ISNULL(verAjustePresupuesto,0) as verAjustePresupuesto, ISNULL(verVersiones,0) as verVersiones, ISNULL(verBitacora,0) as verBitacora, ISNULL(verReferencias,0) as verReferencias, ISNULL(editarConsolidado,0) as editarConsolidado, ISNULL(ejecutarRecalculo,0) as ejecutarRecalculo, ISNULL(ajustarCurva,0) as ajustarCurva, ISNULL(aprobarAjustes,0) as aprobarAjustes, ISNULL(restaurarVersiones,0) as restaurarVersiones, ISNULL(AccesoAsignaciones,0) as AccesoAsignaciones, ISNULL(AccesoGruposAlmacen,0) as AccesoGruposAlmacen, ISNULL(AccesoReportes,0) as AccesoReportes FROM APP_USUARIOS WHERE Id = @id');
 
     if (result.recordset.length === 0) {
         return { success: false, message: 'Usuario objetivo no encontrado.' };
@@ -1632,6 +1710,7 @@ async function impersonateUser(adminEmail, adminClave, targetUserId, ip, userAge
             editarConsolidado: user.editarConsolidado,
             ejecutarRecalculo: user.ejecutarRecalculo,
             ajustarCurva: user.ajustarCurva,
+            aprobarAjustes: user.aprobarAjustes,
             restaurarVersiones: user.restaurarVersiones,
             accesoAsignaciones: user.AccesoAsignaciones,
             accesoGruposAlmacen: user.AccesoGruposAlmacen,

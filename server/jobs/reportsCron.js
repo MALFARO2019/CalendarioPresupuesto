@@ -33,15 +33,27 @@ function stop() {
 async function getUserPermissions(userId) {
     try {
         const pool = await poolPromise;
+        const userResult = await pool.request()
+            .input('userId', sql.Int, userId)
+            .query('SELECT PctDisplayMode, PctDecimals, ValueDisplayMode, ValueDecimals FROM APP_USUARIOS WHERE Id = @userId');
         const storesResult = await pool.request()
             .input('userId', sql.Int, userId)
             .query('SELECT Local FROM APP_USUARIO_ALMACEN WHERE UsuarioId = @userId');
         const canalesResult = await pool.request()
             .input('userId', sql.Int, userId)
             .query('SELECT Canal FROM APP_USUARIO_CANAL WHERE UsuarioId = @userId');
+
+        const prefs = userResult.recordset[0] || {};
+
         return {
             allowedStores: storesResult.recordset.map(r => r.Local),
-            allowedCanales: canalesResult.recordset.map(r => r.Canal)
+            allowedCanales: canalesResult.recordset.map(r => r.Canal),
+            preferences: {
+                pctDisplayMode: prefs.PctDisplayMode || 'base100',
+                pctDecimals: prefs.PctDecimals !== null ? prefs.PctDecimals : 1,
+                valueDisplayMode: prefs.ValueDisplayMode || 'completo',
+                valueDecimals: prefs.ValueDecimals !== null ? prefs.ValueDecimals : 0
+            }
         };
     } catch (e) {
         console.warn('⚠️ Could not fetch user permissions:', e.message);
@@ -104,7 +116,12 @@ async function checkAndSendReports() {
                         : fixedParams.filtroCanales;
                 }
 
-                const config = { nombre: sub.ReporteNombre, icono: sub.Icono || '📊' };
+                const config = {
+                    nombre: sub.ReporteNombre,
+                    icono: sub.Icono || '📊',
+                    preferences: userPerms.preferences
+                };
+
                 const { ok } = await generarReporteAlcance([emailTo], effectivePerms, config);
                 if (ok) {
                     await reportsDb.markSubscriptionSent(sub.ID);

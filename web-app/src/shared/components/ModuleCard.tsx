@@ -18,10 +18,12 @@ function isGroupedStats(stats: ModuleStats[] | GroupedModuleStats[]): stats is G
 export function ModuleCard({ module, stats = [], isLoading = false, onClick, dateRange }: ModuleCardProps) {
     const isGrouped = isGroupedStats(stats);
 
-    const getColorClass = (color?: 'green' | 'red' | 'yellow') => {
+    const getColorClass = (color?: 'green' | 'red' | 'yellow' | 'gray' | 'blue') => {
         if (!color) return 'text-gray-900';
         if (color === 'green') return 'text-green-600';
         if (color === 'red') return 'text-red-600';
+        if (color === 'blue') return 'text-blue-600';
+        if (color === 'gray') return 'text-gray-500';
         return 'text-yellow-600';
     };
 

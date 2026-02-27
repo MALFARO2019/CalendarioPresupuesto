@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    fetchNotificacionesPendientes, revisarNotificacion, marcarVersionLeida,
+    fetchNotificacionesPendientes, revisarNotificacion, marcarVersionLeida, API_BASE,
     type NotificacionAdmin, type NotificacionVersion
 } from '../../api';
 
@@ -31,6 +31,11 @@ export const NotificacionesBell: React.FC<Props> = ({ versionActual }) => {
     const [versionDetalle, setVersionDetalle] = useState<string | null>(null);
     const [versionItems, setVersionItems] = useState<NotificacionVersion[]>([]);
     const [loadingVersion, setLoadingVersion] = useState(false);
+
+    // Ruta
+    const [rutaDetalle, setRutaDetalle] = useState(false);
+    const [rutaItems, setRutaItems] = useState<NotificacionVersion[]>([]);
+    const [loadingRuta, setLoadingRuta] = useState(false);
 
     const panelRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +121,19 @@ export const NotificacionesBell: React.FC<Props> = ({ versionActual }) => {
         } catch { /* silencioso */ }
     };
 
+    const handleVerRuta = async () => {
+        setRutaDetalle(true);
+        setLoadingRuta(true);
+        setOpen(false);
+        try {
+            const { fetchRuta } = await import('../../api');
+            const items = await fetchRuta(versionActual || 'v0.0');
+            setRutaItems(items);
+        } catch { setRutaItems([]); } finally {
+            setLoadingRuta(false);
+        }
+    };
+
     return (
         <>
             {/* Bell icon */}
@@ -196,6 +214,14 @@ export const NotificacionesBell: React.FC<Props> = ({ versionActual }) => {
                                     <p>Todo al día</p>
                                 </div>
                             )}
+                        </div>
+
+                        {/* Botón ver ruta (siempre visible al fondo) */}
+                        <div className="p-2 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+                            <button onClick={handleVerRuta}
+                                className="w-full py-2.5 text-sm font-bold text-indigo-600 hover:bg-indigo-100/50 rounded-lg transition-colors flex items-center justify-center gap-2">
+                                🗺️ Ver hoja de ruta
+                            </button>
                         </div>
                     </div>
                 )}
@@ -305,9 +331,17 @@ export const NotificacionesBell: React.FC<Props> = ({ versionActual }) => {
                             ) : versionItems.map(item => (
                                 <div key={item.Id} className="flex gap-3 p-3 bg-gray-50 rounded-xl">
                                     <span className="text-lg flex-shrink-0 mt-0.5">{TIPO_ICONS[item.Tipo] || '📌'}</span>
-                                    <div>
+                                    <div className="flex-1 min-w-0">
                                         <p className="text-sm font-semibold text-gray-800">{item.Titulo}</p>
                                         <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{item.Texto}</p>
+                                        {item.ImagenUrl && (
+                                            <div className="mt-2 relative group cursor-zoom-in inline-block max-w-full" onClick={() => setZoomImagen(`${API_BASE.replace('/api', '')}${item.ImagenUrl}`)}>
+                                                <img src={`${API_BASE.replace('/api', '')}${item.ImagenUrl}`} alt="Vista previa" className="max-h-48 rounded-lg border border-gray-200 object-contain w-full transition-transform active:scale-[0.98] bg-white" />
+                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                    <span className="bg-white/90 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-sm uppercase tracking-wider">Ampliar</span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -321,6 +355,70 @@ export const NotificacionesBell: React.FC<Props> = ({ versionActual }) => {
                             <button onClick={() => handleMarcarVersionLeida(versionDetalle)}
                                 className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700">
                                 ✅ Marcar como leída
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Ruta */}
+            {rutaDetalle && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+                        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <div>
+                                <h3 className="font-bold text-gray-800">🗺️ Hoja de Ruta</h3>
+                                <p className="text-xs text-gray-400 mt-0.5">Próximas funcionalidades en desarrollo</p>
+                            </div>
+                            <button onClick={() => setRutaDetalle(false)}
+                                className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                            {loadingRuta ? (
+                                <div className="text-center py-8 text-gray-400 text-sm animate-pulse">Cargando próximos cambios...</div>
+                            ) : rutaItems.length === 0 ? (
+                                <div className="text-center py-8 text-gray-400 text-sm">No hay planes futuros registrados por el momento.</div>
+                            ) : (
+                                Object.entries(
+                                    rutaItems.reduce((acc, item) => {
+                                        if (!acc[item.VersionId]) acc[item.VersionId] = [];
+                                        acc[item.VersionId].push(item);
+                                        return acc;
+                                    }, {} as Record<string, NotificacionVersion[]>)
+                                ).sort((a, b) => a[0].localeCompare(b[0])).map(([ver, items]) => (
+                                    <div key={ver} className="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+                                        <div className="bg-amber-50 px-4 py-2 border-b border-amber-100">
+                                            <span className="text-sm font-bold text-amber-800">Versión {ver}</span>
+                                        </div>
+                                        <div className="divide-y divide-gray-50">
+                                            {items.sort((a, b) => (a.Orden || 0) - (b.Orden || 0)).map(item => (
+                                                <div key={item.Id} className="flex gap-3 p-3 bg-white">
+                                                    <span className="text-lg flex-shrink-0 mt-0.5">{TIPO_ICONS[item.Tipo] || '📌'}</span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-semibold text-gray-800">{item.Titulo}</p>
+                                                        {item.Texto && <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{item.Texto}</p>}
+                                                        {item.ImagenUrl && (
+                                                            <div className="mt-2 relative group cursor-zoom-in inline-block max-w-full" onClick={() => setZoomImagen(`${API_BASE.replace('/api', '')}${item.ImagenUrl}`)}>
+                                                                <img src={`${API_BASE.replace('/api', '')}${item.ImagenUrl}`} alt="Vista previa" className="max-h-48 rounded-lg border border-gray-200 object-contain w-full transition-transform active:scale-[0.98] bg-white" />
+                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                                    <span className="bg-white/90 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-sm uppercase tracking-wider">Ampliar</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <div className="px-5 py-4 border-t border-gray-100 flex gap-3">
+                            <button onClick={() => setRutaDetalle(false)}
+                                className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">
+                                Cerrar
                             </button>
                         </div>
                     </div>

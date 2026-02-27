@@ -27,8 +27,8 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
             || req.user.verVersiones
             || req.user.verBitacora
             || req.user.verReferencias
-            || req.user.editarConsolidado
             || req.user.ejecutarRecalculo
+            || req.user.aprobarAjustes
             || req.user.restaurarVersiones;
         if (!hasAnyModeloPerm) {
             res.status(403).json({ error: 'No tiene acceso al módulo Modelo de Presupuesto' });
@@ -204,7 +204,7 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     app.get('/api/modelo-presupuesto/ajustes', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
-            if (!req.user.verAjustePresupuesto && !req.user.ajustarCurva) {
+            if (!req.user.verAjustePresupuesto && !req.user.ajustarCurva && !req.user.aprobarAjustes) {
                 return res.status(403).json({ error: 'No tiene permiso para ver ajustes' });
             }
             const { nombrePresupuesto } = req.query;
@@ -220,7 +220,7 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     app.get('/api/modelo-presupuesto/datos-ajuste', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
-            if (!req.user.verAjustePresupuesto && !req.user.ajustarCurva) {
+            if (!req.user.verAjustePresupuesto && !req.user.ajustarCurva && !req.user.aprobarAjustes) {
                 return res.status(403).json({ error: 'No tiene permiso para ver datos de ajuste' });
             }
             const { nombrePresupuesto, codAlmacen, mes, canal, tipo, ano } = req.query;
@@ -275,6 +275,14 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
                 return res.status(403).json({ error: 'No tiene permiso para ajustar la curva' });
             }
             req.body.usuario = req.user.email || req.user.nombre;
+
+            // Determinar el estado inicial según los permisos
+            if (req.user.aprobarAjustes || req.user.esAdmin) {
+                req.body.estado = 'Aprobado';
+            } else {
+                req.body.estado = 'Pendiente';
+            }
+
             const result = await modeloPresupuesto.aplicarAjuste(req.body);
             res.json({ success: true, result });
         } catch (err) {
@@ -292,6 +300,52 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
             res.json({ success: true });
         } catch (err) {
             console.error('Error PUT /api/modelo-presupuesto/ajustes/desactivar:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // PUT /api/modelo-presupuesto/ajustes/:id/estado
+    app.put('/api/modelo-presupuesto/ajustes/:id/estado', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            if (!req.user.aprobarAjustes && !req.user.esAdmin) {
+                return res.status(403).json({ error: 'No tiene permiso para aprobar/rechazar ajustes' });
+            }
+            const { estado, motivoRechazo } = req.body;
+            if (!['Aprobado', 'Rechazado'].includes(estado)) {
+                return res.status(400).json({ error: 'Estado inválido' });
+            }
+            if (estado === 'Rechazado' && (!motivoRechazo || motivoRechazo.trim() === '')) {
+                return res.status(400).json({ error: 'Debe indicar un motivo de rechazo' });
+            }
+            const usuario = req.user.email || req.user.nombre;
+            await modeloPresupuesto.aprobarRechazarAjuste(parseInt(req.params.id), estado, motivoRechazo, usuario);
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Error PUT /api/modelo-presupuesto/ajustes/:id/estado:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // POST /api/modelo-presupuesto/ajustes/aplicar-todos
+    app.post('/api/modelo-presupuesto/ajustes/aplicar-todos', authMiddleware, async (req, res) => {
+        try {
+            if (!requireModuleAccess(req, res)) return;
+            if (!req.user.ejecutarRecalculo && !req.user.accesoModeloPresupuesto) {
+                return res.status(403).json({ error: 'No tiene permiso para aplicar los ajustes y recalcular el modelo' });
+            }
+            const { nombrePresupuesto, tablaDestino } = req.body;
+            const usuario = req.user.email || req.user.nombre;
+
+            // 1. Aprobar pendientes
+            await modeloPresupuesto.aplicarPendientes(nombrePresupuesto, usuario);
+
+            // 2. Ejecutar recalculo general con la tabla indicada
+            const result = await modeloPresupuesto.ejecutarCalculo(nombrePresupuesto, usuario, { tablaDestino });
+
+            res.json({ success: true, result });
+        } catch (err) {
+            console.error('Error POST /api/modelo-presupuesto/ajustes/aplicar-todos:', err);
             res.status(500).json({ error: err.message });
         }
     });
@@ -451,7 +505,7 @@ function registerModeloPresupuestoEndpoints(app, authMiddleware) {
     app.get('/api/modelo-presupuesto/resumen-mensual', authMiddleware, async (req, res) => {
         try {
             if (!requireModuleAccess(req, res)) return;
-            if (!req.user.verAjustePresupuesto && !req.user.ajustarCurva) {
+            if (!req.user.verAjustePresupuesto && !req.user.ajustarCurva && !req.user.aprobarAjustes) {
                 return res.status(403).json({ error: 'No tiene permiso para ver datos de ajuste' });
             }
             const { nombrePresupuesto, codAlmacen, tipo } = req.query;

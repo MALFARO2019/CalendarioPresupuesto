@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, Copy, Unlink, Link2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Copy, Unlink, Link2, Check, X } from 'lucide-react';
 import { useAjusteStore } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { fmtFull, fmtPct, getEstadoBadgeClass, formatFecha } from './helpers';
@@ -11,11 +11,12 @@ import { REDISTRIBUCION_LABELS } from './types';
 import type { AjustePresupuesto } from './types';
 
 export const AjusteListaPanel: React.FC = () => {
-    const { ajustes, selectedAjusteId, canAdjust } = useAjusteStore(
+    const { ajustes, selectedAjusteId, canAdjust, canApprove } = useAjusteStore(
         useShallow(s => ({
             ajustes: s.ajustes,
             selectedAjusteId: s.selectedAjusteId,
             canAdjust: s.canAdjust,
+            canApprove: s.canApprove,
         }))
     );
     const selectAjuste = useAjusteStore(s => s.selectAjuste);
@@ -23,6 +24,7 @@ export const AjusteListaPanel: React.FC = () => {
     const openEditForm = useAjusteStore(s => s.openEditForm);
     const deleteAjuste = useAjusteStore(s => s.deleteAjuste);
     const disassociateAjuste = useAjusteStore(s => s.disassociateAjuste);
+    const aprobarRechazarAjuste = useAjusteStore(s => s.aprobarRechazarAjuste);
     const openModal = useAjusteStore(s => s.openModal);
 
     const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
@@ -41,6 +43,17 @@ export const AjusteListaPanel: React.FC = () => {
     const handleCopy = (ajuste: AjustePresupuesto) => {
         selectAjuste(ajuste.id);
         openModal('copiar');
+    };
+
+    const handleRechazar = (id: number) => {
+        const motivo = window.prompt("Por favor, indique el motivo del rechazo:");
+        if (motivo !== null) {
+            if (motivo.trim() === '') {
+                useAjusteStore.getState().setMessage({ ok: false, text: "Debe indicar un motivo para rechazar el ajuste" });
+                return;
+            }
+            aprobarRechazarAjuste(id, 'Rechazado', motivo.trim());
+        }
     };
 
     return (
@@ -79,11 +92,14 @@ export const AjusteListaPanel: React.FC = () => {
                             isSelected={selectedAjusteId === ajuste.id}
                             isDeleteConfirm={deleteConfirm === ajuste.id}
                             canAdjust={canAdjust}
+                            canApprove={canApprove}
                             onSelect={() => selectAjuste(ajuste.id === selectedAjusteId ? null : ajuste.id)}
                             onEdit={() => openEditForm(ajuste)}
                             onDelete={() => handleDelete(ajuste.id)}
                             onCopy={() => handleCopy(ajuste)}
                             onDisassociate={() => disassociateAjuste(ajuste.id)}
+                            onAprobar={() => aprobarRechazarAjuste(ajuste.id, 'Aprobado')}
+                            onRechazar={() => handleRechazar(ajuste.id)}
                         />
                     ))
                 )}
@@ -99,12 +115,15 @@ const AjusteItem: React.FC<{
     isSelected: boolean;
     isDeleteConfirm: boolean;
     canAdjust: boolean;
+    canApprove: boolean;
     onSelect: () => void;
     onEdit: () => void;
     onDelete: () => void;
     onCopy: () => void;
     onDisassociate: () => void;
-}> = ({ ajuste, isSelected, isDeleteConfirm, canAdjust, onSelect, onEdit, onDelete, onCopy, onDisassociate }) => {
+    onAprobar: () => void;
+    onRechazar: () => void;
+}> = ({ ajuste, isSelected, isDeleteConfirm, canAdjust, canApprove, onSelect, onEdit, onDelete, onCopy, onDisassociate, onAprobar, onRechazar }) => {
     const isPendiente = ajuste.estado === 'Pendiente';
 
     return (
@@ -123,17 +142,35 @@ const AjusteItem: React.FC<{
 
             {/* Info row */}
             <div className="text-[11px] text-gray-500 space-y-0.5">
-                <div>{formatFecha(ajuste.fechaAplicacion)} — {ajuste.usuario}</div>
-                <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                <div className="leading-tight">
+                    <span className="text-gray-400">{formatFecha(ajuste.fechaAplicacion)}</span><br />
+                    Creado por: <strong className="font-medium text-gray-600">{ajuste.usuario}</strong>
+                    {ajuste.usuarioAprueba && (
+                        <>
+                            <br />Aprobado por: <strong className="font-medium text-gray-600">{ajuste.usuarioAprueba}</strong>
+                        </>
+                    )}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
                     <span>Tipo: <strong className="text-gray-700">{ajuste.metodoAjuste === 'Porcentaje' ? '%' : 'Monto'}</strong></span>
                     <span>Delta: <strong className={ajuste.valorAjuste >= 0 ? 'text-emerald-600' : 'text-red-600'}>
                         {ajuste.metodoAjuste === 'Porcentaje' ? fmtPct(ajuste.valorAjuste) : fmtFull(ajuste.valorAjuste)}
                     </strong></span>
                 </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
                     <span>Canal: <strong className="text-gray-700">{ajuste.canal}</strong></span>
                     <span>Regla: <strong className="text-gray-700">{REDISTRIBUCION_LABELS[ajuste.redistribucion]}</strong></span>
                 </div>
+                {ajuste.comentario && (
+                    <div className="mt-1 text-gray-600 break-words line-clamp-2" title={ajuste.comentario}>
+                        💬 {ajuste.comentario}
+                    </div>
+                )}
+                {ajuste.estado === 'Rechazado' && ajuste.motivoRechazo && (
+                    <div className="mt-1 text-rose-600 break-words line-clamp-2" title={ajuste.motivoRechazo}>
+                        ❌ Rechazado: {ajuste.motivoRechazo}
+                    </div>
+                )}
             </div>
 
             {/* Associated badge */}
@@ -162,12 +199,6 @@ const AjusteItem: React.FC<{
                     >
                         <Trash2 className="w-3 h-3" /> {isDeleteConfirm ? '¿Confirmar?' : 'Borrar'}
                     </button>
-                    <button
-                        onClick={e => { e.stopPropagation(); onCopy(); }}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-                    >
-                        <Copy className="w-3 h-3" /> Copiar
-                    </button>
                     {ajuste.estado === 'Asociado' && (
                         <button
                             onClick={e => { e.stopPropagation(); onDisassociate(); }}
@@ -176,6 +207,36 @@ const AjusteItem: React.FC<{
                             <Unlink className="w-3 h-3" /> Desasociar
                         </button>
                     )}
+                </div>
+            )}
+            {canApprove && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                    {isPendiente && (
+                        <>
+                            <button
+                                onClick={e => { e.stopPropagation(); onAprobar(); }}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-600 bg-emerald-50 rounded-md hover:bg-emerald-100 transition-colors"
+                            >
+                                <Check className="w-3 h-3" /> Aprobar
+                            </button>
+                            <button
+                                onClick={e => { e.stopPropagation(); onRechazar(); }}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-rose-600 bg-rose-50 rounded-md hover:bg-rose-100 transition-colors"
+                            >
+                                <X className="w-3 h-3" /> Rechazar
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
+            {canAdjust && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button
+                        onClick={e => { e.stopPropagation(); onCopy(); }}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                    >
+                        <Copy className="w-3 h-3" /> Copiar
+                    </button>
                 </div>
             )}
         </div>

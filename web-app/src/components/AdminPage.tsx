@@ -50,7 +50,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const canAccessUsers = currentUser?.esAdmin;
     const canAccessAsignaciones = currentUser?.esAdmin || currentUser?.accesoAsignaciones;
     const canAccessGruposAlmacen = currentUser?.esAdmin || currentUser?.accesoGruposAlmacen;
-    const canAccessModelo = currentUser?.accesoModeloPresupuesto || currentUser?.ajustarCurva || currentUser?.verAjustePresupuesto || currentUser?.verConfigModelo || currentUser?.verConsolidadoMensual || currentUser?.verVersiones || currentUser?.verBitacora || currentUser?.verReferencias || currentUser?.editarConsolidado || currentUser?.ejecutarRecalculo || currentUser?.restaurarVersiones;
+    const canAccessModelo = currentUser?.accesoModeloPresupuesto || currentUser?.ajustarCurva || currentUser?.aprobarAjustes || currentUser?.verAjustePresupuesto || currentUser?.verConfigModelo || currentUser?.verConsolidadoMensual || currentUser?.verVersiones || currentUser?.verBitacora || currentUser?.verReferencias || currentUser?.editarConsolidado || currentUser?.ejecutarRecalculo || currentUser?.restaurarVersiones;
 
     if (!currentUser || (!canAccessUsers && !canAccessEvents && !canAccessModelo && !canAccessAsignaciones && !canAccessGruposAlmacen)) {
         return (
@@ -116,7 +116,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [newModeloPerms, setNewModeloPerms] = useState({
         accesoModeloPresupuesto: false, verConfigModelo: false, verConsolidadoMensual: false,
         verAjustePresupuesto: false, verVersiones: false, verBitacora: false, verReferencias: false,
-        editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
+        editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, aprobarAjustes: false, restaurarVersiones: false,
     });
     const [newPerfilId, setNewPerfilId] = useState<number | null>(null);
     const [newCedula, setNewCedula] = useState('');
@@ -151,7 +151,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
     const [editModeloPerms, setEditModeloPerms] = useState({
         accesoModeloPresupuesto: false, verConfigModelo: false, verConsolidadoMensual: false,
         verAjustePresupuesto: false, verVersiones: false, verBitacora: false, verReferencias: false,
-        editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
+        editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, aprobarAjustes: false, restaurarVersiones: false,
     });
     const [editPermitirEnvioClave, setEditPermitirEnvioClave] = useState(true);
     const [editPerfilId, setEditPerfilId] = useState<number | null>(null);
@@ -356,11 +356,51 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                     editarConsolidado: p.editarConsolidado || false,
                     ejecutarRecalculo: p.ejecutarRecalculo || false,
                     ajustarCurva: p.ajustarCurva || false,
+                    aprobarAjustes: p.aprobarAjustes || false,
                     restaurarVersiones: p.restaurarVersiones || false,
                 });
                 setNewAccesoAsignaciones(p.accesoAsignaciones || false);
                 setNewAccesoGruposAlmacen(p.accesoGruposAlmacen || false);
                 setNewAccesoReportes(p.accesoReportes || false);
+            }
+        }
+    };
+
+    // When a profile is selected in the edit user form, auto-fill all permissions
+    const handleEditProfileSelect = (profileId: number | null) => {
+        setEditPerfilId(profileId);
+        if (profileId) {
+            const p = profiles.find(pr => pr.id === profileId);
+            if (p) {
+                setEditAccesoTendencia(p.accesoTendencia);
+                setEditAccesoTactica(p.accesoTactica);
+                setEditAccesoEventos(p.accesoEventos);
+                setEditAccesoPresupuesto(p.accesoPresupuesto);
+                setEditAccesoPresupuestoMensual(p.accesoPresupuestoMensual ?? true);
+                setEditAccesoPresupuestoAnual(p.accesoPresupuestoAnual ?? true);
+                setEditAccesoPresupuestoRangos(p.accesoPresupuestoRangos ?? true);
+                setEditAccesoTiempos(p.accesoTiempos);
+                setEditAccesoEvaluaciones(p.accesoEvaluaciones);
+                setEditAccesoInventarios(p.accesoInventarios);
+                setEditAccesoPersonal(p.accesoPersonal || false);
+                setEditEsAdmin(p.esAdmin);
+                setEditModeloPerms({
+                    accesoModeloPresupuesto: p.accesoModeloPresupuesto || false,
+                    verConfigModelo: p.verConfigModelo || false,
+                    verConsolidadoMensual: p.verConsolidadoMensual || false,
+                    verAjustePresupuesto: p.verAjustePresupuesto || false,
+                    verVersiones: p.verVersiones || false,
+                    verBitacora: p.verBitacora || false,
+                    verReferencias: p.verReferencias || false,
+                    editarConsolidado: p.editarConsolidado || false,
+                    ejecutarRecalculo: p.ejecutarRecalculo || false,
+                    ajustarCurva: p.ajustarCurva || false,
+                    aprobarAjustes: p.aprobarAjustes || false,
+                    restaurarVersiones: p.restaurarVersiones || false,
+                });
+                setEditAccesoAsignaciones(p.accesoAsignaciones || false);
+                setEditAccesoGruposAlmacen(p.accesoGruposAlmacen || false);
+                setEditAccesoReportes(p.accesoReportes || false);
             }
         }
     };
@@ -428,7 +468,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             setNewModeloPerms({
                 accesoModeloPresupuesto: false, verConfigModelo: false, verConsolidadoMensual: false,
                 verAjustePresupuesto: false, verVersiones: false, verBitacora: false, verReferencias: false,
-                editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, restaurarVersiones: false,
+                editarConsolidado: false, ejecutarRecalculo: false, ajustarCurva: false, aprobarAjustes: false, restaurarVersiones: false,
             });
             setNewPerfilId(null);
             setNewCedula('');
@@ -475,6 +515,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             editarConsolidado: user.editarConsolidado || false,
             ejecutarRecalculo: user.ejecutarRecalculo || false,
             ajustarCurva: user.ajustarCurva || false,
+            aprobarAjustes: user.aprobarAjustes || false,
             restaurarVersiones: user.restaurarVersiones || false,
         });
         setEditPermitirEnvioClave(user.permitirEnvioClave !== undefined ? user.permitirEnvioClave : true);
@@ -484,6 +525,43 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
         setEditAccesoAsignaciones(user.accesoAsignaciones || false);
         setEditAccesoGruposAlmacen(user.accesoGruposAlmacen || false);
         setEditAccesoReportes(user.accesoReportes || false);
+
+        // Si tiene un perfil asignado, sobrescribir los permisos locales con los del perfil
+        // Esto asegura que la vista siempre refleje los permisos reales heredados por el perfil.
+        if (user.perfilId) {
+            const p = profiles.find(pr => pr.id === user.perfilId);
+            if (p) {
+                setEditAccesoTendencia(p.accesoTendencia);
+                setEditAccesoTactica(p.accesoTactica);
+                setEditAccesoEventos(p.accesoEventos);
+                setEditAccesoPresupuesto(p.accesoPresupuesto);
+                setEditAccesoPresupuestoMensual(p.accesoPresupuestoMensual ?? true);
+                setEditAccesoPresupuestoAnual(p.accesoPresupuestoAnual ?? true);
+                setEditAccesoPresupuestoRangos(p.accesoPresupuestoRangos ?? true);
+                setEditAccesoTiempos(p.accesoTiempos);
+                setEditAccesoEvaluaciones(p.accesoEvaluaciones);
+                setEditAccesoInventarios(p.accesoInventarios);
+                setEditAccesoPersonal(p.accesoPersonal || false);
+                setEditEsAdmin(p.esAdmin);
+                setEditModeloPerms({
+                    accesoModeloPresupuesto: p.accesoModeloPresupuesto || false,
+                    verConfigModelo: p.verConfigModelo || false,
+                    verConsolidadoMensual: p.verConsolidadoMensual || false,
+                    verAjustePresupuesto: p.verAjustePresupuesto || false,
+                    verVersiones: p.verVersiones || false,
+                    verBitacora: p.verBitacora || false,
+                    verReferencias: p.verReferencias || false,
+                    editarConsolidado: p.editarConsolidado || false,
+                    ejecutarRecalculo: p.ejecutarRecalculo || false,
+                    ajustarCurva: p.ajustarCurva || false,
+                    aprobarAjustes: p.aprobarAjustes || false,
+                    restaurarVersiones: p.restaurarVersiones || false,
+                });
+                setEditAccesoAsignaciones(p.accesoAsignaciones || false);
+                setEditAccesoGruposAlmacen(p.accesoGruposAlmacen || false);
+                setEditAccesoReportes(p.accesoReportes || false);
+            }
+        }
     };
 
     const handleUpdateUser = async () => {
@@ -595,18 +673,35 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
             <div className="max-w-6xl mx-auto">
                 {/* Sticky Header */}
                 <div className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
-                    <div className="px-6 py-4 flex items-center gap-4">
-                        <button
-                            onClick={onBack}
-                            className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-indigo-100 hover:text-indigo-600 rounded-xl transition-all text-gray-600"
-                            title="Volver"
-                        >
-                            <ArrowLeft className="w-5 h-5" />
-                        </button>
-                        <div>
-                            <h1 className="text-xl font-bold text-gray-900 leading-tight">Panel de Configuración</h1>
-                            <p className="text-xs text-gray-400">Administrar usuarios, integraciones y sistema</p>
+                    <div className="px-6 py-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={onBack}
+                                className="flex items-center justify-center w-9 h-9 bg-gray-100 hover:bg-indigo-100 hover:text-indigo-600 rounded-xl transition-all text-gray-600"
+                                title="Volver"
+                            >
+                                <ArrowLeft className="w-5 h-5" />
+                            </button>
+                            <div>
+                                <h1 className="text-xl font-bold text-gray-900 leading-tight">Panel de Configuración</h1>
+                                <p className="text-xs text-gray-400">Administrar usuarios, integraciones y sistema</p>
+                            </div>
                         </div>
+                        {currentUser && (
+                            <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-100 shadow-sm ml-auto">
+                                <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <span className="text-sm font-bold text-indigo-600">{currentUser.nombre?.charAt(0).toUpperCase() || currentUser.email?.charAt(0).toUpperCase()}</span>
+                                </div>
+                                <div className="hidden sm:flex flex-col max-w-[200px]">
+                                    <span className="text-xs font-semibold text-gray-800 truncate">{currentUser.nombre || currentUser.email}</span>
+                                    {currentUser.impersonatedBy ? (
+                                        <span className="text-[10px] font-bold text-amber-600 truncate">Visto por {currentUser.impersonatedBy}</span>
+                                    ) : (
+                                        <span className="text-[10px] font-medium text-gray-500 truncate">{currentUser.email}</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Vertical sidebar nav — collapses to select on mobile */}
@@ -619,7 +714,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                             {canAccessUsers && <option value="users">👤 Usuarios</option>}
                             {canAccessUsers && <option value="profiles">🛡️ Perfiles</option>}
                             {canAccessAsignaciones && <option value="personal">👥 Asignaciones</option>}
-                            {canAccessEvents && <option value="events">📅 Eventos Ajuste</option>}
+                            {canAccessEvents && <option value="events">📅 Eventos</option>}
                             {canAccessUsers && <option value="ia">🤖 IA Táctica</option>}
                             {canAccessUsers && <option value="general">⚙️ General</option>}
                             {canAccessUsers && <option value="database">🗄️ Base de Datos</option>}
@@ -666,7 +761,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                         {canAccessEvents && (
                             <button onClick={() => setActiveTab('events')}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${activeTab === 'events' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
-                                <Calendar className="w-4 h-4 flex-shrink-0" /> Eventos Ajuste
+                                <Calendar className="w-4 h-4 flex-shrink-0" /> Eventos
                             </button>
                         )}
                         {canAccessUsers && (
@@ -921,6 +1016,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             checked={newAccesoTendencia}
                                                             onChange={e => setNewAccesoTendencia(e.target.checked)}
                                                             className="w-4 h-4 text-indigo-600 rounded"
+                                                            disabled={!!newPerfilId}
                                                         />
                                                         <span className="text-sm font-medium text-gray-700">Acceso a Tendencia</span>
                                                     </label>
@@ -930,6 +1026,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             checked={newAccesoTactica}
                                                             onChange={e => setNewAccesoTactica(e.target.checked)}
                                                             className="w-4 h-4 text-indigo-600 rounded"
+                                                            disabled={!!newPerfilId}
                                                         />
                                                         <span className="text-sm font-medium text-gray-700">Acceso T&amp;E</span>
                                                     </label>
@@ -939,6 +1036,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             checked={newAccesoEventos}
                                                             onChange={e => setNewAccesoEventos(e.target.checked)}
                                                             className="w-4 h-4 text-indigo-600 rounded"
+                                                            disabled={!!newPerfilId}
                                                         />
                                                         <span className="text-sm font-medium text-gray-700">Acceso a Eventos</span>
                                                     </label>
@@ -948,8 +1046,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                             checked={newEsAdmin}
                                                             onChange={e => setNewEsAdmin(e.target.checked)}
                                                             className="w-4 h-4 text-indigo-600 rounded"
+                                                            disabled={!!newPerfilId}
                                                         />
                                                         <span className="text-sm font-medium text-gray-700">Es Administrador</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={(newModeloPerms as any)['ajustarCurva']}
+                                                            onChange={e => setNewModeloPerms({ ...newModeloPerms, ajustarCurva: e.target.checked })}
+                                                            className="w-4 h-4 text-indigo-600 rounded"
+                                                            disabled={!!newPerfilId}
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">Crear/Editar Ajustes</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={(newModeloPerms as any)['aprobarAjustes']}
+                                                            onChange={e => setNewModeloPerms({ ...newModeloPerms, aprobarAjustes: e.target.checked })}
+                                                            className="w-4 h-4 text-indigo-600 rounded"
+                                                            disabled={!!newPerfilId}
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">Aprobar Ajustes</span>
                                                     </label>
                                                 </div>
                                             </div>
@@ -1067,7 +1186,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                         { key: 'verReferencias', label: 'Ver Referencias' },
                                                         { key: 'editarConsolidado', label: 'Editar Consolidado' },
                                                         { key: 'ejecutarRecalculo', label: 'Ejecutar Recálculo' },
-                                                        { key: 'ajustarCurva', label: 'Ajustar Curva' },
                                                         { key: 'restaurarVersiones', label: 'Restaurar Versiones' },
                                                     ].map(({ key, label }) => (
                                                         <label key={key} className="flex items-center gap-2 cursor-pointer bg-emerald-50/50 p-2 rounded-lg border border-emerald-100 text-xs">
@@ -1518,7 +1636,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                         </label>
                                                         <select
                                                             value={editPerfilId ?? ''}
-                                                            onChange={e => setEditPerfilId(e.target.value ? Number(e.target.value) : null)}
+                                                            onChange={e => handleEditProfileSelect(e.target.value ? Number(e.target.value) : null)}
                                                             className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm transition-all"
                                                         >
                                                             <option value="">(Ninguno)</option>
@@ -1608,8 +1726,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                                     checked={editPermitirEnvioClave}
                                                                     onChange={e => setEditPermitirEnvioClave(e.target.checked)}
                                                                     className="w-4 h-4 text-indigo-600 rounded"
+                                                                    disabled={!!editPerfilId}
                                                                 />
                                                                 <span className="text-sm font-medium text-gray-700">Permitir envío de clave</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={(editModeloPerms as any)['ajustarCurva']}
+                                                                    onChange={e => setEditModeloPerms({ ...editModeloPerms, ajustarCurva: e.target.checked })}
+                                                                    className="w-4 h-4 text-indigo-600 rounded"
+                                                                    disabled={!!editPerfilId}
+                                                                />
+                                                                <span className="text-sm font-medium text-gray-700">Crear/Editar Ajustes</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={(editModeloPerms as any)['aprobarAjustes']}
+                                                                    onChange={e => setEditModeloPerms({ ...editModeloPerms, aprobarAjustes: e.target.checked })}
+                                                                    className="w-4 h-4 text-indigo-600 rounded"
+                                                                    disabled={!!editPerfilId}
+                                                                />
+                                                                <span className="text-sm font-medium text-gray-700">Aprobar Ajustes</span>
                                                             </label>
                                                         </div>
                                                     </div>
@@ -1730,7 +1869,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, currentUser }) => 
                                                                 { key: 'verReferencias', label: 'Ver Referencias' },
                                                                 { key: 'editarConsolidado', label: 'Editar Consolidado' },
                                                                 { key: 'ejecutarRecalculo', label: 'Ejecutar Recálculo' },
-                                                                { key: 'ajustarCurva', label: 'Ajustar Curva' },
                                                                 { key: 'restaurarVersiones', label: 'Restaurar Versiones' },
                                                             ].map(({ key, label }) => (
                                                                 <label key={key} className="flex items-center gap-2 cursor-pointer bg-emerald-50/50 p-2 rounded-lg border border-emerald-100 text-xs">

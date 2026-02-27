@@ -75,6 +75,11 @@ export const GruposAlmacenAdmin: React.FC = () => {
     const [selectedStore, setSelectedStore] = useState('');
     const [storeSearch, setStoreSearch] = useState('');
 
+    // Edit store name
+    const [editingStoreCode, setEditingStoreCode] = useState<string | null>(null);
+    const [editingStoreName, setEditingStoreName] = useState('');
+    const [savingStoreName, setSavingStoreName] = useState(false);
+
     useEffect(() => { loadData(); }, []);
 
     const loadData = async () => {
@@ -218,6 +223,28 @@ export const GruposAlmacenAdmin: React.FC = () => {
             if (expandedId) { loadLineas(expandedId); refreshData(); }
         } catch (err: any) {
             showToast('Error: ' + err.message, 'error');
+        }
+    };
+
+    const handleSaveStoreName = async () => {
+        if (!editingStoreCode) return;
+        if (!editingStoreName.trim()) {
+            showToast('El nombre no puede estar vacío', 'warning');
+            return;
+        }
+        setSavingStoreName(true);
+        try {
+            await apiFetch('/api/admin/grupos-almacen/store-name', {
+                method: 'PUT',
+                body: JSON.stringify({ codalmacen: editingStoreCode, nombre: editingStoreName })
+            });
+            showToast('Nombre actualizado', 'success');
+            setEditingStoreCode(null);
+            refreshData();
+        } catch (err: any) {
+            showToast('Error: ' + err.message, 'error');
+        } finally {
+            setSavingStoreName(false);
         }
     };
 
@@ -426,16 +453,57 @@ export const GruposAlmacenAdmin: React.FC = () => {
                                                     const store = stores.find(s => s.CODALMACEN === l.CODALMACEN);
                                                     return (
                                                         <div key={l.Id}
-                                                            className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm group hover:border-red-200 transition-all">
+                                                            className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm group hover:border-indigo-200 transition-all">
                                                             <span className="font-mono text-xs text-indigo-600 font-semibold">{l.CODALMACEN}</span>
-                                                            {store?.NOMBRE && <span className="text-gray-500 text-xs">({store.NOMBRE})</span>}
-                                                            <button
-                                                                onClick={() => handleRemoveMember(l.Id, l.CODALMACEN)}
-                                                                className="ml-1 text-gray-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                                                                title="Quitar"
-                                                            >
-                                                                <X className="w-3.5 h-3.5" />
-                                                            </button>
+
+                                                            {editingStoreCode === l.CODALMACEN ? (
+                                                                <div className="flex items-center gap-1">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={editingStoreName}
+                                                                        onChange={e => setEditingStoreName(e.target.value)}
+                                                                        className="w-32 px-2 py-0.5 text-xs text-gray-700 border border-indigo-300 rounded focus:outline-none focus:border-indigo-500"
+                                                                        autoFocus
+                                                                        onKeyDown={e => { if (e.key === 'Enter') handleSaveStoreName(); if (e.key === 'Escape') setEditingStoreCode(null); }}
+                                                                    />
+                                                                    <button disabled={savingStoreName} onClick={handleSaveStoreName} className="text-emerald-600 hover:text-emerald-700">
+                                                                        {savingStoreName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                                                    </button>
+                                                                    <button onClick={() => setEditingStoreCode(null)} className="text-gray-400 hover:text-gray-600">
+                                                                        <X className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    {store?.NOMBRE ? (
+                                                                        <span className="text-gray-500 text-xs">({store.NOMBRE})</span>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => { setEditingStoreCode(l.CODALMACEN); setEditingStoreName(''); }}
+                                                                            className="text-xs text-indigo-400 hover:text-indigo-600 font-medium ml-1"
+                                                                        >
+                                                                            + Nombre
+                                                                        </button>
+                                                                    )}
+
+                                                                    <div className="ml-1 flex items-center opacity-0 group-hover:opacity-100 transition-all">
+                                                                        <button
+                                                                            onClick={() => { setEditingStoreCode(l.CODALMACEN); setEditingStoreName(store?.NOMBRE || ''); }}
+                                                                            className="px-1 text-gray-300 hover:text-indigo-500 transition-all"
+                                                                            title="Editar nombre"
+                                                                        >
+                                                                            <Edit2 className="w-3 h-3" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleRemoveMember(l.Id, l.CODALMACEN)}
+                                                                            className="px-1 text-gray-300 hover:text-red-500 transition-all"
+                                                                            title="Quitar almacén"
+                                                                        >
+                                                                            <X className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                </>
+                                                            )}
                                                         </div>
                                                     );
                                                 })}

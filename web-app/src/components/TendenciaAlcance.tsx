@@ -100,6 +100,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
     const [activeTab, setActiveTab] = useState<'evaluacion' | 'resumenCanal' | 'resumenGrupos' | 'top10'>('evaluacion');
     const [kpi, setKpi] = useState<string>('Ventas');
     const [channel, setChannel] = useState<string>('Todos');
+    const [selectedTable, setSelectedTable] = useState<string>('RSM_ALCANCE_DIARIO');
     const [selectedLocalInternal, setSelectedLocalInternal] = useState<string>('Corporativo');
     // Use prop if provided (synchronized with global state), otherwise use internal state
     const selectedLocal = filterLocalProp !== undefined && filterLocalProp !== '' ? filterLocalProp : selectedLocalInternal;
@@ -173,7 +174,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                 const token = getToken();
                 if (!token) { setError('No hay sesión activa'); return; }
 
-                const params = new URLSearchParams({ startDate: effectiveStart, endDate: effectiveEnd, kpi, channel, yearType });
+                const params = new URLSearchParams({ startDate: effectiveStart, endDate: effectiveEnd, kpi, channel, yearType, table: selectedTable });
                 if (selectedLocal) params.set('local', selectedLocal);
                 params.set('comparativePeriod', preferences.comparativePeriod);
 
@@ -198,7 +199,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             }
         };
         fetchData();
-    }, [effectiveStart, effectiveEnd, kpi, channel, selectedLocal, yearType, preferences.comparativePeriod]);
+    }, [effectiveStart, effectiveEnd, kpi, channel, selectedLocal, yearType, preferences.comparativePeriod, selectedTable]);
 
     // Fetch canal breakdown data when resumenCanal tab is active
     useEffect(() => {
@@ -208,7 +209,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             try {
                 const token = getToken();
                 if (!token) return;
-                const params = new URLSearchParams({ startDate: effectiveStart, endDate: effectiveEnd, kpi, yearType });
+                const params = new URLSearchParams({ startDate: effectiveStart, endDate: effectiveEnd, kpi, yearType, table: selectedTable });
                 if (selectedLocal) params.set('local', selectedLocal);
                 const url = `${API_BASE}/tendencia/resumen-canal?${params}`;
                 console.log('📡 Fetching resumen canal:', url);
@@ -227,7 +228,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             }
         };
         fetchCanalData();
-    }, [activeTab, effectiveStart, effectiveEnd, kpi, selectedLocal, yearType]);
+    }, [activeTab, effectiveStart, effectiveEnd, kpi, selectedLocal, yearType, selectedTable]);
 
     // Fetch resumen de grupos when tab is active and groups exist
     useEffect(() => {
@@ -244,7 +245,8 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                     kpi,
                     yearType,
                     channel,
-                    groups: groups.join(',')
+                    groups: groups.join(','),
+                    table: selectedTable
                 });
                 const response = await fetch(`${API_BASE}/tendencia/resumen-grupos?${params}`, {
                     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
@@ -263,7 +265,7 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
             }
         };
         fetchGruposData();
-    }, [activeTab, effectiveStart, effectiveEnd, kpi, yearType, channel, groups]);
+    }, [activeTab, effectiveStart, effectiveEnd, kpi, yearType, channel, groups, selectedTable]);
 
     // Register export function with parent
     useEffect(() => {
@@ -436,6 +438,21 @@ export const TendenciaAlcance: React.FC<TendenciaAlcanceProps> = ({ year, startD
                             <option value="anterior">Natural</option>
                             <option value="ajustado">Ajustado</option>
                         </select>
+                    </div>
+                    {/* Tabla de Origen (Database) */}
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tabla de Origen</label>
+                        <div className="relative">
+                            <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}
+                                className="pl-8 pr-4 py-2 border border-indigo-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50 text-indigo-700 w-full sm:w-auto min-w-[150px]">
+                                <option value="RSM_ALCANCE_DIARIO">Producción</option>
+                                <option value="PRESUPUESTO_BETA">BETA (Sandbox)</option>
+                                <option value="PRESUPUESTO_TEST">TEST</option>
+                            </select>
+                            <svg className="w-4 h-4 text-indigo-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                            </svg>
+                        </div>
                     </div>
                     {/* Rango de Fechas */}
                     <div>

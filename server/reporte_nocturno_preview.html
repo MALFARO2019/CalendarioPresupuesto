@@ -2,66 +2,94 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
 <title>Reporte Nocturno de Ventas</title>
+<style>
+  /* Reset for email clients */
+  body, table, td, div, p { margin:0; padding:0; }
+  img { display:block; border:0; }
+  /* Mobile-first responsive */
+  @media only screen and (max-width: 480px) {
+    .outer-wrap { padding: 12px 6px !important; }
+    .main-card { border-radius: 12px !important; }
+    .header-cell { padding: 24px 16px 18px !important; }
+    .header-title { font-size: 16px !important; }
+    .header-icon { font-size: 20px !important; }
+    .kpi-cell { padding: 18px 14px 6px !important; }
+    .kpi-pct-hero { font-size: 44px !important; }
+    .kpi-big-number { font-size: 22px !important; }
+    .content-cell { padding: 12px 14px !important; }
+    .metric-pair td { display: block !important; width: 100% !important; padding: 0 0 8px 0 !important; }
+    .metric-pair td:last-child { padding-left: 0 !important; }
+    .quick-metrics td { padding: 4px 2px !important; }
+    .quick-metrics .metric-label { font-size: 8px !important; }
+    .quick-metrics .metric-value { font-size: 12px !important; }
+    .data-cell { padding: 14px 14px 10px !important; }
+    .footer-cell { padding: 16px 14px 20px !important; }
+    .card-box { padding: 10px 12px !important; }
+    .card-box-value { font-size: 15px !important; }
+  }
+</style>
 </head>
-<body style="margin:0;padding:0;background:#F9FAFB;font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;">
+<body style="margin:0;padding:0;background:#F9FAFB;font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F9FAFB;">
     <tr>
-      <td align="center" style="padding:40px 16px;">
-        <table width="460" cellpadding="0" cellspacing="0" border="0" style="max-width:460px;width:100%;background:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #EAECF0;box-shadow:0 4px 12px rgba(16,24,40,0.05);">
+      <td align="center" class="outer-wrap" style="padding:24px 12px;">
+        <!--[if mso]><table width="460" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+        <table cellpadding="0" cellspacing="0" border="0" class="main-card" style="max-width:460px;width:100%;background:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #EAECF0;box-shadow:0 4px 12px rgba(16,24,40,0.05);">
 
           <!-- HEADER -->
           <tr>
-            <td style="background:#FFFFFF;padding:36px 32px 24px;text-align:center;border-bottom:1px solid #F2F4F7;">
-              <img src="https://rostipolloscr.com/wp-content/uploads/2023/03/logo-rosti.png" alt="Rosti" style="height:48px;margin-bottom:16px;" />
-              <div style="font-size:20px;font-weight:800;color:#101828;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;line-height:1.2;">
-                <span style="font-size:24px;margin-right:8px;vertical-align:bottom;">🌙</span>Reporte Nocturno de Ventas
+            <td class="header-cell" style="background:#FFFFFF;padding:28px 24px 20px;text-align:center;border-bottom:1px solid #F2F4F7;">
+              <img src="cid:logo-rosti" alt="Rosti" style="height:44px;margin:0 auto 14px;display:block;" />
+              <div class="header-title" style="font-size:18px;font-weight:800;color:#101828;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;line-height:1.3;">
+                <span class="header-icon" style="font-size:22px;margin-right:6px;vertical-align:bottom;">🌙</span>Reporte Nocturno de Ventas
               </div>
-              <div style="font-size:13px;color:#667085;font-weight:500;">Jueves, 26 de febrero de 2026</div>
+              <div style="font-size:13px;color:#667085;font-weight:500;">Viernes, 27 de febrero de 2026</div>
             </td>
           </tr>
 
-          <!-- KPI PRINCIPAL -->
+          <!-- KPI PRINCIPAL — PORCENTAJE HÉROE -->
           <tr>
-            <td style="padding:24px 24px 8px;">
-              <div style="text-align:center;">
-                <div style="font-size:10px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">VENTA ACUMULADA MES</div>
-                <div style="font-size:32px;font-weight:900;color:#101828;line-height:1.1;">₡1 026 535 242</div>
+            <td class="kpi-cell" style="padding:24px 20px 8px;">
+              <!-- % Alcance como elemento HÉROE -->
+              <div style="text-align:center;margin-bottom:8px;">
+                <div style="font-size:10px;font-weight:700;color:#98A2B3;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">% ALCANCE DEL MES</div>
+                <div class="kpi-pct-hero" style="font-size:52px;font-weight:900;color:#E55B13;line-height:1;letter-spacing:-1px;">90.3%</div>
               </div>
 
-              <!-- Barra de progreso -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
+              <!-- Barra de progreso (gruesa) -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">
                 <tr>
-                  <td style="font-size:12px;color:#667085;font-weight:500;">% Alcance Mes</td>
-                  <td style="font-size:12px;color:#E55B13;font-weight:700;text-align:right;">91.4%</td>
-                </tr>
-              </table>
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:4px;">
-                <tr>
-                  <td style="background:#F2F4F7;border-radius:4px;height:8px;padding:0;">
-                    <div style="width:91.40378083942984%;background:#E55B13;height:8px;border-radius:4px;"></div>
+                  <td style="background:#F2F4F7;border-radius:6px;height:12px;padding:0;">
+                    <div style="width:90.25634906324666%;background:#E55B13;height:12px;border-radius:6px;"></div>
                   </td>
                 </tr>
               </table>
+
+              <!-- Venta acumulada debajo -->
+              <div style="text-align:center;margin-top:14px;">
+                <div style="font-size:10px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">VENTA ACUMULADA MES</div>
+                <div class="kpi-big-number" style="font-size:26px;font-weight:800;color:#101828;line-height:1.1;">₡1 059 430 955</div>
+              </div>
             </td>
           </tr>
 
           <!-- PRESUPUESTO + VS AÑO ANTERIOR -->
           <tr>
-            <td style="padding:12px 24px 8px;">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <td class="content-cell" style="padding:10px 20px 6px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" class="metric-pair">
                 <tr>
-                  <td width="48%" style="padding-right:8px;">
-                    <div style="background:#F9FAFB;border-radius:10px;padding:14px 16px;border:1px solid #EAECF0;">
+                  <td width="48%" style="padding-right:6px;">
+                    <div class="card-box" style="background:#F9FAFB;border-radius:10px;padding:12px 14px;border:1px solid #EAECF0;">
                       <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1px;">PRESUPUESTO</div>
-                      <div style="font-size:18px;font-weight:800;color:#101828;margin-top:4px;">₡1 123 077 440</div>
+                      <div class="card-box-value" style="font-size:16px;font-weight:800;color:#101828;margin-top:4px;word-break:break-all;">₡1 173 802 138</div>
                     </div>
                   </td>
-                  <td width="48%" style="padding-left:8px;">
-                    <div style="background:#F9FAFB;border-radius:10px;padding:14px 16px;border:1px solid #EAECF0;">
+                  <td width="48%" style="padding-left:6px;">
+                    <div class="card-box" style="background:#F9FAFB;border-radius:10px;padding:12px 14px;border:1px solid #EAECF0;">
                       <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1px;">VS AÑO ANTERIOR</div>
-                      <div style="font-size:18px;font-weight:800;color:#F04438;margin-top:4px;">-9.8%</div>
+                      <div class="card-box-value" style="font-size:16px;font-weight:800;color:#F04438;margin-top:4px;">-2.1%</div>
                     </div>
                   </td>
                 </tr>
@@ -71,25 +99,25 @@
 
           <!-- MÉTRICAS RÁPIDAS POR PERÍODO -->
           <tr>
-            <td style="padding:12px 24px 20px;">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <td class="content-cell" style="padding:10px 20px 16px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" class="quick-metrics">
                 <tr>
                   
-                  <td style="text-align:center;padding:0 4px;">
-                    <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">AYER</div>
-                    <div style="font-size:14px;font-weight:800;color:#101828;margin-top:2px;">₡30.1M</div>
+                  <td style="text-align:center;padding:0 3px;">
+                    <div class="metric-label" style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">AYER</div>
+                    <div class="metric-value" style="font-size:13px;font-weight:800;color:#101828;margin-top:2px;">₡32 884 492</div>
                   </td>
-                  <td style="text-align:center;padding:0 4px;">
-                    <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">YTD</div>
-                    <div style="font-size:14px;font-weight:800;color:#101828;margin-top:2px;">₡2.32B</div>
+                  <td style="text-align:center;padding:0 3px;">
+                    <div class="metric-label" style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">YTD</div>
+                    <div class="metric-value" style="font-size:13px;font-weight:800;color:#101828;margin-top:2px;">₡2 356 704 386</div>
                   </td>
-                  <td style="text-align:center;padding:0 4px;">
-                    <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">MES</div>
-                    <div style="font-size:14px;font-weight:800;color:#101828;margin-top:2px;">₡1.03B</div>
+                  <td style="text-align:center;padding:0 3px;">
+                    <div class="metric-label" style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">MES</div>
+                    <div class="metric-value" style="font-size:13px;font-weight:800;color:#101828;margin-top:2px;">₡1 059 430 955</div>
                   </td>
-                  <td style="text-align:center;padding:0 4px;">
-                    <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">SEMANA</div>
-                    <div style="font-size:14px;font-weight:800;color:#101828;margin-top:2px;">₡86.3M</div>
+                  <td style="text-align:center;padding:0 3px;">
+                    <div class="metric-label" style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:0.5px;">SEMANA</div>
+                    <div class="metric-value" style="font-size:13px;font-weight:800;color:#101828;margin-top:2px;">₡119 172 198</div>
                   </td>
                 </tr>
               </table>
@@ -98,22 +126,17 @@
 
           <!-- SEPARADOR -->
           <tr>
-            <td style="padding:0 24px;">
+            <td style="padding:0 20px;">
               <div style="border-top:1px solid #EAECF0;"></div>
             </td>
           </tr>
 
           <!-- TABLAS DE DATOS -->
           <tr>
-            <td style="padding:20px 24px 16px;">
+            <td class="data-cell" style="padding:16px 20px 12px;">
               
-        <div style="margin-bottom:24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-            <tr>
-              <td style="width:4px;background:#E55B13;border-radius:2px;">&nbsp;</td>
-              <td style="padding-left:10px;font-size:12px;font-weight:700;color:#344054;text-transform:uppercase;letter-spacing:1px;">Ayer — Por Canal</td>
-            </tr>
-          </table>
+        <div class="card-box" style="background:#FFFFFF;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06);">
+          <h3 style="margin:0 0 12px 0;color:#101828;font-size:14px;font-weight:600;">Ayer — Por Canal</h3>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
             <thead>
               <tr>
@@ -129,10 +152,10 @@
                   Corporación
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:700;border-bottom:1px solid #F2F4F7;">
-                  ₡30 149 544
+                  ₡32 884 492
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-5.2%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">+3.9%</span>
                 </td>
               </tr>
               <tr style="">
@@ -140,10 +163,10 @@
                   Free Standing
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡58 052 180
+                  ₡29 565 027
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">+3.2%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">+2.0%</span>
                 </td>
               </tr>
               <tr style="">
@@ -151,10 +174,10 @@
                   Mall
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡28 130 099
+                  ₡15 770 985
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-15.3%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">+15.2%</span>
                 </td>
               </tr>
               <tr style="">
@@ -162,10 +185,10 @@
                   Nuevos
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡5 116 861
+                  ₡2 607 941
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-38.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">61.0%</span>
                 </td>
               </tr>
               <tr style="">
@@ -173,10 +196,10 @@
                   Plaza
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡23 847 619
+                  ₡14 579 803
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-1.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#12B76A;">-1.7%</span>
                 </td>
               </tr>
               <tr style="">
@@ -184,10 +207,10 @@
                   Restaurantes
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡109 411 562
+                  ₡59 545 885
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-4.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">+4.4%</span>
                 </td>
               </tr>
               <tr style="">
@@ -195,10 +218,10 @@
                   Same Store Sales
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡57 740 658
+                  ₡63 161 043
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-2.9%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-0.3%</span>
                 </td>
               </tr>
               <tr style="">
@@ -206,43 +229,43 @@
                   Ventanitas
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡11 186 614
+                  ₡6 223 099
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-9.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-1.1%</span>
                 </td>
               </tr>
               <tr style="">
                 <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 1
+                  Zona 1 Jonathan
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡53 423 808
+                  ₡33 073 707
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-7.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-1.6%</span>
                 </td>
               </tr>
               <tr style="">
                 <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 2
+                  Zona 2 Dorlene
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡51 435 743
+                  ₡24 148 186
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">+3.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">+3.1%</span>
                 </td>
               </tr>
               <tr style="">
                 <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 3
+                  Zona 3 Carit
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡4 552 011
+                  ₡2 323 992
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-36.8%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">61.7%</span>
                 </td>
               </tr>
               <tr style="">
@@ -250,10 +273,10 @@
                   Zona Alajuela
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡7 456 850
+                  ₡8 522 433
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">+5.9%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">+5.7%</span>
                 </td>
               </tr>
               <tr style="">
@@ -261,10 +284,10 @@
                   Zona Heredia
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡6 557 603
+                  ₡6 726 211
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-5.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-9.5%</span>
                 </td>
               </tr>
               <tr style="">
@@ -272,10 +295,10 @@
                   Zona San José Centro y Sur
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡7 384 162
+                  ₡7 695 502
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+38.0%</span>
+                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+6.0%</span>
                 </td>
               </tr>
               <tr style="">
@@ -283,10 +306,10 @@
                   Zona San José Este
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡4 614 985
+                  ₡5 946 736
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#12B76A;">-7.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">+34.1%</span>
                 </td>
               </tr>
               <tr style="">
@@ -294,10 +317,10 @@
                   Zona San José Norte
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡7 933 955
+                  ₡9 726 473
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-15.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">+11.4%</span>
                 </td>
               </tr>
               <tr style="">
@@ -305,23 +328,18 @@
                   Zona San José Oeste
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡14 709 526
+                  ₡14 414 492
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-1.6%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-9.4%</span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
     
-        <div style="margin-bottom:24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-            <tr>
-              <td style="width:4px;background:#E55B13;border-radius:2px;">&nbsp;</td>
-              <td style="padding-left:10px;font-size:12px;font-weight:700;color:#344054;text-transform:uppercase;letter-spacing:1px;">Ayer — Por Grupo de Producto</td>
-            </tr>
-          </table>
+        <div class="card-box" style="background:#FFFFFF;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06);">
+          <h3 style="margin:0 0 12px 0;color:#101828;font-size:14px;font-weight:600;">Ayer — Por Grupo de Producto</h3>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
             <thead>
               <tr>
@@ -337,10 +355,10 @@
                   Salón
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡19 733 375
+                  ₡21 480 148
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">+3.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+6.4%</span>
                 </td>
               </tr>
               <tr style="">
@@ -348,10 +366,10 @@
                   Express
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡315 686
+                  ₡517 093
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-47.1%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-19.3%</span>
                 </td>
               </tr>
               <tr style="">
@@ -359,10 +377,10 @@
                   UberEats
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡8 544 598
+                  ₡9 494 055
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-12.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">+2.6%</span>
                 </td>
               </tr>
               <tr style="">
@@ -370,10 +388,10 @@
                   Llevar
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡1 347 973
+                  ₡1 304 542
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-40.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-6.4%</span>
                 </td>
               </tr>
               <tr style="">
@@ -381,10 +399,10 @@
                   AutoPollo
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡175 611
+                  ₡71 425
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+171.9%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-41.6%</span>
                 </td>
               </tr>
               <tr style="">
@@ -392,23 +410,18 @@
                   ECommerce
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡32 301
+                  ₡17 230
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-27.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-75.3%</span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
     
-        <div style="margin-bottom:24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-            <tr>
-              <td style="width:4px;background:#E55B13;border-radius:2px;">&nbsp;</td>
-              <td style="padding-left:10px;font-size:12px;font-weight:700;color:#344054;text-transform:uppercase;letter-spacing:1px;">YTD — Por Canal</td>
-            </tr>
-          </table>
+        <div class="card-box" style="background:#FFFFFF;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06);">
+          <h3 style="margin:0 0 12px 0;color:#101828;font-size:14px;font-weight:600;">YTD — Por Canal</h3>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
             <thead>
               <tr>
@@ -424,10 +437,10 @@
                   Corporación
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:700;border-bottom:1px solid #F2F4F7;">
-                  ₡2 323 808 673
+                  ₡2 356 704 386
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-7.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-0.0%</span>
                 </td>
               </tr>
               <tr style="">
@@ -435,10 +448,10 @@
                   Free Standing
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡3 883 791 777
+                  ₡1 971 460 915
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.6%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.8%</span>
                 </td>
               </tr>
               <tr style="">
@@ -446,10 +459,10 @@
                   Mall
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡2 432 380 361
+                  ₡1 231 961 165
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-14.6%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">+13.1%</span>
                 </td>
               </tr>
               <tr style="">
@@ -457,10 +470,10 @@
                   Nuevos
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡335 490 463
+                  ₡170 353 172
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-55.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">60.4%</span>
                 </td>
               </tr>
               <tr style="">
@@ -468,10 +481,10 @@
                   Plaza
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡1 809 338 347
+                  ₡919 248 977
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-4.9%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-4.8%</span>
                 </td>
               </tr>
               <tr style="">
@@ -479,10 +492,10 @@
                   Restaurantes
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡8 570 256 203
+                  ₡4 344 673 987
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-7.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">+0.1%</span>
                 </td>
               </tr>
               <tr style="">
@@ -490,7 +503,7 @@
                   Same Store Sales
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡4 479 872 114
+                  ₡4 543 055 600
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
                   <span style="font-size:12px;font-weight:600;color:#F79009;">-3.6%</span>
@@ -501,43 +514,43 @@
                   Ventanitas
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡724 978 488
+                  ₡368 734 786
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-7.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-1.1%</span>
                 </td>
               </tr>
               <tr style="">
                 <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 1
+                  Zona 1 Jonathan
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡4 481 479 917
+                  ₡2 289 033 982
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.0%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-2.7%</span>
                 </td>
               </tr>
               <tr style="">
                 <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 2
+                  Zona 2 Dorlene
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡3 784 536 435
+                  ₡1 901 196 087
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-4.0%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-4.4%</span>
                 </td>
               </tr>
               <tr style="">
                 <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 3
+                  Zona 3 Carit
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡304 239 851
+                  ₡154 443 918
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-56.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">61.0%</span>
                 </td>
               </tr>
               <tr style="">
@@ -545,7 +558,7 @@
                   Zona Alajuela
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡576 716 037
+                  ₡585 238 469
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
                   <span style="font-size:12px;font-weight:600;color:#F79009;">-1.4%</span>
@@ -556,7 +569,7 @@
                   Zona Heredia
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡473 308 243
+                  ₡480 034 454
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
                   <span style="font-size:12px;font-weight:600;color:#F79009;">-6.4%</span>
@@ -567,302 +580,7 @@
                   Zona San José Centro y Sur
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡527 729 410
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.4%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona San José Este
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡365 957 901
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.9%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona San José Norte
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡629 300 489
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-2.1%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona San José Oeste
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡1 013 171 580
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-1.6%</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-    
-        <div style="margin-bottom:24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-            <tr>
-              <td style="width:4px;background:#E55B13;border-radius:2px;">&nbsp;</td>
-              <td style="padding-left:10px;font-size:12px;font-weight:700;color:#344054;text-transform:uppercase;letter-spacing:1px;">YTD — Por Grupo de Producto</td>
-            </tr>
-          </table>
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
-            <thead>
-              <tr>
-                <th style="padding:8px 12px;text-align:left;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">Canal / Grupo</th>
-                <th style="padding:8px 12px;text-align:right;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">Venta</th>
-                <th style="padding:8px 12px;text-align:right;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">KPI</th>
-              </tr>
-            </thead>
-            <tbody>
-              
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Salón
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡1 551 393 972
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#12B76A;">-3.8%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Express
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡22 542 257
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-37.8%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  UberEats
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡578 097 040
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-10.5%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Llevar
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡158 201 734
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-22.8%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  AutoPollo
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡7 377 964
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+10.7%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ECommerce
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡6 195 706
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+10.6%</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-    
-        <div style="margin-bottom:24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-            <tr>
-              <td style="width:4px;background:#E55B13;border-radius:2px;">&nbsp;</td>
-              <td style="padding-left:10px;font-size:12px;font-weight:700;color:#344054;text-transform:uppercase;letter-spacing:1px;">Mes — Por Canal</td>
-            </tr>
-          </table>
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
-            <thead>
-              <tr>
-                <th style="padding:8px 12px;text-align:left;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">Canal / Grupo</th>
-                <th style="padding:8px 12px;text-align:right;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">Venta</th>
-                <th style="padding:8px 12px;text-align:right;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">KPI</th>
-              </tr>
-            </thead>
-            <tbody>
-              
-              <tr style="border-bottom:1px solid #D0D5DD;">
-                <td style="padding:10px 12px;color:#101828;font-size:13px;font-weight:700;border-bottom:1px solid #F2F4F7;">
-                  Corporación
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:700;border-bottom:1px solid #F2F4F7;">
-                  ₡1 026 535 242
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-9.8%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Free Standing
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡1 741 155 050
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-7.2%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Mall
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡1 077 726 618
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-15.8%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Nuevos
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡143 834 797
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-59.8%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Plaza
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡818 191 251
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-8.9%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Restaurantes
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡3 776 217 250
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-9.5%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Same Store Sales
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡1 981 153 085
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-5.5%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Ventanitas
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡329 923 716
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-13.0%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 1
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡1 962 363 718
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-4.0%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 2
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡1 683 448 906
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-6.5%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 3
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡130 404 627
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-60.4%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona Alajuela
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡261 534 779
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.0%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona Heredia
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡209 372 121
-                </td>
-                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-11.1%</span>
-                </td>
-              </tr>
-              <tr style="">
-                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona San José Centro y Sur
-                </td>
-                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡240 189 175
+                  ₡535 424 912
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
                   <span style="font-size:12px;font-weight:600;color:#F79009;">-3.3%</span>
@@ -873,10 +591,10 @@
                   Zona San José Este
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡161 384 976
+                  ₡371 904 637
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-8.8%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.8%</span>
                 </td>
               </tr>
               <tr style="">
@@ -884,10 +602,10 @@
                   Zona San José Norte
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡283 685 137
+                  ₡639 026 962
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-6.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-2.1%</span>
                 </td>
               </tr>
               <tr style="">
@@ -895,23 +613,18 @@
                   Zona San José Oeste
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡448 336 503
+                  ₡1 027 586 072
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.9%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-1.7%</span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
     
-        <div style="margin-bottom:24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-            <tr>
-              <td style="width:4px;background:#E55B13;border-radius:2px;">&nbsp;</td>
-              <td style="padding-left:10px;font-size:12px;font-weight:700;color:#344054;text-transform:uppercase;letter-spacing:1px;">Mes — Por Grupo de Producto</td>
-            </tr>
-          </table>
+        <div class="card-box" style="background:#FFFFFF;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06);">
+          <h3 style="margin:0 0 12px 0;color:#101828;font-size:14px;font-weight:600;">YTD — Por Grupo de Producto</h3>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
             <thead>
               <tr>
@@ -927,10 +640,10 @@
                   Salón
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡684 959 910
+                  ₡1 572 880 925
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#12B76A;">-5.6%</span>
+                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+3.4%</span>
                 </td>
               </tr>
               <tr style="">
@@ -938,10 +651,10 @@
                   Express
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡9 933 829
+                  ₡23 054 324
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-43.0%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-30.8%</span>
                 </td>
               </tr>
               <tr style="">
@@ -949,10 +662,10 @@
                   UberEats
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡261 580 478
+                  ₡587 612 909
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-15.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-1.7%</span>
                 </td>
               </tr>
               <tr style="">
@@ -960,10 +673,10 @@
                   Llevar
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡63 717 484
+                  ₡159 493 904
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-19.3%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-17.8%</span>
                 </td>
               </tr>
               <tr style="">
@@ -971,10 +684,10 @@
                   AutoPollo
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡3 408 662
+                  ₡7 449 389
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+17.0%</span>
+                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+10.4%</span>
                 </td>
               </tr>
               <tr style="">
@@ -982,23 +695,18 @@
                   ECommerce
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡2 934 879
+                  ₡6 212 936
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F79009;">-5.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+24.4%</span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
     
-        <div style="margin-bottom:24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-            <tr>
-              <td style="width:4px;background:#E55B13;border-radius:2px;">&nbsp;</td>
-              <td style="padding-left:10px;font-size:12px;font-weight:700;color:#344054;text-transform:uppercase;letter-spacing:1px;">Semana — Por Canal</td>
-            </tr>
-          </table>
+        <div class="card-box" style="background:#FFFFFF;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06);">
+          <h3 style="margin:0 0 12px 0;color:#101828;font-size:14px;font-weight:600;">Mes — Por Canal</h3>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
             <thead>
               <tr>
@@ -1014,10 +722,10 @@
                   Corporación
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:700;border-bottom:1px solid #F2F4F7;">
-                  ₡86 276 485
+                  ₡1 059 430 955
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-45.6%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-2.1%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1025,10 +733,10 @@
                   Free Standing
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡162 194 752
+                  ₡900 142 552
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-40.9%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-7.3%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1036,10 +744,10 @@
                   Mall
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡79 418 907
+                  ₡554 634 294
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-54.1%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">+13.3%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1047,10 +755,10 @@
                   Nuevos
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡13 278 470
+                  ₡74 525 339
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-72.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">55.8%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1058,10 +766,10 @@
                   Plaza
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡73 899 200
+                  ₡423 675 429
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-38.6%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-8.6%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1069,10 +777,10 @@
                   Restaurantes
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡313 639 114
+                  ₡1 947 654 510
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-45.9%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-1.8%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1080,10 +788,10 @@
                   Same Store Sales
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡165 913 735
+                  ₡2 044 336 570
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-43.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-5.6%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1091,43 +799,43 @@
                   Ventanitas
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡31 466 826
+                  ₡171 207 399
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-43.0%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-5.7%</span>
                 </td>
               </tr>
               <tr style="">
                 <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 1
+                  Zona 1 Jonathan
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡150 632 354
+                  ₡1 041 619 246
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-46.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-5.2%</span>
                 </td>
               </tr>
               <tr style="">
                 <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 2
+                  Zona 2 Dorlene
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡150 912 007
+                  ₡838 508 959
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-40.6%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-5.1%</span>
                 </td>
               </tr>
               <tr style="">
                 <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  Zona 3
+                  Zona 3 Carit
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡12 094 752
+                  ₡67 526 306
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-72.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">56.4%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1135,10 +843,10 @@
                   Zona Alajuela
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡21 460 457
+                  ₡270 057 211
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-41.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.1%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1146,10 +854,10 @@
                   Zona Heredia
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡16 734 897
+                  ₡216 098 332
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-48.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-11.0%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1157,10 +865,10 @@
                   Zona San José Centro y Sur
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡21 293 103
+                  ₡247 884 677
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-33.4%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-3.0%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1168,10 +876,10 @@
                   Zona San José Este
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡13 695 613
+                  ₡167 331 712
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-44.7%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-8.6%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1179,10 +887,10 @@
                   Zona San José Norte
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡21 690 312
+                  ₡293 411 610
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-50.0%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-6.3%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1190,23 +898,18 @@
                   Zona San José Oeste
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡44 637 610
+                  ₡462 750 995
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-35.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-4.2%</span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
     
-        <div style="margin-bottom:24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-            <tr>
-              <td style="width:4px;background:#E55B13;border-radius:2px;">&nbsp;</td>
-              <td style="padding-left:10px;font-size:12px;font-weight:700;color:#344054;text-transform:uppercase;letter-spacing:1px;">Semana — Por Grupo de Producto</td>
-            </tr>
-          </table>
+        <div class="card-box" style="background:#FFFFFF;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06);">
+          <h3 style="margin:0 0 12px 0;color:#101828;font-size:14px;font-weight:600;">Mes — Por Grupo de Producto</h3>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
             <thead>
               <tr>
@@ -1222,10 +925,10 @@
                   Salón
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡55 875 413
+                  ₡706 446 863
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-43.5%</span>
+                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+1.9%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1233,10 +936,10 @@
                   Express
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡890 137
+                  ₡10 445 896
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-70.9%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-36.9%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1244,10 +947,10 @@
                   UberEats
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡25 099 412
+                  ₡271 096 347
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-45.1%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">-7.0%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1255,10 +958,10 @@
                   Llevar
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡3 885 757
+                  ₡65 009 654
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-62.6%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-13.3%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1266,10 +969,10 @@
                   AutoPollo
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡367 425
+                  ₡3 480 087
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#12B76A;">-10.0%</span>
+                  <span style="font-size:12px;font-weight:600;color:#12B76A;">+16.3%</span>
                 </td>
               </tr>
               <tr style="">
@@ -1277,10 +980,295 @@
                   ECommerce
                 </td>
                 <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
-                  ₡158 341
+                  ₡2 952 109
                 </td>
                 <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
-                  <span style="font-size:12px;font-weight:600;color:#F04438;">-43.0%</span>
+                  <span style="font-size:12px;font-weight:600;color:#F79009;">+8.4%</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+    
+        <div class="card-box" style="background:#FFFFFF;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06);">
+          <h3 style="margin:0 0 12px 0;color:#101828;font-size:14px;font-weight:600;">Semana — Por Canal</h3>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th style="padding:8px 12px;text-align:left;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">Canal / Grupo</th>
+                <th style="padding:8px 12px;text-align:right;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">Venta</th>
+                <th style="padding:8px 12px;text-align:right;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">KPI</th>
+              </tr>
+            </thead>
+            <tbody>
+              
+              <tr style="border-bottom:1px solid #D0D5DD;">
+                <td style="padding:10px 12px;color:#101828;font-size:13px;font-weight:700;border-bottom:1px solid #F2F4F7;">
+                  Corporación
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:700;border-bottom:1px solid #F2F4F7;">
+                  ₡119 172 198
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-33.9%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Free Standing
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡110 662 403
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-35.1%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Mall
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡55 480 438
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-29.4%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Nuevos
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡9 247 176
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">47.9%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Plaza
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡51 529 403
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-30.6%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Restaurantes
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡216 365 442
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-34.2%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Same Store Sales
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡229 097 221
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-36.5%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Ventanitas
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡21 978 954
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-31.0%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Zona 1 Jonathan
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡124 127 576
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-34.2%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Zona 2 Dorlene
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡83 866 498
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-40.1%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Zona 3 Carit
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡8 371 369
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">49.9%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Zona Alajuela
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡29 982 890
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-34.4%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Zona Heredia
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡23 461 108
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-41.1%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Zona San José Centro y Sur
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡28 988 605
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-26.1%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Zona San José Este
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡19 642 349
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-36.2%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Zona San José Norte
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡31 416 785
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-41.2%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Zona San José Oeste
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡59 052 102
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-30.9%</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+    
+        <div class="card-box" style="background:#FFFFFF;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06);">
+          <h3 style="margin:0 0 12px 0;color:#101828;font-size:14px;font-weight:600;">Semana — Por Grupo de Producto</h3>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th style="padding:8px 12px;text-align:left;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">Canal / Grupo</th>
+                <th style="padding:8px 12px;text-align:right;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">Venta</th>
+                <th style="padding:8px 12px;text-align:right;color:#98A2B3;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #EAECF0;">KPI</th>
+              </tr>
+            </thead>
+            <tbody>
+              
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Salón
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡77 362 366
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-31.5%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Express
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡1 402 204
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-59.8%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  UberEats
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡34 615 280
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-33.2%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  Llevar
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡5 177 927
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-53.7%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  AutoPollo
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡438 850
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-9.8%</span>
+                </td>
+              </tr>
+              <tr style="">
+                <td style="padding:10px 12px;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ECommerce
+                </td>
+                <td style="padding:10px 12px;text-align:right;color:#344054;font-size:13px;font-weight:400;border-bottom:1px solid #F2F4F7;">
+                  ₡175 571
+                </td>
+                <td style="padding:10px 12px;text-align:right;border-bottom:1px solid #F2F4F7;">
+                  <span style="font-size:12px;font-weight:600;color:#F04438;">-31.1%</span>
                 </td>
               </tr>
             </tbody>
@@ -1292,7 +1280,7 @@
 
           <!-- FOOTER -->
           <tr>
-            <td style="padding:20px 24px 28px;text-align:center;">
+            <td class="footer-cell" style="padding:16px 20px 24px;text-align:center;">
               <div style="font-size:9px;font-weight:600;color:#98A2B3;text-transform:uppercase;letter-spacing:1.5px;line-height:1.5;">
                 GENERADO AUTOMÁTICAMENTE POR ROSTI<br>CONTROL DE PRESUPUESTO
               </div>
@@ -1305,6 +1293,7 @@
           </tr>
 
         </table>
+        <!--[if mso]></td></tr></table><![endif]-->
       </td>
     </tr>
   </table>

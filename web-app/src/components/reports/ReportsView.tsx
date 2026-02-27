@@ -102,7 +102,7 @@ export function ReportsView({ onBack }: ReportsViewProps) {
             setSelectedCanales([]);
             // Load filter options if report supports them
             if (hasFilters) {
-                loadFilterOptions(report.ID);
+                loadFilterOptions(report.ID, false);
             } else {
                 setFilterOptions(null);
             }
@@ -134,17 +134,22 @@ export function ReportsView({ onBack }: ReportsViewProps) {
         // Load filter options if report supports them
         const hasFilters = !!(reportDef.FiltrosDisponibles && typeof reportDef.FiltrosDisponibles === 'string' && reportDef.FiltrosDisponibles.trim());
         if (hasFilters) {
-            loadFilterOptions(reportDef.ID);
+            loadFilterOptions(reportDef.ID, true);
         } else {
             setFilterOptions(null);
         }
     };
 
-    const loadFilterOptions = async (reportId: number) => {
+    const loadFilterOptions = async (reportId: number, isEdit: boolean) => {
         setFilterLoading(true);
         try {
             const opts = await fetchReportFilterOptions(reportId);
             setFilterOptions(opts);
+            if (!isEdit && opts) {
+                setSelectedGrupos(opts.grupos || []);
+                setSelectedLocales(opts.locales || []);
+                setSelectedCanales(opts.canales || []);
+            }
         } catch (err) {
             console.error('Error loading filter options:', err);
             setFilterOptions(null);
@@ -241,7 +246,14 @@ export function ReportsView({ onBack }: ReportsViewProps) {
         if (!generateModal) return;
         setGenerating(true);
         try {
-            const result = await generateReport(generateModal.ID, {}, generateEmail || undefined);
+            // Find subscription to use its filters if it exists
+            const sub = subscriptions.find(s => s.ReporteID === generateModal.ID);
+            let params = {};
+            if (sub && sub.ParametrosFijos) {
+                try { params = JSON.parse(sub.ParametrosFijos); } catch { }
+            }
+
+            const result = await generateReport(generateModal.ID, params, generateEmail || undefined);
             showToast(result.message, 'success');
             setGenerateModal(null);
             loadData();
@@ -375,10 +387,19 @@ export function ReportsView({ onBack }: ReportsViewProps) {
                                                     <Eye className="w-3.5 h-3.5" /> Preview
                                                 </button>
                                                 {report.Suscrito ? (
-                                                    <button onClick={() => handleUnsubscribe(report.ID)}
-                                                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold transition-all touch-target">
-                                                        <BellOff className="w-3.5 h-3.5" /> Desuscribir
-                                                    </button>
+                                                    <>
+                                                        {(report.PermitirProgramacionCustom || report.FiltrosDisponibles) && subscriptions.find(s => s.ReporteID === report.ID) && (
+                                                            <button onClick={() => handleEditSubscriptionClick(subscriptions.find(s => s.ReporteID === report.ID)!, report)}
+                                                                className="flex items-center justify-center p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all touch-target"
+                                                                title="Configurar">
+                                                                <Calendar className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                        <button onClick={() => handleUnsubscribe(report.ID)}
+                                                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold transition-all touch-target">
+                                                            <BellOff className="w-3.5 h-3.5" /> Desuscribir
+                                                        </button>
+                                                    </>
                                                 ) : (
                                                     <button onClick={() => handleSubscribeClick(report)}
                                                         className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm touch-target">
@@ -578,11 +599,13 @@ export function ReportsView({ onBack }: ReportsViewProps) {
             {/* Subscribe / Custom Program Modal */}
             {subscribeModal && subscribeModal.report && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSubscribeModal(null)}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-lg font-bold text-gray-900 mb-1">{subscribeModal.report.Icono} Configurar Suscripción</h2>
-                        <p className="text-xs text-gray-500 mb-4">Elige cuándo quieres recibir el reporte de "{subscribeModal.report.Nombre}"</p>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 pb-4 border-b border-gray-100 flex-shrink-0">
+                            <h2 className="text-lg font-bold text-gray-900 mb-1">{subscribeModal.report.Icono} Configurar Suscripción</h2>
+                            <p className="text-xs text-gray-500">Elige cuándo quieres recibir el reporte de "{subscribeModal.report.Nombre}"</p>
+                        </div>
 
-                        <div className="space-y-4 mb-6">
+                        <div className="p-6 overflow-y-auto space-y-4 flex-1">
                             <div>
                                 <label className="label-mini">Email de entrega</label>
                                 {user?.esAdmin ? (
@@ -625,27 +648,32 @@ export function ReportsView({ onBack }: ReportsViewProps) {
 
                             {/* Filter Selectors */}
                             {filterLoading ? (
-                                <div className="flex items-center gap-2 py-3">
-                                    <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
-                                    <span className="text-xs text-gray-400">Cargando opciones de filtro...</span>
+                                <div className="flex flex-col items-center justify-center py-6 gap-2">
+                                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                                    <span className="text-xs text-gray-500 font-medium">Cargando opciones de filtro...</span>
                                 </div>
                             ) : filterOptions && filterOptions.filtrosDisponibles && filterOptions.filtrosDisponibles.length > 0 && (
                                 <div className="border-t border-gray-100 pt-4 space-y-4">
                                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
                                         <Filter className="w-3.5 h-3.5" /> Filtros del Reporte
                                     </p>
-                                    <p className="text-[11px] text-gray-400 -mt-2">Si no seleccionas ninguno, recibirás todos los datos permitidos.</p>
+                                    <p className="text-[11px] text-gray-400 -mt-2">Si no seleccionas ninguno, recibirás todos los datos permitidos. Puedes seleccionar los que desees.</p>
 
                                     {filterOptions.grupos.length > 0 && (
-                                        <div>
-                                            <label className="label-mini mb-1.5">Grupos de Local</label>
+                                        <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="label-mini mb-0 text-indigo-900">Grupos de Local</label>
+                                                <button type="button" onClick={() => setSelectedGrupos(selectedGrupos.length === filterOptions.grupos.length ? [] : filterOptions.grupos)} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium">
+                                                    {selectedGrupos.length === filterOptions.grupos.length ? 'Desmarcar todos' : 'Marcar todos'}
+                                                </button>
+                                            </div>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {filterOptions.grupos.map(g => {
                                                     const sel = selectedGrupos.includes(g);
                                                     return (
                                                         <button key={g} type="button"
                                                             onClick={() => setSelectedGrupos(prev => sel ? prev.filter(x => x !== g) : [...prev, g])}
-                                                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all touch-target ${sel ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                                                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all touch-target ${sel ? 'bg-indigo-100 border-indigo-300 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
                                                                 }`}>
                                                             {sel && <span className="mr-1">✓</span>}{g}
                                                         </button>
@@ -656,15 +684,20 @@ export function ReportsView({ onBack }: ReportsViewProps) {
                                     )}
 
                                     {filterOptions.locales.length > 0 && (
-                                        <div>
-                                            <label className="label-mini mb-1.5">Locales</label>
-                                            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                                        <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="label-mini mb-0 text-emerald-900">Locales</label>
+                                                <button type="button" onClick={() => setSelectedLocales(selectedLocales.length === filterOptions.locales.length ? [] : filterOptions.locales)} className="text-[10px] text-emerald-600 hover:text-emerald-800 font-medium">
+                                                    {selectedLocales.length === filterOptions.locales.length ? 'Desmarcar todos' : 'Marcar todos'}
+                                                </button>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
                                                 {filterOptions.locales.map(l => {
                                                     const sel = selectedLocales.includes(l);
                                                     return (
                                                         <button key={l} type="button"
                                                             onClick={() => setSelectedLocales(prev => sel ? prev.filter(x => x !== l) : [...prev, l])}
-                                                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all touch-target ${sel ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                                                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all touch-target ${sel ? 'bg-emerald-100 border-emerald-300 text-emerald-700 shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
                                                                 }`}>
                                                             {sel && <span className="mr-1">✓</span>}{l}
                                                         </button>
@@ -675,15 +708,20 @@ export function ReportsView({ onBack }: ReportsViewProps) {
                                     )}
 
                                     {filterOptions.canales.length > 0 && (
-                                        <div>
-                                            <label className="label-mini mb-1.5">Canales</label>
+                                        <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="label-mini mb-0 text-amber-900">Canales</label>
+                                                <button type="button" onClick={() => setSelectedCanales(selectedCanales.length === filterOptions.canales.length ? [] : filterOptions.canales)} className="text-[10px] text-amber-600 hover:text-amber-800 font-medium">
+                                                    {selectedCanales.length === filterOptions.canales.length ? 'Desmarcar todos' : 'Marcar todos'}
+                                                </button>
+                                            </div>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {filterOptions.canales.map(c => {
                                                     const sel = selectedCanales.includes(c);
                                                     return (
                                                         <button key={c} type="button"
                                                             onClick={() => setSelectedCanales(prev => sel ? prev.filter(x => x !== c) : [...prev, c])}
-                                                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all touch-target ${sel ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                                                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all touch-target ${sel ? 'bg-amber-100 border-amber-300 text-amber-700 shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
                                                                 }`}>
                                                             {sel && <span className="mr-1">✓</span>}{c}
                                                         </button>
@@ -696,11 +734,11 @@ export function ReportsView({ onBack }: ReportsViewProps) {
                             )}
                         </div>
 
-                        <div className="flex gap-3">
+                        <div className="p-6 pt-4 border-t border-gray-100 flex gap-3 flex-shrink-0 bg-gray-50/50 rounded-b-2xl">
                             <button onClick={() => { setSubscribeModal(null); setFilterOptions(null); }}
-                                className="flex-1 btn-ghost justify-center">Cancelar</button>
-                            <button onClick={handleSaveCustomSubscription} disabled={savingSub || !subEmail}
-                                className="flex-1 btn-primary justify-center">
+                                className="flex-1 btn-ghost justify-center bg-white border border-gray-200 hover:bg-gray-50">Cancelar</button>
+                            <button onClick={handleSaveCustomSubscription} disabled={filterLoading || savingSub || !subEmail}
+                                className="flex-1 btn-primary justify-center shadow-md">
                                 {savingSub ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                                 Guardar
                             </button>

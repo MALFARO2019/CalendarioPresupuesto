@@ -386,7 +386,7 @@ export const AjusteGrafica: React.FC = () => {
             redistribucion === 'Semana' ? 'semana' : 'día de semana';
 
         const confirmed = await showConfirm({
-            message: `¿Aplicar ajuste de ${dragPct >= 0 ? '+' : ''}${dragPct.toFixed(1)}% ` +
+            message: `¿Guardar ajuste de ${dragPct >= 0 ? '+' : ''}${dragPct.toFixed(1)}% ` +
                 `(${fmtCompact(affectedTotals.adjusted - affectedTotals.original)}) ` +
                 `a ${affectedTotals.count} días (${label})?`
         });
@@ -484,7 +484,7 @@ export const AjusteGrafica: React.FC = () => {
                                 disabled={!hasDragChange}
                                 className="px-3 py-1 text-xs font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-40"
                             >
-                                ✓ Aplicar
+                                ✓ Guardar
                             </button>
                         </div>
                     )}

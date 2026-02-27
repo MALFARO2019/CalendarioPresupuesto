@@ -47,7 +47,7 @@ export interface ModuleRoute {
 export interface ModuleStats {
     label: string;
     value: string | number;
-    color?: 'green' | 'red' | 'yellow';
+    color?: 'green' | 'red' | 'yellow' | 'gray' | 'blue';
     trend?: {
         direction: 'up' | 'down' | 'neutral';
         percentage: number;

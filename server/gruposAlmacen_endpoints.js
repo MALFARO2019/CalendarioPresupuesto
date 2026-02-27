@@ -124,4 +124,17 @@ module.exports = function registerGruposAlmacenEndpoints(app, authMiddleware) {
         }
     });
 
+    // PUT /api/admin/grupos-almacen/store-name — update/insert store name
+    app.put('/api/admin/grupos-almacen/store-name', authMiddleware, async (req, res) => {
+        try {
+            if (!req.user.esAdmin && !req.user.accesoGruposAlmacen) return res.status(403).json({ error: 'Sin permisos' });
+            const { codalmacen, nombre } = req.body;
+            if (!codalmacen || !nombre) return res.status(400).json({ error: 'CODALMACEN y nombre son requeridos' });
+            await db.updateStoreName(codalmacen, nombre);
+            res.json({ success: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
 }; // end registerGruposAlmacenEndpoints

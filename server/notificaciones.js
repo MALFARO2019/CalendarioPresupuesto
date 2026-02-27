@@ -199,6 +199,7 @@ async function saveNotificacionVersion(data, usuario) {
     const orden = data.Orden !== undefined ? data.Orden : data.orden;
     const activo = data.Activo !== undefined ? data.Activo : data.activo;
     const fechaPublicacion = data.FechaPublicacion || data.fechaPublicacion;
+    const imagenUrl = data.ImagenUrl || data.imagenUrl;
 
     if (id) {
         await p.request()
@@ -206,12 +207,13 @@ async function saveNotificacionVersion(data, usuario) {
             .input('versionId', sql.NVarChar(50), versionId)
             .input('titulo', sql.NVarChar(200), titulo)
             .input('texto', sql.NVarChar(sql.MAX), texto)
+            .input('imagenUrl', sql.NVarChar(500), imagenUrl || null)
             .input('tipo', sql.NVarChar(50), tipo || 'mejora')
             .input('orden', sql.Int, orden || 0)
             .input('activo', sql.Bit, activo !== false ? 1 : 0)
             .input('fechaPublicacion', sql.DateTime, fechaPublicacion ? new Date(fechaPublicacion) : null)
             .query(`UPDATE APP_Notif_Versiones SET
-                VersionId=@versionId, Titulo=@titulo, Texto=@texto, Tipo=@tipo,
+                VersionId=@versionId, Titulo=@titulo, Texto=@texto, ImagenUrl=@imagenUrl, Tipo=@tipo,
                 Orden=@orden, Activo=@activo, FechaPublicacion=@fechaPublicacion
                 WHERE Id=@id`);
         return id;
@@ -220,13 +222,14 @@ async function saveNotificacionVersion(data, usuario) {
             .input('versionId', sql.NVarChar(50), versionId)
             .input('titulo', sql.NVarChar(200), titulo)
             .input('texto', sql.NVarChar(sql.MAX), texto)
+            .input('imagenUrl', sql.NVarChar(500), imagenUrl || null)
             .input('tipo', sql.NVarChar(50), tipo || 'mejora')
             .input('orden', sql.Int, orden || 0)
             .input('fechaPublicacion', sql.DateTime, fechaPublicacion ? new Date(fechaPublicacion) : null)
             .input('usuario', sql.NVarChar(200), usuario)
-            .query(`INSERT INTO APP_Notif_Versiones (VersionId, Titulo, Texto, Tipo, Orden, FechaPublicacion, CreadoPor)
+            .query(`INSERT INTO APP_Notif_Versiones (VersionId, Titulo, Texto, ImagenUrl, Tipo, Orden, FechaPublicacion, CreadoPor)
                 OUTPUT INSERTED.Id
-                VALUES (@versionId, @titulo, @texto, @tipo, @orden, @fechaPublicacion, @usuario)`);
+                VALUES (@versionId, @titulo, @texto, @imagenUrl, @tipo, @orden, @fechaPublicacion, @usuario)`);
         return r.recordset[0].Id;
     }
 }

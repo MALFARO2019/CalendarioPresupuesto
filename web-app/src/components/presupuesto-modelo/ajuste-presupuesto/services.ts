@@ -13,6 +13,8 @@ import {
     aplicarAjuste as aplicarAjusteApi,
     previewAjuste as previewAjusteApi,
     desactivarAjuste,
+    aprobarRechazarAjuste as aprobarRechazarAjusteApi,
+    aplicarTodosAjustes as aplicarTodosAjustesApi,
     fetchEventosPorMes,
     fetchEventosAjuste,
     getUser,
@@ -108,9 +110,10 @@ export async function getAjustesMes(
 }
 
 function transformAjuste(a: AjustePresupuestoBase, ano: number): AjustePresupuesto {
+    const raw = a as any;
     return {
         ...a,
-        estado: 'Aplicado', // TODO: Backend debe retornar estado real
+        estado: (raw.estado as import('./types').AjusteEstado) || 'Pendiente', // Usar el estado de la BD
         ajustePrincipalId: null,
         idFormateado: formatAjusteId(ano, a.mes, a.id),
         comentario: a.motivo,
@@ -194,14 +197,14 @@ export async function previewImpacto(params: {
 
 export async function applyAjustes(
     nombrePresupuesto: string,
-    _codAlmacen: string,
-    _mes: number,
+    tablaDestino: string
 ): Promise<{ success: boolean; recalculatedCount: number }> {
-    // TODO: Backend endpoint — POST /api/modelo-presupuesto/ajustes/aplicar-todos
-    // Should apply all pending adjustments and recalculate the budget
-    // For now this is a no-op since saveAjuste already applies
-    console.warn('[TODO] applyAjustes: Backend endpoint not implemented. Ajustes already applied on save.');
-    return { success: true, recalculatedCount: 0 };
+    const result = await aplicarTodosAjustesApi(nombrePresupuesto, tablaDestino);
+    return { success: result.success, recalculatedCount: 1 };
+}
+
+export async function aprobarRechazarAjuste(id: number, estado: 'Aprobado' | 'Rechazado', motivoRechazo?: string): Promise<{ success: boolean }> {
+    return aprobarRechazarAjusteApi(id, estado, motivoRechazo);
 }
 
 // ── Copiar ajuste a otros locales ──

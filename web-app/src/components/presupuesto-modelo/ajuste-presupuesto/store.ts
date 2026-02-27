@@ -27,6 +27,7 @@ import * as services from './services';
 interface AjusteStoreState {
     // Auth
     canAdjust: boolean;
+    canApprove: boolean;
 
     // Data lists
     presupuestos: PresupuestoItem[];
@@ -87,11 +88,12 @@ interface AjusteStoreState {
     saveAjuste: (data: AjusteFormData) => Promise<void>;
     deleteAjuste: (id: number) => Promise<void>;
     disassociateAjuste: (id: number) => Promise<void>;
+    aprobarRechazarAjuste: (id: number, estado: 'Aprobado' | 'Rechazado', motivoRechazo?: string) => Promise<void>;
 
     // Bulk actions
     openModal: (modal: ModalType) => void;
     closeModal: () => void;
-    applyAllAjustes: () => Promise<void>;
+    applyAllAjustes: (tablaDestino: string) => Promise<void>;
     copyToLocales: (data: CopiarLocalesData) => Promise<void>;
 
     setMessage: (msg: { ok: boolean; text: string } | null) => void;
@@ -101,6 +103,7 @@ interface AjusteStoreState {
 export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
     // Initial state
     canAdjust: false,
+    canApprove: false,
     presupuestos: [],
     locales: [],
     gruposLocales: [],
@@ -141,6 +144,7 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
 
             const user = services.getUser();
             const canAdjust = !!(user?.esAdmin || (user as any)?.ajustarCurva);
+            const canApprove = !!(user?.esAdmin || (user as any)?.aprobarAjustes);
 
 
             const [presupuestos, locales, gruposLocales] = await Promise.all([
@@ -156,6 +160,7 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
 
             set({
                 canAdjust,
+                canApprove,
                 presupuestos,
                 locales,
                 gruposLocales,
@@ -367,15 +372,26 @@ export const useAjusteStore = create<AjusteStoreState>((set, get) => ({
     openModal: (modal) => set({ activeModal: modal }),
     closeModal: () => set({ activeModal: null }),
 
-    applyAllAjustes: async () => {
+    applyAllAjustes: async (tablaDestino: string) => {
         const { filtros } = get();
         try {
             set({ chartLoading: true, activeModal: null });
-            await services.applyAjustes(filtros.nombrePresupuesto, filtros.codAlmacen, filtros.mes);
+            await services.applyAjustes(filtros.nombrePresupuesto, tablaDestino);
             set({ message: { ok: true, text: 'Ajustes aplicados correctamente' }, pendingChanges: false });
             await get().loadChartData();
         } catch (e: any) {
             set({ message: { ok: false, text: e.message || 'Error aplicando ajustes' }, chartLoading: false });
+        }
+    },
+
+    aprobarRechazarAjuste: async (id: number, estado: 'Aprobado' | 'Rechazado', motivoRechazo?: string) => {
+        try {
+            set({ chartLoading: true, activeModal: null });
+            await services.aprobarRechazarAjuste(id, estado, motivoRechazo);
+            set({ message: { ok: true, text: `Ajuste ${estado.toLowerCase()}` } });
+            await get().loadChartData();
+        } catch (e: any) {
+            set({ message: { ok: false, text: e.message || `Error cambiando estado a ${estado}` }, chartLoading: false });
         }
     },
 

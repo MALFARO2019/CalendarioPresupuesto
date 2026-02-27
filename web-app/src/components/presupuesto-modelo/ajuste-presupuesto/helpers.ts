@@ -87,6 +87,10 @@ export function getEstadoColor(estado: AjusteEstado): { bg: string; text: string
             return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' };
         case 'Asociado':
             return { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' };
+        case 'Rechazado':
+            return { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' };
+        default:
+            return { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' };
     }
 }
 

@@ -3,7 +3,8 @@ import { Settings } from 'lucide-react';
 import { MODULES } from '../shared/config/modules';
 import { ModuleCard } from '../shared/components/ModuleCard';
 import type { GroupedModuleStats } from '../shared/types/modules';
-import { getToken, API_BASE, getUser, fetchFechaLimite } from '../api';
+import { getToken, API_BASE, getUser, fetchFechaLimite, fetchReports, fetchReportSubscriptions } from '../api';
+import type { ModuleStats } from '../shared/types/modules';
 import { useUserPreferences } from '../context/UserPreferences';
 import { DashboardConfigModal } from '../components/dashboard/DashboardConfigModal';
 
@@ -14,7 +15,9 @@ interface DashboardProps {
 export function Dashboard({ onNavigateToModule }: DashboardProps) {
     const { formatPctValue, preferences } = useUserPreferences();
     const [presupuestoStats, setPresupuestoStats] = useState<GroupedModuleStats[]>([]);
+    const [reportesStats, setReportesStats] = useState<ModuleStats[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingReportes, setIsLoadingReportes] = useState(false);
     const [showConfigModal, setShowConfigModal] = useState(false);
     const [dateRange, setDateRange] = useState<{ startDate: string; endDate: string } | null>(null);
 
@@ -150,6 +153,44 @@ export function Dashboard({ onNavigateToModule }: DashboardProps) {
         fetchMultiGroupStats();
     }, [dashboardLocales, preferences.comparativePeriod, formatPctValue]);
 
+    useEffect(() => {
+        const user = getUser();
+        if (!user?.accesoReportes && !user?.esAdmin) return;
+
+        const loadReportStats = async () => {
+            setIsLoadingReportes(true);
+            try {
+                const [reps, subs] = await Promise.all([
+                    fetchReports(),
+                    fetchReportSubscriptions()
+                ]);
+
+                const categories = [...new Set(reps.map(r => r.Categoria || 'Otros'))].sort();
+
+                const stats: ModuleStats[] = categories.map(cat => {
+                    const reportsInCat = reps.filter(r => (r.Categoria || 'Otros') === cat);
+                    const reportIds = new Set(reportsInCat.map(r => r.ID));
+
+                    const subCount = subs.filter(s => reportIds.has(s.ReporteID)).length;
+
+                    return {
+                        label: cat,
+                        value: subCount.toString(),
+                        color: subCount > 0 ? 'green' : 'gray'
+                    };
+                });
+
+                setReportesStats(stats);
+            } catch (err) {
+                console.error('Error fetching report stats:', err);
+            } finally {
+                setIsLoadingReportes(false);
+            }
+        };
+
+        loadReportStats();
+    }, []);
+
     const handleModuleClick = (moduleId: string) => {
         if (onNavigateToModule) {
             onNavigateToModule(moduleId);
@@ -221,8 +262,8 @@ export function Dashboard({ onNavigateToModule }: DashboardProps) {
                                 <ModuleCard
                                     key={module.id}
                                     module={module}
-                                    stats={module.id === 'presupuesto' ? presupuestoStats : []}
-                                    isLoading={module.id === 'presupuesto' ? isLoading : false}
+                                    stats={module.id === 'presupuesto' ? presupuestoStats : module.id === 'reportes' ? reportesStats : []}
+                                    isLoading={module.id === 'presupuesto' ? isLoading : module.id === 'reportes' ? isLoadingReportes : false}
                                     onClick={() => handleModuleClick(module.id)}
                                     dateRange={module.id === 'presupuesto' && dateRange ? dateRange : undefined}
                                 />

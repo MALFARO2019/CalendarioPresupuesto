@@ -30,6 +30,7 @@ export interface User {
     editarConsolidado: boolean;
     ejecutarRecalculo: boolean;
     ajustarCurva: boolean;
+    aprobarAjustes: boolean;
     restaurarVersiones: boolean;
     accesoAsignaciones: boolean;
     accesoGruposAlmacen: boolean;
@@ -238,7 +239,7 @@ export async function createAdminUser(
     accesoInventarios: boolean = false,
     accesoPersonal: boolean = false,
     esAdmin: boolean = false,
-    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {},
+    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; aprobarAjustes?: boolean; restaurarVersiones?: boolean } = {},
     perfilId: number | null = null,
     cedula: string | null = null,
     telefono: string | null = null,
@@ -280,7 +281,7 @@ export async function updateAdminUser(
     esAdmin: boolean,
     permitirEnvioClave: boolean = true,
     perfilId: number | null = null,
-    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; restaurarVersiones?: boolean } = {},
+    modeloPerms: { accesoModeloPresupuesto?: boolean; verConfigModelo?: boolean; verConsolidadoMensual?: boolean; verAjustePresupuesto?: boolean; verVersiones?: boolean; verBitacora?: boolean; verReferencias?: boolean; editarConsolidado?: boolean; ejecutarRecalculo?: boolean; ajustarCurva?: boolean; aprobarAjustes?: boolean; restaurarVersiones?: boolean } = {},
     cedula: string | null = null,
     telefono: string | null = null,
     accesoAsignaciones: boolean = false,
@@ -904,7 +905,14 @@ export async function saveUserAlcanceTable(override: string | null): Promise<{ s
 // User Dashboard Config API
 // ==========================================
 
-export async function getDashboardConfig(): Promise<{ dashboardLocales: string[]; comparativePeriod: string }> {
+export async function getDashboardConfig(): Promise<{
+    dashboardLocales: string[];
+    comparativePeriod: string;
+    pctDisplayMode?: string;
+    pctDecimals?: number;
+    valueDisplayMode?: string;
+    valueDecimals?: number;
+}> {
     const response = await fetch(`${API_BASE}/user/dashboard-config`, {
         headers: authHeaders()
     });
@@ -917,11 +925,22 @@ export async function getDashboardConfig(): Promise<{ dashboardLocales: string[]
     const result = await response.json();
     return {
         dashboardLocales: result.dashboardLocales || [],
-        comparativePeriod: result.comparativePeriod || 'Month'
+        comparativePeriod: result.comparativePeriod || 'Month',
+        pctDisplayMode: result.pctDisplayMode,
+        pctDecimals: result.pctDecimals,
+        valueDisplayMode: result.valueDisplayMode,
+        valueDecimals: result.valueDecimals
     };
 }
 
-export async function saveDashboardConfig(config: { dashboardLocales?: string[]; comparativePeriod?: string }): Promise<{ success: boolean }> {
+export async function saveDashboardConfig(config: {
+    dashboardLocales?: string[];
+    comparativePeriod?: string;
+    pctDisplayMode?: string;
+    pctDecimals?: number;
+    valueDisplayMode?: string;
+    valueDecimals?: number;
+}): Promise<{ success: boolean }> {
     const response = await fetch(`${API_BASE}/user/dashboard-config`, {
         method: 'PUT',
         headers: authHeaders(),
@@ -1069,6 +1088,7 @@ export interface Profile {
     editarConsolidado: boolean;
     ejecutarRecalculo: boolean;
     ajustarCurva: boolean;
+    aprobarAjustes: boolean;
     restaurarVersiones: boolean;
     esAdmin: boolean;
     permitirEnvioClave: boolean;
@@ -1122,6 +1142,7 @@ export async function createProfile(data: {
         editarConsolidado?: boolean;
         ejecutarRecalculo?: boolean;
         ajustarCurva?: boolean;
+        aprobarAjustes?: boolean;
         restaurarVersiones?: boolean;
         esAdmin: boolean;
         permitirEnvioClave: boolean;
@@ -1174,6 +1195,7 @@ export async function updateProfile(
             editarConsolidado?: boolean;
             ejecutarRecalculo?: boolean;
             ajustarCurva?: boolean;
+            aprobarAjustes?: boolean;
             restaurarVersiones?: boolean;
             esAdmin: boolean;
             permitirEnvioClave: boolean;
@@ -1889,6 +1911,22 @@ export async function desactivarAjuste(id: number): Promise<{ success: boolean }
     return response.json();
 }
 
+export async function aprobarRechazarAjuste(id: number, estado: 'Aprobado' | 'Rechazado', motivoRechazo?: string): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes/${id}/estado`, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify({ estado, motivoRechazo })
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
+export async function aplicarTodosAjustes(nombrePresupuesto: string, tablaDestino: string): Promise<{ success: boolean; result: any }> {
+    const response = await fetch(`${API_BASE}/modelo-presupuesto/ajustes/aplicar-todos`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ nombrePresupuesto, tablaDestino })
+    });
+    if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Error'); }
+    return response.json();
+}
+
 // Versions
 export async function fetchVersiones(nombrePresupuesto: string): Promise<VersionPresupuesto[]> {
     const response = await fetch(`${API_BASE}/modelo-presupuesto/versiones?nombrePresupuesto=${encodeURIComponent(nombrePresupuesto)}`, { headers: authHeaders() });
@@ -2228,6 +2266,7 @@ export interface NotificacionVersion {
     Tipo: string;
     Orden: number;
     Activo: boolean;
+    ImagenUrl?: string;
     FechaPublicacion?: string;
     FechaCreacion?: string;
 }
@@ -2342,6 +2381,19 @@ export async function saveNotificacionVersion(data: Partial<NotificacionVersion>
     if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error'); }
     const res = await r.json();
     return res.id || data.id!;
+}
+
+export async function uploadNotificacionImagen(file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append('imagen', file);
+    const r = await fetch(`${API_BASE}/notificaciones/upload-imagen`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        body: formData
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Error al subir imagen');
+    return data.url;
 }
 
 export async function deleteNotificacionVersion(id: number): Promise<void> {

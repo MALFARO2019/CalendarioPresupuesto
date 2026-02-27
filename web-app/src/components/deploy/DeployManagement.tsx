@@ -16,6 +16,8 @@ import {
     saveNotificacionVersion,
     deleteNotificacionVersion,
     fetchRuta,
+    uploadNotificacionImagen,
+    API_BASE,
     type DeployLogEntry,
     type SetupGuide,
     type ServerVersionInfo,
@@ -132,8 +134,9 @@ export function DeployManagement() {
     const [vnLoading, setVnLoading] = useState(false);
     const [vnShowForm, setVnShowForm] = useState(false);
     const [vnEditing, setVnEditing] = useState<NotificacionVersion | null>(null);
-    const [vnForm, setVnForm] = useState({ VersionId: '', Titulo: '', Texto: '', Tipo: 'mejora', Orden: 0 });
+    const [vnForm, setVnForm] = useState({ VersionId: '', Titulo: '', Texto: '', Tipo: 'mejora', Orden: 0, ImagenUrl: '' });
     const [vnSaving, setVnSaving] = useState(false);
+    const [vnUploadingImg, setVnUploadingImg] = useState(false);
 
     // Ruta state
     const [rutaItems, setRutaItems] = useState<NotificacionVersion[]>([]);
@@ -255,6 +258,25 @@ export function DeployManagement() {
         if (activeSection === 'version-notes') loadVersionNotes();
     }, [vnFilterVersion]);
 
+    const handleVnUploadImagen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 3 * 1024 * 1024) {
+            showToast('La imagen no debe superar los 3 MB', 'error');
+            return;
+        }
+        setVnUploadingImg(true);
+        try {
+            const url = await uploadNotificacionImagen(file);
+            setVnForm(f => ({ ...f, ImagenUrl: url }));
+            showToast('Imagen subida', 'success');
+        } catch (error: any) {
+            showToast(error.message, 'error');
+        } finally {
+            setVnUploadingImg(false);
+        }
+    };
+
     const handleVnSave = async () => {
         if (!vnForm.Titulo.trim() || !vnForm.VersionId.trim()) return;
         setVnSaving(true);
@@ -264,13 +286,14 @@ export function DeployManagement() {
                 VersionId: vnForm.VersionId,
                 Titulo: vnForm.Titulo,
                 Texto: vnForm.Texto,
+                ImagenUrl: vnForm.ImagenUrl,
                 Tipo: vnForm.Tipo,
                 Orden: vnForm.Orden,
             });
             showToast(vnEditing ? 'Nota actualizada' : 'Nota creada', 'success');
             setVnShowForm(false);
             setVnEditing(null);
-            setVnForm({ VersionId: '', Titulo: '', Texto: '', Tipo: 'mejora', Orden: 0 });
+            setVnForm({ VersionId: '', Titulo: '', Texto: '', Tipo: 'mejora', Orden: 0, ImagenUrl: '' });
             loadVersionNotes();
         } catch (e: any) {
             showToast('Error: ' + e.message, 'error');
@@ -279,7 +302,7 @@ export function DeployManagement() {
 
     const handleVnEdit = (item: NotificacionVersion) => {
         setVnEditing(item);
-        setVnForm({ VersionId: item.VersionId, Titulo: item.Titulo, Texto: item.Texto, Tipo: item.Tipo, Orden: item.Orden });
+        setVnForm({ VersionId: item.VersionId, Titulo: item.Titulo, Texto: item.Texto, Tipo: item.Tipo, Orden: item.Orden, ImagenUrl: item.ImagenUrl || '' });
         setVnShowForm(true);
     };
 
@@ -296,7 +319,7 @@ export function DeployManagement() {
         setVnEditing(null);
         // Pre-fill version with server version or filter
         const defaultVer = vnFilterVersion || serverVersion?.version || '';
-        setVnForm({ VersionId: defaultVer, Titulo: '', Texto: '', Tipo: 'mejora', Orden: vnItems.length });
+        setVnForm({ VersionId: defaultVer, Titulo: '', Texto: '', Tipo: 'mejora', Orden: vnItems.length, ImagenUrl: '' });
         setVnShowForm(true);
     };
 
@@ -1357,10 +1380,34 @@ export function DeployManagement() {
                                         placeholder="Descripción detallada del cambio..." rows={3}
                                         className="w-full px-3 py-2 border border-cyan-200 rounded-lg text-sm focus:border-cyan-500 resize-none" />
                                 </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-cyan-800 uppercase mb-1">Imagen (Opcional)</label>
+                                    <div className="flex items-center gap-3">
+                                        <label className={`px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all ${vnUploadingImg ? 'bg-gray-200 text-gray-500 cursor-wait' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'}`}>
+                                            {vnUploadingImg ? '⏳ Subiendo...' : '📷 Subir Imagen'}
+                                            <input type="file" accept="image/*" onChange={handleVnUploadImagen} className="hidden" disabled={vnUploadingImg} />
+                                        </label>
+                                        {vnForm.ImagenUrl ? (
+                                            <div className="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200">
+                                                <span className="text-xs text-green-700 font-medium truncate max-w-[200px]" title={vnForm.ImagenUrl}>
+                                                    {vnForm.ImagenUrl.split('/').pop()}
+                                                </span>
+                                                <button onClick={() => setVnForm(f => ({ ...f, ImagenUrl: '' }))} className="text-red-500 hover:text-red-700 font-bold ml-1">×</button>
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-gray-400 italic">Formatos permitidos: JPG, PNG, WEBP</span>
+                                        )}
+                                    </div>
+                                    {vnForm.ImagenUrl && (
+                                        <div className="mt-3 relative w-full h-32 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200">
+                                            <img src={`${API_BASE.replace('/api', '')}${vnForm.ImagenUrl}`} alt="Vista previa" className="max-h-full max-w-full object-contain" />
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex gap-2 justify-end">
                                     <button onClick={() => { setVnShowForm(false); setVnEditing(null); }}
                                         className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 transition-all">Cancelar</button>
-                                    <button onClick={handleVnSave} disabled={vnSaving || !vnForm.Titulo.trim() || !vnForm.VersionId.trim()}
+                                    <button onClick={handleVnSave} disabled={vnSaving || vnUploadingImg || !vnForm.Titulo.trim() || !vnForm.VersionId.trim()}
                                         className="px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-semibold hover:bg-cyan-700 transition-all disabled:opacity-50">
                                         {vnSaving ? '⏳ Guardando...' : vnEditing ? '✓ Actualizar' : '✓ Crear'}
                                     </button>
@@ -1405,7 +1452,12 @@ export function DeployManagement() {
                                                                     <span className="text-[10px] text-gray-400">Orden: {item.Orden}</span>
                                                                     {!item.Activo && <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-gray-200 text-gray-500">Inactivo</span>}
                                                                 </div>
-                                                                {item.Texto && <p className="text-xs text-gray-500 mt-1">{item.Texto}</p>}
+                                                                {item.Texto && <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{item.Texto}</p>}
+                                                                {item.ImagenUrl && (
+                                                                    <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 inline-block bg-white">
+                                                                        <img src={`${API_BASE.replace('/api', '')}${item.ImagenUrl}`} alt="Adjunto" className="max-h-40 max-w-full object-contain" />
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                             <div className="flex items-center gap-1 flex-shrink-0">
                                                                 <button onClick={() => handleVnEdit(item)}
