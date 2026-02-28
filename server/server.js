@@ -4682,7 +4682,7 @@ process.on('unhandledRejection', (reason, promise) => {
     // Do NOT exit — keep the server alive
 });
 
-app.listen(port, '0.0.0.0', () => {
+app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
     console.log(`🌐 Frontend served from: ${distPath}`);
     const dbStatus = dbManager.getCurrentStatus();
