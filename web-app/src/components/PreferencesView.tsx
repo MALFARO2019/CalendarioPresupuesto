@@ -23,6 +23,7 @@ export const PreferencesView: React.FC<PreferencesViewProps> = ({
         setValueDisplayMode,
         setDefaultYearType,
         setGroupOrder,
+        setTheme,
     } = useUserPreferences();
 
     return (
@@ -45,6 +46,41 @@ export const PreferencesView: React.FC<PreferencesViewProps> = ({
 
             <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
+                {/* ── TEMAS DE COLORES ── */}
+                <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
+                        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Tema de Colores</h2>
+                    </div>
+                    <div className="p-5">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            {([
+                                { value: 'normal', label: 'Normal', desc: 'Tema Claro por Defecto' },
+                                { value: 'oscuro', label: 'Oscuro', desc: 'Diseñado Personalizado' },
+                                { value: 'rosti', label: 'Rosti', desc: 'Tema Base Azul' }
+                            ] as const).map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => setTheme(opt.value)}
+                                    className={`flex-1 py-3 px-4 text-left rounded-xl border-2 transition-all ${preferences.theme === opt.value
+                                            ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-100'
+                                            : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className={`w-4 h-4 rounded-full border-2 flex flex-shrink-0 items-center justify-center ${preferences.theme === opt.value ? 'border-indigo-500 bg-indigo-500' : 'border-gray-300'
+                                            }`}>
+                                            {preferences.theme === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                        </div>
+                                        <div className={`text-sm font-bold ${preferences.theme === opt.value ? 'text-indigo-800' : 'text-gray-800'}`}>
+                                            {opt.label}
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1 pl-6">{opt.desc}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </section>
 
                 {/* ── PORCENTAJES ── */}
                 <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">

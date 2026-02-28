@@ -66,6 +66,52 @@
   }
 }
 
+/* ===================================
+   Themes using CSS Variables override
+   =================================== */
+html.theme-oscuro {
+  /* Dark mode backgrounds */
+  background-color: #111827; 
+  color: #f9fafb;
+  color-scheme: dark;
+}
+
+html.theme-oscuro body {
+  background-color: #111827;
+  color: #f9fafb;
+}
+
+html.theme-oscuro .bg-white { background-color: #1f2937 !important; }
+html.theme-oscuro .bg-gray-50 { background-color: #111827 !important; }
+html.theme-oscuro .bg-gray-100 { background-color: #1f2937 !important; }
+html.theme-oscuro .bg-gray-200 { background-color: #374151 !important; }
+html.theme-oscuro .border-gray-100 { border-color: #374151 !important; }
+html.theme-oscuro .border-gray-200 { border-color: #4b5563 !important; }
+html.theme-oscuro .text-gray-900 { color: #f9fafb !important; }
+html.theme-oscuro .text-gray-800 { color: #f3f4f6 !important; }
+html.theme-oscuro .text-gray-700 { color: #e5e7eb !important; }
+html.theme-oscuro .text-gray-600 { color: #d1d5db !important; }
+html.theme-oscuro .text-gray-500 { color: #9ca3af !important; }
+
+html.theme-rosti {
+  /* Rosti mode backgrounds (Base Azul) */
+  background-color: #f0f8ff;
+}
+
+html.theme-rosti body {
+  background-color: #f0f8ff;
+}
+
+html.theme-rosti .bg-white { background-color: #ffffff !important; }
+html.theme-rosti .bg-gray-50 { background-color: #e0f2fe !important; } /* sky-100 */
+html.theme-rosti .bg-gray-100 { background-color: #bae6fd !important; } /* sky-200 */
+html.theme-rosti .border-gray-100 { border-color: #bae6fd !important; }
+html.theme-rosti .border-gray-200 { border-color: #7dd3fc !important; }
+html.theme-rosti .text-gray-900 { color: #0c4a6e !important; }
+html.theme-rosti .text-gray-800 { color: #075985 !important; }
+html.theme-rosti .text-gray-700 { color: #0369a1 !important; }
+html.theme-rosti .text-gray-600 { color: #0284c7 !important; }
+
 @layer utilities {
   .transition-smooth {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);

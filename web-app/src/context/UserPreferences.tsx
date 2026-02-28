@@ -15,6 +15,7 @@ interface UserPreferences {
     dashboardLocales?: string[];
     comparativePeriod: ComparativePeriod;
     groupOrder?: string[];  // Custom order for groups
+    theme: 'normal' | 'oscuro' | 'rosti';
 }
 
 interface UserPreferencesContextType {
@@ -33,6 +34,7 @@ interface UserPreferencesContextType {
     formatPctValue: (pct: number) => string;
     /** Format a percentage already in 0-100 scale (e.g. 105 = 105%) */
     formatPct100: (pct: number) => string;
+    setTheme: (theme: 'normal' | 'oscuro' | 'rosti') => void;
 }
 
 const STORAGE_KEY = 'user_preferences';
@@ -44,6 +46,7 @@ const defaultPreferences: UserPreferences = {
     valueDisplayMode: 'completo',
     defaultYearType: 'Año Anterior',
     comparativePeriod: 'Month',
+    theme: 'normal',
 };
 
 const UserPreferencesContext = createContext<UserPreferencesContextType | null>(null);
@@ -111,6 +114,17 @@ export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ chi
 
         return () => clearTimeout(timeoutId);
     }, [preferences.dashboardLocales, preferences.comparativePeriod, serverSynced]);
+
+    // Apply theme class to HTML root
+    useEffect(() => {
+        const root = document.documentElement;
+        root.classList.remove('theme-normal', 'theme-oscuro', 'theme-rosti');
+        root.classList.add(`theme-${preferences.theme || 'normal'}`);
+    }, [preferences.theme]);
+
+    const setTheme = (theme: 'normal' | 'oscuro' | 'rosti') => {
+        setPreferences(prev => ({ ...prev, theme }));
+    };
 
     const setPctDisplayMode = (mode: PctDisplayMode) => {
         setPreferences(prev => ({ ...prev, pctDisplayMode: mode }));
@@ -191,7 +205,8 @@ export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ chi
             addDashboardLocal,
             removeDashboardLocal,
             formatPctValue,
-            formatPct100
+            formatPct100,
+            setTheme
         }}>
             {children}
         </UserPreferencesContext.Provider>
