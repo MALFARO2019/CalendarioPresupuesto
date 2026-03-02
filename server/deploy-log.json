@@ -1447,6 +1447,74 @@
           "detail": "Falló la configuración de infraestructura: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command \"$cred = New-Object System.Management.Automation.PSCredential('Administrador', (ConvertTo-SecureString 'R0st1p017' -AsPlainText -"
         }
       ]
+    },
+    {
+      "id": 1772425402960,
+      "version": "v1.4",
+      "date": "2026-03-02T04:23:22.960Z",
+      "notes": "",
+      "servers": [
+        "10.29.1.25"
+      ],
+      "deployedBy": "soporte@rostipolloscr.com",
+      "status": "success",
+      "steps": [
+        {
+          "step": "Verificando conexión",
+          "status": "success",
+          "detail": "Conectado a WIN-3O7DULU3NTU"
+        },
+        {
+          "step": "Descargando código (git)",
+          "status": "success",
+          "detail": "HEAD is now at 4b17f71 Deploy v1.4: Actualizaci��n"
+        },
+        {
+          "step": "Registrando versión",
+          "status": "success",
+          "detail": "Versión v1.4 registrada"
+        },
+        {
+          "step": "Instalando dependencias backend",
+          "status": "success",
+          "detail": "Dependencias instaladas"
+        },
+        {
+          "step": "Construyendo frontend",
+          "status": "success",
+          "detail": "Build completado"
+        },
+        {
+          "step": "Verificando web.config",
+          "status": "success",
+          "detail": "Configuración IIS aplicada"
+        },
+        {
+          "step": "Garantizando PORT=3000",
+          "status": "success",
+          "detail": "PORT=3000 ya configurado"
+        },
+        {
+          "step": "Verificando infraestructura",
+          "status": "success",
+          "detail": "NSSM: C:\\Deploy\\CalendarioPresupuesto\\server | IIS: C:\\Apps\\CalendarioPresupuesto\\web-app\\dist | web.config OK"
+        },
+        {
+          "step": "Reiniciando servicio",
+          "status": "success",
+          "detail": "\"DefaultAppPool\" se detuvo correctamente\r\n\"DefaultAppPool\" se inici� correctamente.\r\nIIS AppPool reciclado. Servicio NSSM API reiniciado"
+        },
+        {
+          "step": "Verificando API",
+          "status": "success",
+          "detail": "API responde v1.4 ✓"
+        },
+        {
+          "step": "Verificando sitio web",
+          "status": "success",
+          "detail": "Sitio web carga correctamente (755 bytes) ✓"
+        }
+      ]
     }
   ]
 }

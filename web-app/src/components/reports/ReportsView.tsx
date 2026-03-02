@@ -290,7 +290,7 @@ export function ReportsView({ onBack }: ReportsViewProps) {
     };
 
     return (
-        <div className="bg-slate-50/50">
+        <div className="bg-gray-50 min-h-screen">
             <div className="max-w-6xl mx-auto pb-10">
                 {/* Header - Sticky */}
                 <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm mb-2">

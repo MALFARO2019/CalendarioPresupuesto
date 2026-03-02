@@ -201,7 +201,7 @@ export function ReportsAdminPanel() {
 
                     {/* Edit Form */}
                     {editReport && (
-                        <div className="bg-indigo-50/50 rounded-2xl border border-indigo-100 p-5 mb-6">
+                        <div className="bg-gray-50 rounded-2xl border border-gray-200 p-5 mb-6">
                             <h3 className="font-bold text-gray-900 mb-4">{isNew ? 'Crear Reporte' : 'Editar Reporte'}</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
@@ -420,7 +420,7 @@ export function ReportsAdminPanel() {
                                 </thead>
                                 <tbody>
                                     {profiles.map(profile => (
-                                        <tr key={profile.id} className="hover:bg-indigo-50/30">
+                                        <tr key={profile.id} className="hover:bg-gray-50/50">
                                             <td className="px-3 py-2.5 font-semibold text-gray-800 text-xs border-b border-gray-100 sticky left-0 bg-white z-10">
                                                 {profile.nombre}
                                             </td>
@@ -465,7 +465,7 @@ export function ReportsAdminPanel() {
                                 </thead>
                                 <tbody>
                                     {users.filter(u => u.activo).map(usr => (
-                                        <tr key={usr.id} className="hover:bg-indigo-50/30">
+                                        <tr key={usr.id} className="hover:bg-gray-50/50">
                                             <td className="px-3 py-2.5 border-b border-gray-100 sticky left-0 bg-white z-10 min-w-[200px]">
                                                 <div className="flex flex-col">
                                                     <span className="font-semibold text-gray-800 text-xs">{usr.nombre}</span>
